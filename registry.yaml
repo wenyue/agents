@@ -1,8 +1,0 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/runkids/skillshare/main/schemas/registry.schema.json
-skills:
-    - name: _vercel-labs-skills
-      source: https://github.com/vercel-labs/skills.git
-      tracked: true
-    - name: _getsentry-sentry-for-ai
-      source: https://github.com/getsentry/sentry-for-ai.git
-      tracked: true

@@ -1,6 +1,15 @@
 .DS_Store
+Thumbs.db
 
-# BEGIN SKILLSHARE MANAGED - DO NOT EDIT
-_vercel-labs-skills/
-_getsentry-sentry-for-ai/
-# END SKILLSHARE MANAGED
+# Local editor/runtime clutter.
+.idea/
+.vscode/
+*.log
+
+# Local skillshare scratch data for third-party skills.
+.skillshare/logs/
+.skillshare/cache/
+.skillshare/tmp/
+
+# Local debug instrumentation output.
+.agents/debug.log

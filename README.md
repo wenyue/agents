@@ -1,96 +1,97 @@
-# Personal AI Skills
+# wenyue/agents
 
-Personal skill configuration managed by [skillshare](https://github.com/runkids/skillshare).
+Shared agent configuration for projects that use `.agents/` rules, skills, and subagents.
 
-## Setup (New Machine)
+This repository provides:
 
-### 1. Install skillshare
+- public rules under `.agents/rules/`
+- reusable skills under `.agents/skills/`
+- reusable subagents under `.agents/agents/`
+- `AGENTS.md` as a project entry template
+- `update-project-rules` as the sync workflow
+
+## New Project Setup
+
+Run these steps from the target project root.
+
+### 1. Provide this repo to the coding agent
+
+Provide `wenyue/agents` as a repository reference or attached workspace context. The coding agent
+only needs read access to the public source files; this README does not require a specific download
+or install command.
+
+### 2. Ask the LLM to update project rules
+
+Ask the coding agent to use:
+
+```text
+wenyue/agents/.agents/skills/update-project-rules/SKILL.md
+```
+
+The skill syncs public rules, public skills, and public subagents from `wenyue/agents`, then creates
+or refreshes the target project's local rules. After it runs, the runtime copy should exist in the
+target project at `.agents/skills/update-project-rules/SKILL.md`.
+
+## Local Rule Authoring Guide
+
+Public rules are the base. Project facts belong in `20+` local rules.
+
+### `20-project-tools.md`
+
+Write stable tooling facts:
+
+- package manager and scripts
+- test, build, lint, format, and code-generation commands
+- MCP servers, runtime services, ports, health checks, and watcher markers
+- recommended verification order
+- task-specific skill handoffs
+
+Do not write general code style here.
+
+### `21-project-rules.md`
+
+Write project API and convention facts:
+
+- project hooks, services, routes, state management, theme, logging, and storage APIs
+- generated-file and hand-written-file boundaries
+- custom lint interpretation
+- domain terms, naming prefixes, lifecycle constraints, and async rules
+
+Do not copy the directory map here.
+
+### `22-project-structure.md`
+
+Write structure facts:
+
+- top-level modules and responsibilities
+- feature/module internal layout
+- dependency direction and forbidden dependencies
+- shared locations and configuration ownership
+
+If module order is enforced by a real config file, link to that file as the source of truth instead
+of duplicating the complete configuration.
+
+## Updating Existing Projects
+
+Provide the latest `wenyue/agents` source to the LLM, then ask it to run `update-project-rules` so
+wrappers, `AGENTS.md`, local `20+` rules, and public sources stay aligned.
+
+## Third-Party Skills
+
+Use skillshare only for third-party skills that should remain independently upgradable, such as
+skills installed from other repositories:
 
 ```bash
-npm install -g skillshare
-# or
-npx skillshare --version
+skillshare update --all -p
+skillshare sync -p
 ```
 
-### 2. Initialize with this repo
+Do not use skillshare to install or sync the public rules, skills, or subagents from
+`wenyue/agents`. `update-project-rules` owns that copy step.
 
-```bash
-skillshare init --remote git@github.com:wenyue/skills.git --all-targets
-skillshare pull
-```
+## Boundaries
 
-### 3. Restore tracked skills from registry
-
-See `registry.yaml` for the list of tracked repos, then install each:
-
-```bash
-skillshare install vercel-labs/skills/skills/find-skills --track --force
-skillshare install getsentry/sentry-for-ai/skills/sentry-fix-issues --track --force
-skillshare sync
-```
-
-## Plugins
-
-These are managed separately from skillshare — they include hooks, installers, and deeper agent integration.
-
-### Superpowers
-
-Complete software development workflow with composable skills (brainstorming, TDD, debugging, code review, etc).
-
-```bash
-# Clone to ~/.codex/superpowers (the conventional location)
-git clone https://github.com/obra/superpowers.git ~/.codex/superpowers
-```
-
-Follow the repo's README for per-platform setup (Claude Code, Cursor, Copilot CLI, Gemini CLI).
-
-### Caveman
-
-Ultra-compressed communication mode — cuts token usage ~75% while keeping full technical accuracy.
-
-```bash
-# Install via Claude Code plugin system
-claude plugin install caveman
-# Or manually:
-npx caveman-installer
-```
-
-Source: https://github.com/JuliusBrussee/caveman
-
-## Daily Usage
-
-```bash
-# Update all tracked skills
-skillshare update --all && skillshare sync
-
-# Push local changes to remote
-skillshare push -m "description"
-
-# Pull from remote on another machine
-skillshare pull && skillshare sync
-
-# Update plugins
-claude plugin update caveman
-cd ~/.codex/superpowers && git pull
-```
-
-## Architecture
-
-```
-~/.config/skillshare/
-├── config.yaml          # Target paths, sync mode
-├── registry.yaml        # Tracked repo sources (local-only, copy in this repo for reference)
-└── skills/              # Source of truth (this repo)
-    ├── _vercel-labs-skills/       # tracked: find-skills
-    ├── _getsentry-sentry-for-ai/  # tracked: sentry-fix-issues
-    └── registry.yaml              # Reference copy for cross-machine setup
-
-~/.agents/skills/        # Target: universal (cline, warp, witsy share this)
-~/.claude/skills/        # Target: claude
-~/.cursor/skills/        # Target: cursor
-~/.codex/skills/         # Target: codex
-~/.copilot/skills/       # Target: copilot
-
-~/.codex/superpowers/    # Plugin: superpowers (git clone)
-~/.claude/plugins/       # Plugin: caveman (claude plugin system)
-```
+- Do not put project-specific facts into `wenyue/agents`.
+- Do not rewrite public rules to fit one project.
+- Keep wrappers thin and source files authoritative.
+- Use `.skillshare/` only for third-party, independently upgradable skills.
