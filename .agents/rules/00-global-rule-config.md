@@ -100,7 +100,7 @@ paths.
 - Skills are portable units. Do not hardcode repository-specific paths into `SKILL.md`.
 - Inside `SKILL.md`, reference skill-owned files relative to the skill directory.
 - `.agents/skills/` is the runtime skill location. It can contain project-owned skills, public
-  skills copied from `wenyue/agents`, and third-party skills managed separately through
+  skills sourced from `wenyue/agents`, and third-party skills managed separately through
   `.skillshare/skills/`.
 - Describe project targets semantically; let the agent resolve concrete paths at runtime.
 - Repository-specific policy belongs in `.agents/rules/`. Reusable workflow that would apply in

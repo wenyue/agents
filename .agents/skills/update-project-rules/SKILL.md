@@ -34,6 +34,7 @@ Public rules:
 - `.agents/rules/02-global-response-format.md`
 - `.agents/rules/03-global-skill-config.md`
 - `.agents/rules/10-base-code.md`
+- `.agents/rules/11-base-go.md`
 - `.agents/rules/11-base-flutter.md`
 - `.agents/rules/11-base-cpp.md`
 - `.agents/rules/12-base-arb.md`
@@ -138,7 +139,7 @@ only the source reference.
 Run fresh checks before reporting completion:
 
 ```bash
-rg -n '/home/|/Users/|[A-Z]:\\' AGENTS.md .agents .cursor .claude .codex .github .vscode || true
+rg -n '/ho''me/|/Us''ers/|[A-Z]:\\' AGENTS.md .agents .cursor .claude .codex .github .vscode || true
 rg -n 'copied fr''om|sync place''holder|wenyue/skills[.]git' \
   AGENTS.md README.md .agents .cursor .claude .codex .github .vscode || true
 rg -n '^Apply @\.agents/rules/[0-9][0-9]-.*\.md$' .cursor/rules .claude/rules .github/instructions || true

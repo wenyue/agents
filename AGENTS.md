@@ -19,6 +19,7 @@ Then read the base rules that apply:
 | Read when | Rule | Strength |
 | --- | --- | --- |
 | Working with code, reviews, or implementation design | `.agents/rules/10-base-code.md` | `Default` |
+| Working with Go code | `.agents/rules/11-base-go.md` | `Default` |
 | Working with Dart or Flutter code | `.agents/rules/11-base-flutter.md` | `Default` |
 | Working with C++ files | `.agents/rules/11-base-cpp.md` | `Default` |
 | Working with ARB localization files | `.agents/rules/12-base-arb.md` | `Mandatory` |
