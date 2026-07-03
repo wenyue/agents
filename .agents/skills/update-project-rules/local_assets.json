@@ -1,0 +1,117 @@
+{
+  "rules": [
+    {
+      "file": "20-project-tools.md",
+      "read_when": "Using Flutter tooling, MCP, shell, or debug commands",
+      "strength": "Mandatory",
+      "section": "project",
+      "cursor": {
+        "description": "[mandatory] How to use Flutter tooling, MCP servers, and shell commands",
+        "alwaysApply": true
+      },
+      "claude": {},
+      "github": {
+        "applyTo": "**"
+      }
+    },
+    {
+      "file": "21-project-rules.md",
+      "read_when": "Working with Dart or Flutter code in this app",
+      "strength": "Default",
+      "section": "project",
+      "cursor": {
+        "description": "[default] otaku_room Dart and Flutter overlays, tooling, and lint policy",
+        "globs": "**/*.dart",
+        "alwaysApply": false
+      },
+      "claude": {
+        "paths": ["**/*.dart"]
+      },
+      "github": {
+        "applyTo": "**/*.dart"
+      }
+    },
+    {
+      "file": "22-project-structure.md",
+      "read_when": "Making Dart or Flutter structure decisions",
+      "strength": "Advisory",
+      "section": "project",
+      "cursor": {
+        "description": "[advisory] Project module layout and file placement",
+        "globs": "**/*.dart",
+        "alwaysApply": false
+      },
+      "claude": {
+        "paths": ["**/*.dart"]
+      },
+      "github": {
+        "applyTo": "**/*.dart"
+      }
+    },
+    {
+      "file": "30-module-common.md",
+      "read_when": "Working with `common/` module utilities, UI helpers, or widgets",
+      "strength": "Advisory",
+      "section": "project",
+      "cursor": {
+        "description": "[advisory] Cookbook for common/ utilities, UI helpers, and widgets",
+        "globs": "**/*.dart",
+        "alwaysApply": false
+      },
+      "claude": {
+        "paths": ["**/*.dart"]
+      },
+      "github": {
+        "applyTo": "**/*.dart"
+      }
+    },
+    {
+      "file": "40-domain-testing.md",
+      "read_when": "Working with tests under `test/` or `plugins/**/test/`",
+      "strength": "Default",
+      "section": "project",
+      "cursor": {
+        "description": "[default] Dart and Flutter test scope, ownership, and shared test layout",
+        "globs": "test/**/*.dart,plugins/**/test/**/*.dart",
+        "alwaysApply": false
+      },
+      "claude": {
+        "paths": ["test/**/*.dart", "plugins/**/test/**/*.dart"]
+      },
+      "github": {
+        "applyTo": "test/**/*.dart,plugins/**/test/**/*.dart"
+      }
+    },
+    {
+      "file": "50-plugin-otaku-room-lint.md",
+      "read_when": "Working with `plugins/otaku_room_lint/**/*.dart`",
+      "strength": "Mandatory",
+      "section": "project",
+      "cursor": {
+        "description": "[mandatory] otaku_room_lint rule implementation and test guidance",
+        "globs": "plugins/otaku_room_lint/**/*.dart",
+        "alwaysApply": false
+      },
+      "claude": {
+        "paths": ["plugins/otaku_room_lint/**/*.dart"]
+      },
+      "github": {
+        "applyTo": "plugins/otaku_room_lint/**/*.dart"
+      }
+    }
+  ],
+  "agent_prompts": [
+    {
+      "name": "dart-verify",
+      "description": "Dart and Flutter verification specialist for finished changes.",
+      "model": "sonnet",
+      "background": true
+    },
+    {
+      "name": "l10n",
+      "description": "L10n specialist for ARB keys, Chinese extraction, formatting, and locale translation.",
+      "model": "sonnet",
+      "background": true
+    }
+  ]
+}

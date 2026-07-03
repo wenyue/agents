@@ -1,0 +1,461 @@
+import contextlib
+import io
+import os
+import json
+import shutil
+import tempfile
+import unittest
+from unittest import mock
+from pathlib import Path
+
+import sync_public_agent_assets as sync
+
+
+REPO_SKILL_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = REPO_SKILL_ROOT.parents[2]
+
+
+class SyncPublicAgentAssetsTest(unittest.TestCase):
+    def test_load_json_returns_object(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'config.json'
+            path.write_text('{"source_default": "../agents"}\n', encoding='utf-8')
+
+            result = sync.load_json(path)
+
+        self.assertEqual(result, {'source_default': '../agents'})
+
+    def test_load_json_rejects_non_object(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'config.json'
+            path.write_text('[]\n', encoding='utf-8')
+
+            with self.assertRaises(sync.SyncError) as error:
+                sync.load_json(path)
+
+        self.assertIn('must contain a JSON object', str(error.exception))
+
+    def test_resolve_source_uses_argument(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'custom_source'
+            source.mkdir()
+
+            result = sync.resolve_source(root / 'target', str(source), {'source_default': '../agents'})
+
+        self.assertEqual(result, source.resolve())
+
+    def test_resolve_source_uses_config_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            source = root / 'agents'
+            target.mkdir()
+            source.mkdir()
+
+            result = sync.resolve_source(target, None, {'source_default': '../agents'})
+
+        self.assertEqual(result, source.resolve())
+
+    def test_sync_copies_public_rule_skill_and_agent_prompt(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            (source / '.agents' / 'rules').mkdir(parents=True)
+            (source / '.agents' / 'skills' / 'rename').mkdir(parents=True)
+            (source / '.agents' / 'agents').mkdir(parents=True)
+            (target / '.agents' / 'rules').mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source / '.agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
+            (source / '.agents' / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
+            (source / '.agents' / 'agents' / 'rename.md').write_text('agent\n', encoding='utf-8')
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'rules': [{'file': '10-base-code.md'}],
+                'skills': [{'name': 'rename'}],
+                'agent_prompts': [{'name': 'rename'}],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertIn(sync.Change('created', '.agents/rules/10-base-code.md'), changes)
+            self.assertEqual((target / '.agents' / 'rules' / '10-base-code.md').read_text(), 'rule\n')
+            self.assertEqual((target / '.agents' / 'skills' / 'rename' / 'SKILL.md').read_text(), 'skill\n')
+            self.assertEqual((target / '.agents' / 'agents' / 'rename.md').read_text(), 'agent\n')
+
+    def test_sync_marks_existing_unchanged_public_rule_as_unchanged(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            (source / '.agents' / 'rules').mkdir(parents=True)
+            (target / '.agents' / 'rules').mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source / '.agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
+            (target / '.agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'rules': [{'file': '10-base-code.md'}],
+                'skills': [],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertEqual(changes, [sync.Change('unchanged', '.agents/rules/10-base-code.md')])
+            self.assertEqual((target / '.agents' / 'rules' / '10-base-code.md').read_text(), 'rule\n')
+
+    def test_sync_deletes_extra_file_inside_public_skill(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            (source / '.agents' / 'skills' / 'rename').mkdir(parents=True)
+            (target / '.agents' / 'skills' / 'rename').mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source / '.agents' / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
+            extra = target / '.agents' / 'skills' / 'rename' / 'extra.md'
+            extra.write_text('local\n', encoding='utf-8')
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'rules': [],
+                'skills': [{'name': 'rename'}],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertFalse(extra.exists())
+
+    def test_sync_deletes_extra_empty_directory_tree_inside_public_skill(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            (source / '.agents' / 'skills' / 'rename').mkdir(parents=True)
+            (target / '.agents' / 'skills' / 'rename' / 'unused' / 'nested').mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source / '.agents' / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'rules': [],
+                'skills': [{'name': 'rename'}],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertFalse((target / '.agents' / 'skills' / 'rename' / 'unused').exists())
+
+    def test_sync_ignores_generated_files_inside_public_skill(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            source_skill = source / '.agents' / 'skills' / 'rename'
+            target_skill = target / '.agents' / 'skills' / 'rename'
+            (source_skill / 'scripts' / '__pycache__').mkdir(parents=True)
+            (target_skill / 'scripts' / '__pycache__').mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source_skill / 'SKILL.md').write_text('skill\n', encoding='utf-8')
+            (source_skill / 'scripts' / '__pycache__' / 'source.cpython-310.pyc').write_bytes(b'source')
+            target_cache = target_skill / 'scripts' / '__pycache__' / 'target.cpython-310.pyc'
+            target_cache.write_bytes(b'target')
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'ignore': [
+                    '__pycache__',
+                    '__pycache__/**',
+                    '**/__pycache__',
+                    '**/__pycache__/**',
+                    '*.pyc',
+                    '**/*.pyc',
+                ],
+                'rules': [],
+                'skills': [{'name': 'rename'}],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertEqual(changes, [sync.Change('created', '.agents/skills/rename/SKILL.md')])
+            self.assertTrue(target_cache.exists())
+            self.assertFalse((target_skill / 'scripts' / '__pycache__' / 'source.cpython-310.pyc').exists())
+
+    def test_sync_generates_rule_wrapper_from_real_platform_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            templates = skill_root / 'templates'
+            (source / '.agents' / 'rules').mkdir(parents=True)
+            templates.mkdir(parents=True)
+            for template in (REPO_SKILL_ROOT / 'templates').glob('*'):
+                shutil.copy2(template, templates / template.name)
+            (source / '.agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
+            public_config = sync.load_json(REPO_SKILL_ROOT / 'public_assets.json')
+            public_config['rules'] = [rule for rule in public_config['rules'] if rule['file'] == '10-base-code.md']
+            public_config['skills'] = []
+            public_config['agent_prompts'] = []
+            local_config = {'rules': [], 'agent_prompts': []}
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, local_config)
+
+            expected = (
+                '---\n'
+                'paths:\n'
+                '  - "**/*.{dart,cpp,c,h,hpp,cc,py,js,jsx,ts,tsx,sh}"\n'
+                '---\n\n'
+                'Apply @.agents/rules/10-base-code.md\n'
+            )
+            self.assertEqual(
+                (target / '.claude' / 'rules' / '10-base-code.md').read_text(encoding='utf-8'),
+                expected,
+            )
+
+    def test_sync_deletes_stale_rule_wrapper_when_rule_is_removed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            templates = skill_root / 'templates'
+            (source / '.agents' / 'rules').mkdir(parents=True)
+            templates.mkdir(parents=True)
+            for template in (REPO_SKILL_ROOT / 'templates').glob('*'):
+                shutil.copy2(template, templates / template.name)
+            (source / '.agents' / 'rules' / '00-global-rule-config.md').write_text('rule\n', encoding='utf-8')
+            stale_wrapper = target / '.claude' / 'rules' / '10-base-code.md'
+            stale_wrapper.parent.mkdir(parents=True)
+            stale_wrapper.write_text('stale\n', encoding='utf-8')
+            public_config = sync.load_json(REPO_SKILL_ROOT / 'public_assets.json')
+            public_config['rules'] = [
+                rule for rule in public_config['rules'] if rule['file'] == '00-global-rule-config.md'
+            ]
+            public_config['skills'] = []
+            public_config['agent_prompts'] = []
+            local_config = {'rules': [], 'agent_prompts': []}
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, local_config)
+
+            self.assertFalse(stale_wrapper.exists())
+
+    def test_sync_deletes_stale_agent_wrapper_when_agent_is_removed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            templates = skill_root / 'templates'
+            templates.mkdir(parents=True)
+            for template in (REPO_SKILL_ROOT / 'templates').glob('*'):
+                shutil.copy2(template, templates / template.name)
+            stale_wrapper = target / '.github' / 'agents' / 'dart-verify.agent.md'
+            stale_wrapper.parent.mkdir(parents=True)
+            stale_wrapper.write_text('stale\n', encoding='utf-8')
+            public_config = sync.load_json(REPO_SKILL_ROOT / 'public_assets.json')
+            public_config['rules'] = []
+            public_config['skills'] = []
+            public_config['agent_prompts'] = []
+            local_config = sync.load_json(REPO_SKILL_ROOT / 'local_assets.json')
+            local_config['agent_prompts'] = [
+                agent
+                for agent in local_config['agent_prompts']
+                if agent['name'] != 'dart-verify'
+            ]
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, local_config)
+
+            self.assertFalse(stale_wrapper.exists())
+
+    def test_sync_generates_agents_entry_from_template(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            templates = skill_root / 'templates'
+            templates.mkdir(parents=True)
+            (templates / 'AGENTS.md').write_text(
+                '# Project Agent Entry\n\n{{global_rule_rows}}\n{{base_rule_rows}}\n{{project_rule_rows}}\n',
+                encoding='utf-8',
+            )
+            source_rules = source / '.agents' / 'rules'
+            source_rules.mkdir(parents=True)
+            (source_rules / '00-global-rule-config.md').write_text('rule\n', encoding='utf-8')
+            (source_rules / '20-project-tools.md').write_text('rule\n', encoding='utf-8')
+            public_config = sync.load_json(REPO_SKILL_ROOT / 'public_assets.json')
+            public_config['rules'] = [
+                rule
+                for rule in public_config['rules']
+                if rule['file'] == '00-global-rule-config.md'
+            ]
+            public_config['skills'] = []
+            public_config['agent_prompts'] = []
+            public_config['platforms'] = {'rule_wrappers': [], 'agent_wrappers': []}
+            local_config = sync.load_json(REPO_SKILL_ROOT / 'local_assets.json')
+            local_config['rules'] = [
+                rule
+                for rule in local_config['rules']
+                if rule['file'] == '20-project-tools.md'
+            ]
+            local_config['agent_prompts'] = []
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, local_config)
+
+            entry = (target / 'AGENTS.md').read_text(encoding='utf-8')
+            self.assertIn(
+                '| Starting any repository task | `.agents/rules/00-global-rule-config.md` |'
+                ' `Mandatory` |',
+                entry,
+            )
+            self.assertIn(
+                '| Using Flutter tooling, MCP, shell, or debug commands |'
+                ' `.agents/rules/20-project-tools.md` | `Mandatory` |',
+                entry,
+            )
+
+    def test_render_template_replaces_nested_variables(self):
+        result = sync.render_template(
+            'Apply @{{rule.path}}\n',
+            {'rule': {'path': '.agents/rules/10-base-code.md'}},
+            'sample',
+        )
+
+        self.assertEqual(result, 'Apply @.agents/rules/10-base-code.md\n')
+
+    def test_render_template_rejects_missing_variable(self):
+        with self.assertRaises(sync.SyncError) as error:
+            sync.render_template('Apply @{{rule.path}}\n', {'rule': {}}, 'sample')
+
+        self.assertIn('sample', str(error.exception))
+        self.assertIn('rule.path', str(error.exception))
+
+    def test_check_mode_does_not_write(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            (source / '.agents' / 'rules').mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source / '.agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'rules': [{'file': '10-base-code.md'}],
+                'skills': [],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, True, [])
+
+            changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertEqual(changes, [sync.Change('created', '.agents/rules/10-base-code.md')])
+            self.assertFalse((target / '.agents' / 'rules' / '10-base-code.md').exists())
+
+    def test_main_check_returns_one_when_changes_are_needed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            source.mkdir()
+            shutil.copytree(REPO_ROOT / '.agents', source / '.agents')
+            target.mkdir()
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(target)
+                exit_code = sync.main(['--check'])
+            finally:
+                os.chdir(previous_cwd)
+
+        self.assertEqual(exit_code, 1)
+
+    def test_main_check_returns_zero_for_unchanged_only_changes(self):
+        stdout = io.StringIO()
+        public_config = {
+            'source_default': '../agents',
+            'mirror_delete': True,
+            'rules': [],
+            'skills': [],
+            'agent_prompts': [],
+        }
+        local_config = {'rules': [], 'agent_prompts': []}
+        with mock.patch.object(
+            sync,
+            'sync_public_assets',
+            return_value=[sync.Change('unchanged', '.agents/rules/10-base-code.md')],
+        ), mock.patch.object(
+            sync,
+            'load_json',
+            side_effect=[public_config, local_config],
+        ), mock.patch.object(
+            sync,
+            'resolve_source',
+            return_value=Path('/tmp/agents'),
+        ), mock.patch.object(
+            sync.Path,
+            'cwd',
+            return_value=Path('/tmp/target'),
+        ), contextlib.redirect_stdout(stdout):
+            exit_code = sync.main(['--check'])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue().strip(), 'unchanged .agents/rules/10-base-code.md')
+
+    def test_main_check_returns_one_for_drift_changes(self):
+        stdout = io.StringIO()
+        public_config = {
+            'source_default': '../agents',
+            'mirror_delete': True,
+            'rules': [],
+            'skills': [],
+            'agent_prompts': [],
+        }
+        local_config = {'rules': [], 'agent_prompts': []}
+        with mock.patch.object(
+            sync,
+            'sync_public_assets',
+            return_value=[sync.Change('created', '.agents/rules/10-base-code.md')],
+        ), mock.patch.object(
+            sync,
+            'load_json',
+            side_effect=[public_config, local_config],
+        ), mock.patch.object(
+            sync,
+            'resolve_source',
+            return_value=Path('/tmp/agents'),
+        ), mock.patch.object(
+            sync.Path,
+            'cwd',
+            return_value=Path('/tmp/target'),
+        ), contextlib.redirect_stdout(stdout):
+            exit_code = sync.main(['--check'])
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout.getvalue().strip(), 'created .agents/rules/10-base-code.md')
+
+
+if __name__ == '__main__':
+    unittest.main()

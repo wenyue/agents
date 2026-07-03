@@ -18,4 +18,7 @@ Scope: Project overrides for workflow tools, worktrees, git, and prose outputs.
 
 ## Prose Output
 
-- Plans, design documents, and other non-code prose files must be written in Chinese.
+- Use Simplified Chinese for normal user-facing prose, design documents, and other non-code prose
+  files.
+- Use English for concrete Superpowers execution plans. This exception applies to step-by-step
+  implementation plans, not design documents.
