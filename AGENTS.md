@@ -24,7 +24,7 @@ Then read the base rules that apply:
 | Working with C++ files | `.agents/rules/11-base-cpp.md` | `Default` |
 | Working with ARB localization files | `.agents/rules/12-base-arb.md` | `Mandatory` |
 
-Then read project-local rules when present:
+Then read the project-local rules that apply:
 
 | Read when | Rule | Strength |
 | --- | --- | --- |
