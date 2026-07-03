@@ -25,13 +25,13 @@ Resolve conflicts in order:
 Keep one source of truth per asset. Every platform-specific file is a thin wrapper that references
 the source.
 
-| Asset            | Source of truth                          |
-| ---------------- | ---------------------------------------- |
-| Project rules    | `.agents/rules/<nn>-<name>.md`           |
-| Agent prompts    | `.agents/agents/<name>.md`               |
-| Project skills   | `.agents/skills/<skill>/SKILL.md`        |
-| Third-party skills | `.skillshare/skills/<skill>/SKILL.md`  |
-| Copilot guidance | `.github/instructions/*.instructions.md` |
+| Asset              | Source of truth                          |
+| ------------------ | ---------------------------------------- |
+| Project rules      | `.agents/rules/<nn>-<name>.md`           |
+| Agent prompts      | `.agents/agents/<name>.md`               |
+| Project skills     | `.agents/skills/<skill>/SKILL.md`        |
+| Third-party skills | `.skillshare/skills/<skill>/SKILL.md`    |
+| Copilot guidance   | `.github/instructions/*.instructions.md` |
 
 Core requirements:
 
@@ -69,14 +69,14 @@ When adding a subagent:
 
 ## Numbering Convention
 
-| Range   | Scope                                                        |
-| ------- | ------------------------------------------------------------ |
+| Range   | Scope                                                         |
+| ------- | ------------------------------------------------------------- |
 | `00–09` | Global rules: strength, personality, response format, skills. |
-| `10–19` | Base rules: language conventions and other shared defaults.  |
-| `20–29` | Project rules: tooling, conventions, structure, utilities.   |
-| `30–39` | Module rules: features, screens, or bounded subsystems.      |
-| `40–49` | Domain rules: testing and other cross-cutting concerns.      |
-| `50–59` | Plugin, third-party plugin, or package-specific rules.       |
+| `10–19` | Base rules: language conventions and other shared defaults.   |
+| `20–29` | Project rules: tooling, conventions, structure, utilities.    |
+| `30–39` | Module rules: features, screens, or bounded subsystems.       |
+| `40–49` | Domain rules: testing and other cross-cutting concerns.       |
+| `50–59` | Plugin, third-party plugin, or package-specific rules.        |
 
 Finish reading the applicable `00–09` global rules before deciding whether any later numbered
 rule applies.

@@ -17,13 +17,13 @@ Scope: Assistant response language, tag protocol, formatting, and review/impleme
 Use these `##` headings to structure non-trivial replies. Omit empty tags and use plain prose for
 very small replies.
 
-| Tag | Purpose |
-| --- | --- |
-| `🎯` | English restatement of the user's goal |
-| `⚠️` | Risks, constraints, prerequisites, or notable assumptions |
-| `✅` | Completed result, changed files, and verification |
-| `❌` | Failure or blocker, with what is needed to proceed |
-| `🤖` | User interaction: one clear question or a small option set |
+| Tag  | Purpose                                                    |
+| ---- | ---------------------------------------------------------- |
+| `🎯`  | English restatement of the user's goal                     |
+| `⚠️` | Risks, constraints, prerequisites, or notable assumptions  |
+| `✅`  | Completed result, changed files, and verification          |
+| `❌`  | Failure or blocker, with what is needed to proceed         |
+| `🤖`  | User interaction: one clear question or a small option set |
 
 Preferred order:
 

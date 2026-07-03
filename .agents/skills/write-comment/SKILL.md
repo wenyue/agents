@@ -36,15 +36,15 @@ obvious line of code. If it only restates them, delete it.
 
 ## Per-Context Examples
 
-| Context | Style | Example |
-|---------|-------|---------|
-| File header | `///` What this file does. | `/// Widgets that align settings rows.` |
-| Class/enum | `///` Responsibility. | `/// Controller that serializes refresh requests to avoid duplicate fetches.` |
-| Constructor | `///` What/when. | `/// Creates a tile that reserves space for the progress label.` |
-| Method | `///` Imperative. | `/// Return the cached item for [id], or null if it expired.` |
-| Getter | `///` "Returns X." / "True if X." | `/// True if the queue still has retryable jobs.` |
-| Field | `///` What it holds. | `/// Cache for the last page fetched from disk.` |
-| Inline | `//` Why, not what. | `// Avoid rebuilding when key is unchanged.` |
+| Context     | Style                             | Example                                                                       |
+| ----------- | --------------------------------- | ----------------------------------------------------------------------------- |
+| File header | `///` What this file does.        | `/// Widgets that align settings rows.`                                       |
+| Class/enum  | `///` Responsibility.             | `/// Controller that serializes refresh requests to avoid duplicate fetches.` |
+| Constructor | `///` What/when.                  | `/// Creates a tile that reserves space for the progress label.`              |
+| Method      | `///` Imperative.                 | `/// Return the cached item for [id], or null if it expired.`                 |
+| Getter      | `///` "Returns X." / "True if X." | `/// True if the queue still has retryable jobs.`                             |
+| Field       | `///` What it holds.              | `/// Cache for the last page fetched from disk.`                              |
+| Inline      | `//` Why, not what.               | `// Avoid rebuilding when key is unchanged.`                                  |
 
 ## Exempt (sentence-shape rules do not apply)
 
