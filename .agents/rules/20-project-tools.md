@@ -2,8 +2,8 @@
 
 Strength: `Mandatory`
 
-Scope: Placeholder for repository-wide commands, runtime services, configuration, generated
-assets, verification, and agent settings.
+Scope: Placeholder for repository-wide tooling facts, runtime services, generated assets,
+verification requirements, and workflow handoffs.
 
 ## Placeholder
 
@@ -12,7 +12,11 @@ replace this content with facts from that repository.
 
 Do not keep this placeholder as project policy in a real project. Update it from concrete evidence
 such as package manifests, scripts, build and test commands, runtime ports, MCP configuration,
-service dependencies, generated-file workflows, and verification requirements.
+service dependencies, generated-file requirements, and verification requirements.
+
+Record facts and constraints here. Put executable procedural flows, such as worktree bootstrap,
+review checkpoints, and merge-back, in a local project skill such as
+`.agents/skills/project-development-workflow/`.
 
 ## Suggested Content
 
@@ -20,5 +24,5 @@ service dependencies, generated-file workflows, and verification requirements.
 - Common scripts for development, testing, building, linting, generation, and verification.
 - Runtime services, ports, environment variables, data directories, and health checks.
 - MCP or platform runtime configuration that agents must preserve.
-- Task-specific verification commands and when to run them.
 - Generated assets or files that should not be edited by hand.
+- Verification requirements and the local project skills that execute them.

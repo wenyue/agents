@@ -1,15 +1,19 @@
 ---
 name: project-development-workflow
-description: Use when defining, generating, or validating a repository-specific agent development workflow skill that coordinates isolated worktrees, project bootstrap, verification, review checkpoints, and merge-back behavior.
+description: Use when defining, generating, or validating a target repository's local project development workflow skill.
 ---
 
 # Project Development Workflow
 
-This public skill is a placeholder and generation contract. Do not use this file as the final
-workflow inside a target repository.
+This public skill is a local project skill placeholder and generation contract. Do not use this
+file as the final workflow inside a target repository.
 
 `update-project-rules` must generate a project-specific copy from repository facts, then keep that
-copy refreshed the same way it refreshes project-owned `20-*` rules.
+copy refreshed the same way it refreshes local project rules.
+
+The generated target skill is the procedural counterpart to `.agents/rules/20-project-tools.md`.
+That rule records tooling facts and verification requirements; this skill turns those facts into an
+executable worktree, bootstrap, verification, review, and merge-back workflow.
 
 ## Generation Contract
 
@@ -74,6 +78,8 @@ unverified. Do not claim the workflow is ready.
 When `update-project-rules` refreshes this skill in a target repository:
 
 - Use current repository evidence, not this placeholder's examples, for concrete commands.
+- Keep the workflow consistent with `.agents/rules/20-project-tools.md`; update the rule facts when
+  the workflow exposes stale or missing tooling facts.
 - Keep public constraints in rules and procedural execution in this skill.
 - Preserve target-specific facts unless the repository evidence proves they are stale.
 - Regenerate scripts and references together with `SKILL.md`; do not leave mixed-version workflow

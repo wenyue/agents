@@ -21,6 +21,7 @@ from those sources.
 - Run `scripts/sync_public_agent_assets.py` before manually editing project-owned rules.
 - Change public rules or public skills in `wenyue/agents` first, then sync target repositories.
 - Treat `.agents/rules/<nn>-<name>.md` as the source of truth for project rules.
+- Treat `.agents/skills/<project-skill>/SKILL.md` as the source of truth for project workflows.
 - Keep wrappers thin: platform metadata plus one `Apply @...` reference.
 
 ## Rule Ranges
@@ -43,8 +44,9 @@ from those sources.
    `python3 .agents/skills/update-project-rules/scripts/sync_public_agent_assets.py`.
    Use `--source <path>` when `../agents` is not the correct source.
 3. Review the script report for created, updated, deleted, and unchanged files.
-4. Only after public sync, update project-owned rules and generated project skills from current
-   repository evidence.
+4. Only after public sync, update local project rules from current repository evidence.
+5. Then update local project skills from the same evidence, keeping their executable workflows
+   aligned with the facts recorded in local project rules.
 
 ## Skill Resources
 
@@ -64,11 +66,24 @@ Project-local rule and agent wrappers are discovered from the target repository'
 `.agents/rules/*.md` and `.agents/agents/*.md`. Do not ship target-project local manifests in this
 public skill.
 
-## Generated Project Skills
+## Local Project Assets
 
-Generate project-specific skills from placeholders only after public assets are synced. The source
-placeholder describes the contract; the target skill must contain concrete commands and scripts
-derived from the target repository.
+Local project rules and local project skills are peers:
+
+- Local project rules, such as `.agents/rules/20-*`, record declarative project facts,
+  constraints, commands, generated-file requirements, and verification requirements.
+- Local project skills, such as `.agents/skills/<project-skill>/`, record executable workflows that
+  use those facts.
+
+Keep both generated from target repository evidence. When a workflow skill depends on tooling or
+verification facts, keep it consistent with the corresponding local project rule instead of
+duplicating stale assumptions.
+
+## Local Project Skills
+
+Generate project-specific local skills from placeholders only after public assets are synced. The
+source placeholder describes the contract; the target skill must contain concrete commands and
+scripts derived from the target repository.
 
 Project-skill placeholders are not normal public mirrored skills. Do not add them to
 `references/public_assets.json` just to make them available in targets. When a target workflow must
@@ -80,11 +95,13 @@ required sections, safety constraints, and acceptance criteria, but concrete lan
 dependency, code-generation, lint, test, and merge commands must come from target repository
 evidence.
 
-For `project-development-workflow`, generate `.agents/skills/project-development-workflow/` with
-the repository's isolated-worktree workflow, bootstrap commands, verification commands, local agent
-asset handling, review checkpoints, and merge-back behavior. The generated skill is accepted only
-after a real end-to-end workflow test creates a git worktree, runs the complete generated workflow,
-merges back, and verifies that the original workspace remains usable.
+For `project-development-workflow`, generate `.agents/skills/project-development-workflow/` as the
+procedural counterpart to `.agents/rules/20-project-tools.md`. The rule records tooling and
+verification facts; the skill organizes those facts into the repository's isolated-worktree
+workflow, bootstrap commands, verification commands, local agent asset handling, review checkpoints,
+and merge-back behavior. The generated skill is accepted only after a real end-to-end workflow test
+creates a git worktree, runs the complete generated workflow, merges back, and verifies that the
+original workspace remains usable.
 
 When generating the target skill:
 
@@ -134,6 +151,6 @@ itself; it intentionally reports drift when run outside a prepared target reposi
 ## Output
 
 - List changed files, or state that no edits were required.
-- Summarize the public-sync result and any project-owned rule or generated project skill work done
+- Summarize the public-sync result and any local project rule or local project skill work done
   afterward.
 - Report validation commands and whether language build/test commands were skipped.

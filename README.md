@@ -9,8 +9,7 @@ This repository provides:
 - reusable subagents under `.agents/agents/`
 - `AGENTS.md` as a project entry template
 - `update-project-rules` as the sync workflow
-- `project-development-workflow` as a placeholder contract for generated per-project worktree
-  workflows
+- project-local placeholders for repository rules and generated workflow skills
 
 ## New Project Setup
 
@@ -31,13 +30,14 @@ wenyue/agents/.agents/skills/update-project-rules/SKILL.md
 ```
 
 The skill syncs public rules, public skills, and public subagents from `wenyue/agents`, then creates
-or refreshes the target project's local rules. After it runs, the runtime copy should exist in the
-target project at `.agents/skills/update-project-rules/SKILL.md`.
+or refreshes the target project's local rules and local project skills. After it runs, the runtime
+copy should exist in the target project at `.agents/skills/update-project-rules/SKILL.md`.
 
-### 3. Generate project workflow skills when needed
+### 3. Generate local project skills when needed
 
 `project-development-workflow` in this repository is not a final workflow for target projects. It is
-a public contract that tells `update-project-rules` what a generated project workflow must cover.
+a public local-skill placeholder that tells `update-project-rules` what a generated project workflow
+must cover.
 
 When a target project needs isolated worktree development, the coding agent should generate
 `.agents/skills/project-development-workflow/` from that project's repository evidence. The
@@ -45,19 +45,22 @@ generated workflow must document concrete bootstrap, verification, agent-instruc
 review, and merge-back behavior. It must be accepted only after a real git worktree run proves the
 full flow works in that target project.
 
-## Local Rule Authoring Guide
+## Local Project Rule Authoring Guide
 
-Public rules are the base. Project facts belong in `20+` local rules.
+Public rules are the base. Project facts and constraints belong in `20+` local project rules.
+Executable project workflows belong in local project skills.
 
 ### `20-project-tools.md`
 
-Write stable tooling facts:
+Record stable tooling facts and verification requirements. Do not write the full execution
+workflow here; put procedural worktree, bootstrap, verification, review, and merge-back steps in
+`project-development-workflow`.
 
-- package manager and scripts
+- package manager, language/runtime versions, and workspace layout
 - test, build, lint, format, and code-generation commands
 - MCP servers, runtime services, ports, health checks, and watcher markers
-- recommended verification order
-- task-specific skill handoffs
+- generated assets or files required by tools
+- verification requirements and links to procedural local skills
 
 Do not write general code style here.
 
@@ -84,10 +87,28 @@ Write structure facts:
 If module order is enforced by a real config file, link to that file as the source of truth instead
 of duplicating the complete configuration.
 
+## Local Project Skill Authoring Guide
+
+Public skills provide reusable techniques or workflows. Local project skills contain executable
+workflows generated from the target repository's own facts.
+
+### `project-development-workflow`
+
+Treat this as the procedural counterpart to `20-project-tools.md`.
+
+- `20-project-tools.md` records tooling facts, commands, generated-file requirements, and
+  verification requirements.
+- `project-development-workflow` turns those facts into an executable worktree workflow:
+  bootstrap, verification, review checkpoints, and merge-back.
+- The generated skill must stay consistent with `20-project-tools.md` and current repository
+  evidence.
+- Do not copy the public placeholder as the target workflow, and do not invent commands that are
+  not supported by target repository evidence.
+
 ## Updating Existing Projects
 
 Provide the latest `wenyue/agents` source to the LLM, then ask it to run `update-project-rules` so
-wrappers, `AGENTS.md`, local `20+` rules, and public sources stay aligned.
+wrappers, `AGENTS.md`, local project rules, local project skills, and public sources stay aligned.
 
 If the project uses a generated `project-development-workflow`, refresh it from current repository
 evidence during the same update. Do not copy the public placeholder as the target workflow.
