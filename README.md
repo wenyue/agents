@@ -9,6 +9,8 @@ This repository provides:
 - reusable subagents under `.agents/agents/`
 - `AGENTS.md` as a project entry template
 - `update-project-rules` as the sync workflow
+- `project-development-workflow` as a placeholder contract for generated per-project worktree
+  workflows
 
 ## New Project Setup
 
@@ -31,6 +33,17 @@ wenyue/agents/.agents/skills/update-project-rules/SKILL.md
 The skill syncs public rules, public skills, and public subagents from `wenyue/agents`, then creates
 or refreshes the target project's local rules. After it runs, the runtime copy should exist in the
 target project at `.agents/skills/update-project-rules/SKILL.md`.
+
+### 3. Generate project workflow skills when needed
+
+`project-development-workflow` in this repository is not a final workflow for target projects. It is
+a public contract that tells `update-project-rules` what a generated project workflow must cover.
+
+When a target project needs isolated worktree development, the coding agent should generate
+`.agents/skills/project-development-workflow/` from that project's repository evidence. The
+generated workflow must document concrete bootstrap, verification, agent-instruction availability,
+review, and merge-back behavior. It must be accepted only after a real git worktree run proves the
+full flow works in that target project.
 
 ## Local Rule Authoring Guide
 
@@ -75,6 +88,9 @@ of duplicating the complete configuration.
 
 Provide the latest `wenyue/agents` source to the LLM, then ask it to run `update-project-rules` so
 wrappers, `AGENTS.md`, local `20+` rules, and public sources stay aligned.
+
+If the project uses a generated `project-development-workflow`, refresh it from current repository
+evidence during the same update. Do not copy the public placeholder as the target workflow.
 
 ## Third-Party Skills
 
