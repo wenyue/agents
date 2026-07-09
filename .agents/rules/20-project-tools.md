@@ -2,23 +2,25 @@
 
 Strength: `Mandatory`
 
-Scope: Placeholder for repository-wide tooling facts, runtime services, generated assets,
-verification requirements, and workflow handoffs.
+Scope: Placeholder and generation contract for repository-wide tooling facts, runtime services,
+generated assets, verification requirements, and workflow handoffs.
 
-## Placeholder
+## Generation Contract
 
-This file is a project-local placeholder. Each repository that adopts these public agent rules must
-replace this content with facts from that repository.
+This file is a project-local rule placeholder. During setup, `update-project-rules` creates the
+target repository's `.agents/rules/20-project-tools.md` from this placeholder when that rule is
+missing. The generated target rule must then be replaced or refreshed from concrete repository
+evidence.
 
-Do not keep this placeholder as project policy in a real project. Update it from concrete evidence
-such as package manifests, scripts, build and test commands, runtime ports, MCP configuration,
-service dependencies, generated-file requirements, and verification requirements.
+Do not keep this placeholder as project policy in a real project. Use evidence such as package
+manifests, scripts, build and test commands, runtime ports, MCP configuration, service
+dependencies, generated-file requirements, CI workflows, and verification requirements.
 
-Record facts and constraints here. Put executable procedural flows, such as worktree bootstrap,
-review checkpoints, and merge-back, in a local project skill such as
+Record stable facts and constraints here. Put executable procedural flows, such as isolated
+worktree bootstrap, review checkpoints, and merge-back, in a local project skill such as
 `.agents/skills/project-development-workflow/`.
 
-## Suggested Content
+## What Belongs Here
 
 - Package manager, language/runtime versions, and workspace layout.
 - Common scripts for development, testing, building, linting, generation, and verification.
@@ -26,3 +28,11 @@ review checkpoints, and merge-back, in a local project skill such as
 - MCP or platform runtime configuration that agents must preserve.
 - Generated assets or files that should not be edited by hand.
 - Verification requirements and the local project skills that execute them.
+
+## What Does Not Belong Here
+
+- General code style; use base or project convention rules instead.
+- Full worktree, bootstrap, review, or merge-back procedures; put those in
+  `project-development-workflow`.
+- Project-specific facts in `wenyue/agents`; only target repositories should contain real local
+  tooling facts.

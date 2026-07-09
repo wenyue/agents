@@ -30,6 +30,12 @@ class SyncContext:
 
 
 _TEMPLATE_PATTERN = re.compile(r'{{\s*([a-zA-Z0-9_.]+)\s*}}')
+_PROJECT_RULE_PLACEHOLDERS = (
+    '20-project-tools.md',
+    '21-project-rules.md',
+    '22-project-structure.md',
+)
+_PROJECT_WORKFLOW_SKILL = 'project-development-workflow'
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -161,6 +167,23 @@ def _lookup_template_value(data: dict[str, Any], expression: str, template_name:
     return str(value)
 
 
+def _scalar_value(value: Any, default: str = '') -> str:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (dict, list)):
+        return default
+    text = str(value)
+    return text if text else default
+
+
+def _list_value(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value]
+
+
 def render_template(template: str, data: dict[str, Any], template_name: str) -> str:
     def replace(match: re.Match[str]) -> str:
         return _lookup_template_value(data, match.group(1), template_name)
@@ -289,11 +312,11 @@ def _rule_data(rule: dict[str, Any]) -> dict[str, Any]:
             'path': f'.agents/rules/{filename}',
             'apply_ref': f'.agents/rules/{filename}',
             'name': filename.removesuffix('.md'),
-            'cursor_description': cursor.get('description', ''),
-            'cursor_globs': cursor.get('globs', '""'),
+            'cursor_description': _scalar_value(cursor.get('description'), ''),
+            'cursor_globs': _scalar_value(cursor.get('globs'), '""'),
             'cursor_always_apply': str(bool(cursor.get('alwaysApply', False))).lower(),
-            'claude_paths': _yaml_list(claude.get('paths', [])),
-            'github_apply_to': github.get('applyTo', '**'),
+            'claude_paths': _yaml_list(_list_value(claude.get('paths'))),
+            'github_apply_to': _scalar_value(github.get('applyTo'), '**'),
         },
     }
 
@@ -303,6 +326,11 @@ def _agent_data(agent: dict[str, Any]) -> dict[str, Any]:
     return {
         'agent': {
             **agent,
+            'description': _scalar_value(
+                agent.get('description'),
+                f'Project-local agent: {name}',
+            ),
+            'model': _scalar_value(agent.get('model'), 'sonnet'),
             'path': f'.agents/agents/{name}.md',
             'apply_ref': f'.agents/agents/{name}.md',
         },
@@ -331,15 +359,17 @@ def _read_frontmatter(path: Path) -> dict[str, Any]:
             break
         if line.startswith('  - ') and current_key:
             current_value = values.setdefault(current_key, [])
-            if isinstance(current_value, list):
-                current_value.append(line.removeprefix('  - ').strip().strip('"'))
+            if not isinstance(current_value, list):
+                current_value = []
+                values[current_key] = current_value
+            current_value.append(line.removeprefix('  - ').strip().strip('"'))
             continue
         if ':' in line and not line.startswith(' '):
             key, value = line.split(':', 1)
             current_key = key.strip()
             raw = value.strip()
             if raw == '':
-                values[current_key] = []
+                values[current_key] = ''
             elif raw in {'true', 'false'}:
                 values[current_key] = raw == 'true'
             else:
@@ -348,10 +378,27 @@ def _read_frontmatter(path: Path) -> dict[str, Any]:
 
 
 def _read_frontmatter_value(path: Path, key: str) -> str:
-    value = _read_frontmatter(path).get(key, '')
-    if isinstance(value, list):
-        return ''
-    return str(value)
+    return _scalar_value(_read_frontmatter(path).get(key), '')
+
+
+def _referenced_skill_path(target_root: Path, agent_path: Path) -> Path | None:
+    body = _strip_frontmatter(agent_path.read_text(encoding='utf-8'))
+    match = re.fullmatch(r'Apply @(?P<path>\.agents/skills/[A-Za-z0-9_.-]+/SKILL\.md)', body)
+    if not match:
+        return None
+    return target_root / Path(match.group('path'))
+
+
+def _local_agent_description(target_root: Path, agent_path: Path, name: str) -> str:
+    description = _read_frontmatter_value(agent_path, 'description')
+    if description:
+        return description
+    skill_path = _referenced_skill_path(target_root, agent_path)
+    if skill_path:
+        description = _read_frontmatter_value(skill_path, 'description')
+        if description:
+            return description
+    return f'Project-local agent: {name}'
 
 
 def _read_agents_rule_rows(target_root: Path) -> dict[str, dict[str, str]]:
@@ -398,15 +445,15 @@ def _local_rule_metadata(target_root: Path, filename: str, agents_rows: dict[str
         'read_when': agents_row.get('read_when') or _default_project_read_when(filename),
         'strength': agents_row.get('strength') or _read_strength(target_root / '.agents' / 'rules' / filename),
         'cursor': {
-            'description': cursor_frontmatter.get(
-                'description',
+            'description': _scalar_value(
+                cursor_frontmatter.get('description'),
                 _default_project_cursor_description(filename),
             ),
-            'globs': cursor_frontmatter.get('globs', '""'),
+            'globs': _scalar_value(cursor_frontmatter.get('globs'), '""'),
             'alwaysApply': cursor_frontmatter.get('alwaysApply', True),
         },
-        'claude': {'paths': claude_frontmatter.get('paths', [])},
-        'github': {'applyTo': github_frontmatter.get('applyTo', '**')},
+        'claude': {'paths': _list_value(claude_frontmatter.get('paths'))},
+        'github': {'applyTo': _scalar_value(github_frontmatter.get('applyTo'), '**')},
     }
 
 
@@ -439,10 +486,112 @@ def discover_local_assets(target_root: Path, public_config: dict[str, Any]) -> d
             name = agent_path.stem
             if name in public_agent_names:
                 continue
-            description = _read_frontmatter_value(agent_path, 'description')
+            description = _local_agent_description(target_root, agent_path, name)
             model = _read_frontmatter_value(agent_path, 'model') or 'sonnet'
             agent_prompts.append({'name': name, 'description': description, 'model': model})
     return {'rules': rules, 'agent_prompts': agent_prompts}
+
+
+def _merge_local_assets(primary: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:
+    merged_rules = {rule['file']: rule for rule in _require_items(primary, 'rules')}
+    for rule in _require_items(secondary, 'rules'):
+        merged_rules.setdefault(rule['file'], rule)
+    merged_agents = {agent['name']: agent for agent in _require_items(primary, 'agent_prompts')}
+    for agent in _require_items(secondary, 'agent_prompts'):
+        existing = merged_agents.get(agent['name'])
+        if not existing:
+            merged_agents[agent['name']] = agent
+            continue
+        existing_description = _scalar_value(existing.get('description'), '')
+        discovered_description = _scalar_value(agent.get('description'), '')
+        if (
+            discovered_description
+            and (
+                not existing_description
+                or existing_description == f"Project-local agent: {agent['name']}"
+            )
+        ):
+            merged_agents[agent['name']] = {**existing, 'description': discovered_description}
+    return {
+        'rules': list(merged_rules.values()),
+        'agent_prompts': list(merged_agents.values()),
+    }
+
+
+def _sync_project_rule_placeholders(context: SyncContext) -> None:
+    for filename in _PROJECT_RULE_PLACEHOLDERS:
+        source = context.source_root / '.agents' / 'rules' / filename
+        target = context.target_root / '.agents' / 'rules' / filename
+        if not source.is_file() or target.exists():
+            continue
+        _copy_file(context, source, target)
+
+
+def _is_generated_project_workflow_scaffold(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding='utf-8')
+    return 'generated from the public project-development-workflow contract' in text
+
+
+def _project_workflow_scaffold() -> str:
+    return '''---
+name: project-development-workflow
+description: Use when executing this repository's generated project development workflow.
+---
+
+# Project Development Workflow
+
+Status: Unverified
+
+This target-local scaffold was generated from the public project-development-workflow contract in
+`wenyue/agents`. It is not accepted until an agent replaces the placeholders below with concrete
+repository evidence and validates the flow end to end.
+
+## Evidence To Read First
+
+- `.agents/rules/20-project-tools.md`
+- package manifests, CI config, build scripts, generated-file config, and developer docs
+- existing agent asset paths under `.agents/`, `.cursor/`, `.claude/`, `.codex/`, and `.github/`
+
+## Required Workflow Sections
+
+- Isolated worktree creation or reuse.
+- Required agent asset availability inside the worktree.
+- Bootstrap commands for dependencies and generated files.
+- Verification commands to run inside the worktree and after merge-back.
+- Review checkpoint requirements.
+- Merge-back procedure that refuses to overwrite unrelated original-workspace changes.
+
+## Acceptance
+
+Keep `Status: Unverified` until a real workflow test creates a worktree, bootstraps it, runs the
+documented verification commands, exercises merge-back with a harmless change, and verifies the
+original workspace still works.
+'''
+
+
+def _sync_project_workflow_scaffold(context: SyncContext) -> None:
+    source = (
+        context.source_root
+        / '.agents'
+        / 'skills'
+        / _PROJECT_WORKFLOW_SKILL
+        / 'SKILL.md'
+    )
+    if not source.is_file():
+        return
+    target = (
+        context.target_root
+        / '.agents'
+        / 'skills'
+        / _PROJECT_WORKFLOW_SKILL
+        / 'SKILL.md'
+    )
+    if target.exists() and not _is_generated_project_workflow_scaffold(target):
+        _record_file(context, 'unchanged', target)
+        return
+    _write_bytes(context, target, _project_workflow_scaffold().encode('utf-8'))
 
 
 def _rule_row(rule: dict[str, Any]) -> str:
@@ -558,8 +707,14 @@ def sync_public_assets(
             context.source_root / '.agents' / 'agents' / f'{name}.md',
             context.target_root / '.agents' / 'agents' / f'{name}.md',
         )
-    _generate_wrappers(context, public_config, local_config, mirror_delete)
-    _generate_agents_entry(context, public_config, local_config)
+    _sync_project_rule_placeholders(context)
+    _sync_project_workflow_scaffold(context)
+    merged_local_config = _merge_local_assets(
+        local_config,
+        discover_local_assets(context.target_root, public_config),
+    )
+    _generate_wrappers(context, public_config, merged_local_config, mirror_delete)
+    _generate_agents_entry(context, public_config, merged_local_config)
     return context.changes
 
 

@@ -393,6 +393,226 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 entry,
             )
 
+    def test_sync_creates_missing_project_rule_placeholder(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            source_rules = source / '.agents' / 'rules'
+            source_rules.mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source_rules / '20-project-tools.md').write_text('project tools placeholder\n', encoding='utf-8')
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'rules': [],
+                'skills': [],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertIn(sync.Change('created', '.agents/rules/20-project-tools.md'), changes)
+            self.assertEqual(
+                (target / '.agents' / 'rules' / '20-project-tools.md').read_text(encoding='utf-8'),
+                'project tools placeholder\n',
+            )
+
+    def test_sync_creates_project_development_workflow_scaffold(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            source_skill = source / '.agents' / 'skills' / 'project-development-workflow'
+            source_skill.mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source_skill / 'SKILL.md').write_text(
+                '---\n'
+                'name: project-development-workflow\n'
+                'description: Placeholder contract\n'
+                '---\n\n'
+                'This public skill is a local project skill placeholder.\n',
+                encoding='utf-8',
+            )
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'rules': [],
+                'skills': [],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            target_skill = target / '.agents' / 'skills' / 'project-development-workflow' / 'SKILL.md'
+            content = target_skill.read_text(encoding='utf-8')
+            self.assertIn(sync.Change('created', '.agents/skills/project-development-workflow/SKILL.md'), changes)
+            self.assertIn('Status: Unverified', content)
+            self.assertIn('generated from the public project-development-workflow contract', content)
+            self.assertNotIn('This public skill is a local project skill placeholder.', content)
+
+    def test_sync_preserves_target_specific_project_development_workflow(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            source_skill = source / '.agents' / 'skills' / 'project-development-workflow'
+            target_skill = target / '.agents' / 'skills' / 'project-development-workflow'
+            source_skill.mkdir(parents=True)
+            target_skill.mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source_skill / 'SKILL.md').write_text(
+                '---\nname: project-development-workflow\ndescription: Placeholder contract\n---\n',
+                encoding='utf-8',
+            )
+            existing = (
+                '---\n'
+                'name: project-development-workflow\n'
+                'description: Target workflow\n'
+                '---\n\n'
+                'Status: Verified\n\n'
+                'Target-specific workflow.\n'
+            )
+            (target_skill / 'SKILL.md').write_text(existing, encoding='utf-8')
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'rules': [],
+                'skills': [],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertEqual((target_skill / 'SKILL.md').read_text(encoding='utf-8'), existing)
+            self.assertNotIn(sync.Change('updated', '.agents/skills/project-development-workflow/SKILL.md'), changes)
+
+    def test_discover_local_agent_description_from_referenced_skill(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            agents_root = target / '.agents' / 'agents'
+            skill_root = target / '.agents' / 'skills' / 'dart-verify'
+            agents_root.mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (agents_root / 'dart-verify.md').write_text(
+                'Apply @.agents/skills/dart-verify/SKILL.md\n',
+                encoding='utf-8',
+            )
+            (skill_root / 'SKILL.md').write_text(
+                '---\n'
+                'name: dart-verify\n'
+                'description: Dart and Flutter verification specialist.\n'
+                '---\n',
+                encoding='utf-8',
+            )
+
+            result = sync.discover_local_assets(target, {'rules': [], 'agent_prompts': []})
+
+        self.assertEqual(
+            result['agent_prompts'],
+            [
+                {
+                    'name': 'dart-verify',
+                    'description': 'Dart and Flutter verification specialist.',
+                    'model': 'sonnet',
+                }
+            ],
+        )
+
+    def test_discover_local_agent_description_falls_back_when_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            agents_root = target / '.agents' / 'agents'
+            agents_root.mkdir(parents=True)
+            (agents_root / 'project-agent.md').write_text('Apply @.agents/skills/missing/SKILL.md\n', encoding='utf-8')
+
+            result = sync.discover_local_assets(target, {'rules': [], 'agent_prompts': []})
+
+        self.assertEqual(
+            result['agent_prompts'],
+            [{'name': 'project-agent', 'description': 'Project-local agent: project-agent', 'model': 'sonnet'}],
+        )
+
+    def test_empty_cursor_globs_are_normalized_before_wrapper_rendering(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            templates = skill_root / 'assets' / 'templates'
+            rules_root = target / '.agents' / 'rules'
+            cursor_root = target / '.cursor' / 'rules'
+            (source / '.agents' / 'rules').mkdir(parents=True)
+            templates.mkdir(parents=True)
+            rules_root.mkdir(parents=True)
+            cursor_root.mkdir(parents=True)
+            for template in REPO_TEMPLATES.glob('*'):
+                shutil.copy2(template, templates / template.name)
+            (rules_root / '20-project-tools.md').write_text('Strength: Mandatory\n', encoding='utf-8')
+            (cursor_root / '20-project-tools.mdc').write_text(
+                '---\n'
+                'description: "[mandatory] Project tools"\n'
+                'globs: \n'
+                'alwaysApply: true\n'
+                '---\n\n'
+                'Apply @.agents/rules/20-project-tools.md\n',
+                encoding='utf-8',
+            )
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'rules': [],
+                'skills': [],
+                'agent_prompts': [],
+                'platforms': {
+                    'rule_wrappers': [
+                        {
+                            'template': 'rule_wrapper.cursor.mdc',
+                            'path': '.cursor/rules/{{rule.name}}.mdc',
+                        },
+                    ],
+                    'agent_wrappers': [],
+                },
+            }
+            local_config = sync.discover_local_assets(target, public_config)
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, local_config)
+
+            self.assertIn(
+                'globs: ""',
+                (cursor_root / '20-project-tools.mdc').read_text(encoding='utf-8'),
+            )
+
+    def test_entry_docs_route_project_asset_details_to_placeholders(self):
+        readme = (REPO_ROOT / 'README.md').read_text(encoding='utf-8')
+        if 'Shared agent configuration for projects that use `.agents/` rules' not in readme:
+            self.skipTest('target repositories replace public placeholders with local project facts')
+        update_skill = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+        project_rule = (REPO_ROOT / '.agents' / 'rules' / '20-project-tools.md').read_text(encoding='utf-8')
+        project_skill = (
+            REPO_ROOT
+            / '.agents'
+            / 'skills'
+            / 'project-development-workflow'
+            / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+
+        self.assertNotIn('Local Project Rule Authoring Guide', readme)
+        self.assertNotIn('Local Project Skill Authoring Guide', readme)
+        self.assertNotIn('## Local Project Assets', update_skill)
+        self.assertNotIn('## Local Project Skills', update_skill)
+        self.assertIn('## Generation Contract', project_rule)
+        self.assertIn('## Generation Contract', project_skill)
+
     def test_render_template_replaces_nested_variables(self):
         result = sync.render_template(
             'Apply @{{rule.path}}\n',
