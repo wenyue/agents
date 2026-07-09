@@ -13,6 +13,8 @@ import sync_public_agent_assets as sync
 
 REPO_SKILL_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = REPO_SKILL_ROOT.parents[2]
+REPO_REFERENCES = REPO_SKILL_ROOT / 'references'
+REPO_TEMPLATES = REPO_SKILL_ROOT / 'assets' / 'templates'
 
 
 class SyncPublicAgentAssetsTest(unittest.TestCase):
@@ -137,6 +139,31 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
             self.assertFalse(extra.exists())
 
+    def test_sync_preserves_extra_file_inside_public_skill_when_mirror_delete_is_false(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            (source / '.agents' / 'skills' / 'rename').mkdir(parents=True)
+            (target / '.agents' / 'skills' / 'rename').mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source / '.agents' / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
+            extra = target / '.agents' / 'skills' / 'rename' / 'extra.md'
+            extra.write_text('local\n', encoding='utf-8')
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': False,
+                'rules': [],
+                'skills': [{'name': 'rename'}],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertTrue(extra.exists())
+
     def test_sync_deletes_extra_empty_directory_tree_inside_public_skill(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -204,13 +231,13 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'update-project-rules'
-            templates = skill_root / 'templates'
+            templates = skill_root / 'assets' / 'templates'
             (source / '.agents' / 'rules').mkdir(parents=True)
             templates.mkdir(parents=True)
-            for template in (REPO_SKILL_ROOT / 'templates').glob('*'):
+            for template in REPO_TEMPLATES.glob('*'):
                 shutil.copy2(template, templates / template.name)
             (source / '.agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
-            public_config = sync.load_json(REPO_SKILL_ROOT / 'public_assets.json')
+            public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = [rule for rule in public_config['rules'] if rule['file'] == '10-base-code.md']
             public_config['skills'] = []
             public_config['agent_prompts'] = []
@@ -237,16 +264,19 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'update-project-rules'
-            templates = skill_root / 'templates'
+            templates = skill_root / 'assets' / 'templates'
             (source / '.agents' / 'rules').mkdir(parents=True)
             templates.mkdir(parents=True)
-            for template in (REPO_SKILL_ROOT / 'templates').glob('*'):
+            for template in REPO_TEMPLATES.glob('*'):
                 shutil.copy2(template, templates / template.name)
             (source / '.agents' / 'rules' / '00-global-rule-config.md').write_text('rule\n', encoding='utf-8')
             stale_wrapper = target / '.claude' / 'rules' / '10-base-code.md'
             stale_wrapper.parent.mkdir(parents=True)
-            stale_wrapper.write_text('stale\n', encoding='utf-8')
-            public_config = sync.load_json(REPO_SKILL_ROOT / 'public_assets.json')
+            stale_wrapper.write_text(
+                '---\npaths:\n  []\n---\n\nApply @.agents/rules/10-base-code.md\n',
+                encoding='utf-8',
+            )
+            public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = [
                 rule for rule in public_config['rules'] if rule['file'] == '00-global-rule-config.md'
             ]
@@ -259,29 +289,52 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
             self.assertFalse(stale_wrapper.exists())
 
-    def test_sync_deletes_stale_agent_wrapper_when_agent_is_removed(self):
+    def test_sync_preserves_custom_platform_only_agent_wrapper(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'update-project-rules'
-            templates = skill_root / 'templates'
+            templates = skill_root / 'assets' / 'templates'
             templates.mkdir(parents=True)
-            for template in (REPO_SKILL_ROOT / 'templates').glob('*'):
+            for template in REPO_TEMPLATES.glob('*'):
                 shutil.copy2(template, templates / template.name)
-            stale_wrapper = target / '.github' / 'agents' / 'dart-verify.agent.md'
+            stale_wrapper = target / '.github' / 'agents' / 'obsolete-agent.agent.md'
             stale_wrapper.parent.mkdir(parents=True)
-            stale_wrapper.write_text('stale\n', encoding='utf-8')
-            public_config = sync.load_json(REPO_SKILL_ROOT / 'public_assets.json')
+            stale_wrapper.write_text('# Custom platform-only agent\n', encoding='utf-8')
+            public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
             public_config['agent_prompts'] = []
-            local_config = sync.load_json(REPO_SKILL_ROOT / 'local_assets.json')
-            local_config['agent_prompts'] = [
-                agent
-                for agent in local_config['agent_prompts']
-                if agent['name'] != 'dart-verify'
-            ]
+            local_config = {'rules': [], 'agent_prompts': []}
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, local_config)
+
+            self.assertTrue(stale_wrapper.exists())
+
+    def test_sync_deletes_stale_generated_agent_wrapper_when_agent_is_removed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            templates = skill_root / 'assets' / 'templates'
+            templates.mkdir(parents=True)
+            for template in REPO_TEMPLATES.glob('*'):
+                shutil.copy2(template, templates / template.name)
+            stale_wrapper = target / '.github' / 'agents' / 'obsolete-agent.agent.md'
+            stale_wrapper.parent.mkdir(parents=True)
+            stale_wrapper.write_text(
+                '---\nname: obsolete-agent\ndescription: Obsolete\n---\n\n'
+                'Apply @.agents/agents/obsolete-agent.md\n',
+                encoding='utf-8',
+            )
+            public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+            public_config['rules'] = []
+            public_config['skills'] = []
+            public_config['agent_prompts'] = []
+            local_config = {'rules': [], 'agent_prompts': []}
             context = sync.SyncContext(target, source, skill_root, False, [])
 
             sync.sync_public_assets(context, public_config, local_config)
@@ -294,7 +347,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'update-project-rules'
-            templates = skill_root / 'templates'
+            templates = skill_root / 'assets' / 'templates'
             templates.mkdir(parents=True)
             (templates / 'AGENTS.md').write_text(
                 '# Project Agent Entry\n\n{{global_rule_rows}}\n{{base_rule_rows}}\n{{project_rule_rows}}\n',
@@ -304,7 +357,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source_rules.mkdir(parents=True)
             (source_rules / '00-global-rule-config.md').write_text('rule\n', encoding='utf-8')
             (source_rules / '20-project-tools.md').write_text('rule\n', encoding='utf-8')
-            public_config = sync.load_json(REPO_SKILL_ROOT / 'public_assets.json')
+            public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = [
                 rule
                 for rule in public_config['rules']
@@ -313,13 +366,17 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config['skills'] = []
             public_config['agent_prompts'] = []
             public_config['platforms'] = {'rule_wrappers': [], 'agent_wrappers': []}
-            local_config = sync.load_json(REPO_SKILL_ROOT / 'local_assets.json')
-            local_config['rules'] = [
-                rule
-                for rule in local_config['rules']
-                if rule['file'] == '20-project-tools.md'
-            ]
-            local_config['agent_prompts'] = []
+            local_config = {
+                'rules': [
+                    {
+                        'file': '20-project-tools.md',
+                        'read_when': 'Project tooling, MCP, runtime, or verification',
+                        'strength': 'Mandatory',
+                        'section': 'project',
+                    },
+                ],
+                'agent_prompts': [],
+            }
             context = sync.SyncContext(target, source, skill_root, False, [])
 
             sync.sync_public_assets(context, public_config, local_config)
@@ -331,7 +388,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 entry,
             )
             self.assertIn(
-                '| Using Flutter tooling, MCP, shell, or debug commands |'
+                '| Project tooling, MCP, runtime, or verification |'
                 ' `.agents/rules/20-project-tools.md` | `Mandatory` |',
                 entry,
             )
@@ -384,9 +441,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             shutil.copytree(REPO_ROOT / '.agents', source / '.agents')
             target.mkdir()
             previous_cwd = Path.cwd()
+            stdout = io.StringIO()
             try:
                 os.chdir(target)
-                exit_code = sync.main(['--check'])
+                with contextlib.redirect_stdout(stdout):
+                    exit_code = sync.main(['--check'])
             finally:
                 os.chdir(previous_cwd)
 
@@ -409,7 +468,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         ), mock.patch.object(
             sync,
             'load_json',
-            side_effect=[public_config, local_config],
+            return_value=public_config,
+        ), mock.patch.object(
+            sync,
+            'discover_local_assets',
+            return_value=local_config,
         ), mock.patch.object(
             sync,
             'resolve_source',
@@ -441,7 +504,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         ), mock.patch.object(
             sync,
             'load_json',
-            side_effect=[public_config, local_config],
+            return_value=public_config,
+        ), mock.patch.object(
+            sync,
+            'discover_local_assets',
+            return_value=local_config,
         ), mock.patch.object(
             sync,
             'resolve_source',
@@ -455,6 +522,110 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertEqual(stdout.getvalue().strip(), 'created .agents/rules/10-base-code.md')
+
+    def test_discover_local_assets_preserves_project_specific_rules_and_agents(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            rules_root = target / '.agents' / 'rules'
+            agents_root = target / '.agents' / 'agents'
+            rules_root.mkdir(parents=True)
+            agents_root.mkdir(parents=True)
+            (rules_root / '00-global-rule-config.md').write_text('Strength: Mandatory\n', encoding='utf-8')
+            (rules_root / '30-module-common.md').write_text('Strength: Advisory\n', encoding='utf-8')
+            (agents_root / 'project-agent.md').write_text(
+                '---\nname: project-agent\ndescription: Project reviewer\nmodel: sonnet\n---\n',
+                encoding='utf-8',
+            )
+            public_config = {
+                'rules': [{'file': '00-global-rule-config.md'}],
+                'agent_prompts': [],
+            }
+
+            result = sync.discover_local_assets(target, public_config)
+
+        self.assertEqual(
+            result['rules'],
+            [
+                {
+                    'file': '30-module-common.md',
+                    'read_when': 'Project-local rule applies',
+                    'strength': 'Advisory',
+                    'section': 'project',
+                    'cursor': {
+                        'description': '[project] 30-module-common',
+                        'globs': '""',
+                        'alwaysApply': True,
+                    },
+                    'claude': {'paths': []},
+                    'github': {'applyTo': '**'},
+                }
+            ],
+        )
+        self.assertEqual(
+            result['agent_prompts'],
+            [{'name': 'project-agent', 'description': 'Project reviewer', 'model': 'sonnet'}],
+        )
+
+    def test_discover_local_assets_preserves_existing_rule_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            rules_root = target / '.agents' / 'rules'
+            cursor_root = target / '.cursor' / 'rules'
+            claude_root = target / '.claude' / 'rules'
+            github_root = target / '.github' / 'instructions'
+            rules_root.mkdir(parents=True)
+            cursor_root.mkdir(parents=True)
+            claude_root.mkdir(parents=True)
+            github_root.mkdir(parents=True)
+            (target / 'AGENTS.md').write_text(
+                '| Read when | Rule | Strength |\n'
+                '| --- | --- | --- |\n'
+                '| Working with module common widgets | `.agents/rules/30-module-common.md` |'
+                ' `Advisory` |\n',
+                encoding='utf-8',
+            )
+            (rules_root / '30-module-common.md').write_text('Strength: Default\n', encoding='utf-8')
+            (cursor_root / '30-module-common.mdc').write_text(
+                '---\n'
+                'description: "[module] common widgets"\n'
+                'globs: "common/**"\n'
+                'alwaysApply: false\n'
+                '---\n\n'
+                'Apply @.agents/rules/30-module-common.md\n',
+                encoding='utf-8',
+            )
+            (claude_root / '30-module-common.md').write_text(
+                '---\npaths:\n  - "common/**"\n---\n\nApply @.agents/rules/30-module-common.md\n',
+                encoding='utf-8',
+            )
+            (github_root / '30-module-common.instructions.md').write_text(
+                '---\napplyTo: "common/**"\n---\n\nApply @.agents/rules/30-module-common.md\n',
+                encoding='utf-8',
+            )
+            public_config = {'rules': [], 'agent_prompts': []}
+
+            result = sync.discover_local_assets(target, public_config)
+
+        self.assertEqual(
+            result['rules'],
+            [
+                {
+                    'file': '30-module-common.md',
+                    'read_when': 'Working with module common widgets',
+                    'strength': 'Advisory',
+                    'section': 'project',
+                    'cursor': {
+                        'description': '[module] common widgets',
+                        'globs': 'common/**',
+                        'alwaysApply': False,
+                    },
+                    'claude': {'paths': ['common/**']},
+                    'github': {'applyTo': 'common/**'},
+                }
+            ],
+        )
 
 
 if __name__ == '__main__':

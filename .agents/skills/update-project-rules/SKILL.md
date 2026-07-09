@@ -14,8 +14,10 @@ from those sources.
 
 ## Core Rules
 
-- Public assets listed in `public_assets.json` are mirrored directly from `wenyue/agents`;
-  do not locally adapt them.
+- Public assets mirrored from `wenyue/agents` stay public; do not locally adapt them in target
+  repositories.
+- Public project-skill placeholders in `wenyue/agents` are generation contracts, not final target
+  repository workflow skills. Generate target-specific skills from repository evidence.
 - Run `scripts/sync_public_agent_assets.py` before manually editing project-owned rules.
 - Change public rules or public skills in `wenyue/agents` first, then sync target repositories.
 - Treat `.agents/rules/<nn>-<name>.md` as the source of truth for project rules.
@@ -40,8 +42,16 @@ from those sources.
 2. Run the public sync script:
    `python3 .agents/skills/update-project-rules/scripts/sync_public_agent_assets.py`.
    Use `--source <path>` when `../agents` is not the correct source.
-3. Review the script report for created, updated, deleted, unchanged, and skipped files.
-4. Only after public sync, update project-owned rules from current repository evidence.
+3. Review the script report for created, updated, deleted, and unchanged files.
+4. Only after public sync, update project-owned rules and generated project skills from current
+   repository evidence.
+
+## Skill Resources
+
+- `scripts/`: executable sync and validation tools.
+- `references/`: JSON manifests that describe the `wenyue/agents` public base catalog, not
+  target-repository facts.
+- `assets/templates/`: wrapper and entry-file templates copied or rendered by the sync script.
 
 ## Evidence Sources
 
@@ -49,6 +59,44 @@ Use current repository evidence for every project-owned rule and for any base ru
 language tools or generated files. Prefer concrete files over assumptions, such as package
 manifests, build and lint config, test directories, CI or script commands, MCP config, generated
 file config, existing wrapper metadata, and the repository directory structure.
+
+Project-local rule and agent wrappers are discovered from the target repository's existing
+`.agents/rules/*.md` and `.agents/agents/*.md`. Do not ship target-project local manifests in this
+public skill.
+
+## Generated Project Skills
+
+Generate project-specific skills from placeholders only after public assets are synced. The source
+placeholder describes the contract; the target skill must contain concrete commands and scripts
+derived from the target repository.
+
+Project-skill placeholders are not normal public mirrored skills. Do not add them to
+`references/public_assets.json` just to make them available in targets. When a target workflow must
+be generated, read the placeholder from the public source repository, then write a target-specific
+skill into the target repository.
+
+Do not hard-code target workflow generation in this public skill. Public guidance may define the
+required sections, safety constraints, and acceptance criteria, but concrete language, framework,
+dependency, code-generation, lint, test, and merge commands must come from target repository
+evidence.
+
+For `project-development-workflow`, generate `.agents/skills/project-development-workflow/` with
+the repository's isolated-worktree workflow, bootstrap commands, verification commands, local agent
+asset handling, review checkpoints, and merge-back behavior. The generated skill is accepted only
+after a real end-to-end workflow test creates a git worktree, runs the complete generated workflow,
+merges back, and verifies that the original workspace remains usable.
+
+When generating the target skill:
+
+- Read project-owned rules, package/build manifests, CI files, scripts, generated-file config, and
+  existing developer docs before choosing commands.
+- Prefer repository-provided scripts or CI commands over inventing new command sequences.
+- Generate scripts only for deterministic project-local operations, such as worktree bootstrap,
+  local agent asset copying, verification orchestration, or merge-back safety checks.
+- If evidence is incomplete, write the missing evidence into the generated target skill and mark
+  the workflow unverified.
+- Keep the public placeholder generic. Do not add target repository names, stack-specific command
+  recipes, or project-specific path assumptions to `wenyue/agents`.
 
 ## Wrapper Maps
 
@@ -68,15 +116,24 @@ file config, existing wrapper metadata, and the repository directory structure.
 
 ## Validation
 
-Run fresh checks before reporting completion:
+For public-source edits in `wenyue/agents`, run:
+
+```bash
+python3 .agents/skills/update-project-rules/scripts/test_sync_public_agent_assets.py
+```
+
+For target repository updates after syncing public assets, run:
 
 ```bash
 python3 .agents/skills/update-project-rules/scripts/sync_public_agent_assets.py --check
-python3 .agents/skills/update-project-rules/scripts/test_sync_public_agent_assets.py
 ```
+
+Do not use the target-repository `--check` command as the publication check for `wenyue/agents`
+itself; it intentionally reports drift when run outside a prepared target repository.
 
 ## Output
 
 - List changed files, or state that no edits were required.
-- Summarize the public-sync result and any project-owned rule work done afterward.
+- Summarize the public-sync result and any project-owned rule or generated project skill work done
+  afterward.
 - Report validation commands and whether language build/test commands were skipped.

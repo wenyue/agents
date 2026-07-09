@@ -74,6 +74,13 @@ def _ignore_patterns(config: dict[str, Any]) -> list[str]:
     return value
 
 
+def _mirror_delete_enabled(config: dict[str, Any]) -> bool:
+    value = config.get('mirror_delete', True)
+    if not isinstance(value, bool):
+        raise SyncError('mirror_delete must be a boolean')
+    return value
+
+
 def _is_ignored(relative: Path, ignore_patterns: list[str]) -> bool:
     path = relative.as_posix()
     return any(fnmatch.fnmatch(path, pattern) for pattern in ignore_patterns)
@@ -165,7 +172,7 @@ def render_template(template: str, data: dict[str, Any], template_name: str) -> 
 
 
 def _template_text(context: SyncContext, template_name: str) -> str:
-    template_path = context.skill_root / 'templates' / template_name
+    template_path = context.skill_root / 'assets' / 'templates' / template_name
     if not template_path.is_file():
         raise SyncError(f'Missing template: {template_path}')
     return template_path.read_text(encoding='utf-8')
@@ -191,7 +198,10 @@ def _delete_stale_wrapper_files(
     context: SyncContext,
     target_pattern: str,
     desired_paths: set[str],
+    mirror_delete: bool,
 ) -> None:
+    if not mirror_delete:
+        return
     root = context.target_root / _wrapper_root(target_pattern)
     if not root.exists():
         return
@@ -201,7 +211,9 @@ def _delete_stale_wrapper_files(
         if path.is_file()
     }
     for relative_path in sorted(existing_paths - desired_paths):
-        _delete_path(context, root / relative_path)
+        stale_path = root / relative_path
+        if _is_generated_thin_wrapper(stale_path):
+            _delete_path(context, stale_path)
     _prune_empty_dirs(context, root)
 
 
@@ -210,6 +222,7 @@ def _mirror_dir(
     source: Path,
     target: Path,
     ignore_patterns: list[str],
+    mirror_delete: bool,
 ) -> None:
     if not source.is_dir():
         raise SyncError(f'Missing public asset directory: {source}')
@@ -227,9 +240,36 @@ def _mirror_dir(
         }
     for relative in sorted(source_files):
         _copy_file(context, source / relative, target / relative)
-    for relative in sorted(target_files - source_files):
-        _delete_path(context, target / relative)
-    _prune_empty_dirs(context, target, ignore_patterns)
+    if mirror_delete:
+        for relative in sorted(target_files - source_files):
+            _delete_path(context, target / relative)
+        _prune_empty_dirs(context, target, ignore_patterns)
+
+
+def _strip_frontmatter(text: str) -> str:
+    lines = text.splitlines()
+    if not lines or lines[0] != '---':
+        return text.strip()
+    for index, line in enumerate(lines[1:], start=1):
+        if line == '---':
+            return '\n'.join(lines[index + 1 :]).strip()
+    return text.strip()
+
+
+def _is_generated_thin_wrapper(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding='utf-8')
+    except UnicodeDecodeError:
+        return False
+    body = _strip_frontmatter(text)
+    if re.fullmatch(r'Apply @\.agents/(rules|agents)/[A-Za-z0-9_.-]+\.md', body):
+        return True
+    if (
+        'Keep this file thin and use the shared agent prompt as the source of truth.' in text
+        and re.search(r'Follow `\.agents/agents/[A-Za-z0-9_.-]+\.md`\.', text)
+    ):
+        return True
+    return False
 
 
 def _yaml_list(values: list[str]) -> str:
@@ -269,6 +309,142 @@ def _agent_data(agent: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _read_strength(path: Path) -> str:
+    if not path.is_file():
+        return 'Default'
+    for line in path.read_text(encoding='utf-8').splitlines():
+        if line.startswith('Strength:'):
+            return line.split(':', 1)[1].strip().strip('`') or 'Default'
+    return 'Default'
+
+
+def _read_frontmatter(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    lines = path.read_text(encoding='utf-8').splitlines()
+    if not lines or lines[0] != '---':
+        return {}
+    values: dict[str, Any] = {}
+    current_key = ''
+    for line in lines[1:]:
+        if line == '---':
+            break
+        if line.startswith('  - ') and current_key:
+            current_value = values.setdefault(current_key, [])
+            if isinstance(current_value, list):
+                current_value.append(line.removeprefix('  - ').strip().strip('"'))
+            continue
+        if ':' in line and not line.startswith(' '):
+            key, value = line.split(':', 1)
+            current_key = key.strip()
+            raw = value.strip()
+            if raw == '':
+                values[current_key] = []
+            elif raw in {'true', 'false'}:
+                values[current_key] = raw == 'true'
+            else:
+                values[current_key] = raw.strip('"')
+    return values
+
+
+def _read_frontmatter_value(path: Path, key: str) -> str:
+    value = _read_frontmatter(path).get(key, '')
+    if isinstance(value, list):
+        return ''
+    return str(value)
+
+
+def _read_agents_rule_rows(target_root: Path) -> dict[str, dict[str, str]]:
+    agents_path = target_root / 'AGENTS.md'
+    if not agents_path.is_file():
+        return {}
+    rows: dict[str, dict[str, str]] = {}
+    pattern = re.compile(
+        r'^\|\s*(?P<read_when>.*?)\s*\|\s*`\.agents/rules/(?P<file>[^`]+)`\s*\|\s*`(?P<strength>[^`]+)`\s*\|$'
+    )
+    for line in agents_path.read_text(encoding='utf-8').splitlines():
+        match = pattern.match(line)
+        if match:
+            rows[match.group('file')] = {
+                'read_when': match.group('read_when'),
+                'strength': match.group('strength'),
+            }
+    return rows
+
+
+def _default_project_read_when(filename: str) -> str:
+    defaults = {
+        '20-project-tools.md': 'Project tooling, MCP, runtime, or verification',
+        '21-project-rules.md': 'Project APIs, generated files, lint, or domain conventions',
+        '22-project-structure.md': 'Making structure, module, or dependency-boundary decisions',
+    }
+    return defaults.get(filename, 'Project-local rule applies')
+
+
+def _default_project_cursor_description(filename: str) -> str:
+    name = filename.removesuffix('.md')
+    return f'[project] {name}'
+
+
+def _local_rule_metadata(target_root: Path, filename: str, agents_rows: dict[str, dict[str, str]]) -> dict[str, Any]:
+    name = filename.removesuffix('.md')
+    cursor_frontmatter = _read_frontmatter(target_root / '.cursor' / 'rules' / f'{name}.mdc')
+    claude_frontmatter = _read_frontmatter(target_root / '.claude' / 'rules' / filename)
+    github_frontmatter = _read_frontmatter(
+        target_root / '.github' / 'instructions' / f'{name}.instructions.md'
+    )
+    agents_row = agents_rows.get(filename, {})
+    return {
+        'read_when': agents_row.get('read_when') or _default_project_read_when(filename),
+        'strength': agents_row.get('strength') or _read_strength(target_root / '.agents' / 'rules' / filename),
+        'cursor': {
+            'description': cursor_frontmatter.get(
+                'description',
+                _default_project_cursor_description(filename),
+            ),
+            'globs': cursor_frontmatter.get('globs', '""'),
+            'alwaysApply': cursor_frontmatter.get('alwaysApply', True),
+        },
+        'claude': {'paths': claude_frontmatter.get('paths', [])},
+        'github': {'applyTo': github_frontmatter.get('applyTo', '**')},
+    }
+
+
+def discover_local_assets(target_root: Path, public_config: dict[str, Any]) -> dict[str, Any]:
+    public_rule_files = {rule['file'] for rule in _require_items(public_config, 'rules')}
+    public_agent_names = {agent['name'] for agent in _require_items(public_config, 'agent_prompts')}
+    rules = []
+    rules_root = target_root / '.agents' / 'rules'
+    agents_rows = _read_agents_rule_rows(target_root)
+    if rules_root.exists():
+        for rule_path in sorted(rules_root.glob('*.md')):
+            if rule_path.name in public_rule_files:
+                continue
+            metadata = _local_rule_metadata(target_root, rule_path.name, agents_rows)
+            rules.append(
+                {
+                    'file': rule_path.name,
+                    'read_when': metadata['read_when'],
+                    'strength': metadata['strength'],
+                    'section': 'project',
+                    'cursor': metadata['cursor'],
+                    'claude': metadata['claude'],
+                    'github': metadata['github'],
+                }
+            )
+    agent_prompts = []
+    agents_root = target_root / '.agents' / 'agents'
+    if agents_root.exists():
+        for agent_path in sorted(agents_root.glob('*.md')):
+            name = agent_path.stem
+            if name in public_agent_names:
+                continue
+            description = _read_frontmatter_value(agent_path, 'description')
+            model = _read_frontmatter_value(agent_path, 'model') or 'sonnet'
+            agent_prompts.append({'name': name, 'description': description, 'model': model})
+    return {'rules': rules, 'agent_prompts': agent_prompts}
+
+
 def _rule_row(rule: dict[str, Any]) -> str:
     return f"| {rule['read_when']} | `.agents/rules/{rule['file']}` | `{rule['strength']}` |"
 
@@ -282,6 +458,7 @@ def _generate_wrappers(
     context: SyncContext,
     public_config: dict[str, Any],
     local_config: dict[str, Any],
+    mirror_delete: bool,
 ) -> None:
     platforms = public_config.get('platforms') or {}
     rule_wrappers = _require_items(platforms, 'rule_wrappers')
@@ -308,12 +485,18 @@ def _generate_wrappers(
             )
             _render_to_target(context, wrapper['template'], wrapper['path'], _agent_data(agent))
     for wrapper in rule_wrappers:
-        _delete_stale_wrapper_files(context, wrapper['path'], desired_rule_paths_by_wrapper[wrapper['path']])
+        _delete_stale_wrapper_files(
+            context,
+            wrapper['path'],
+            desired_rule_paths_by_wrapper[wrapper['path']],
+            mirror_delete,
+        )
     for wrapper in agent_wrappers:
         _delete_stale_wrapper_files(
             context,
             wrapper['path'],
             desired_agent_paths_by_wrapper[wrapper['path']],
+            mirror_delete,
         )
 
 
@@ -322,7 +505,7 @@ def _generate_agents_entry(
     public_config: dict[str, Any],
     local_config: dict[str, Any],
 ) -> None:
-    template_path = context.skill_root / 'templates' / 'AGENTS.md'
+    template_path = context.skill_root / 'assets' / 'templates' / 'AGENTS.md'
     if not template_path.is_file():
         return
     all_rules = _require_items(public_config, 'rules') + _require_items(local_config, 'rules')
@@ -345,6 +528,7 @@ def sync_public_assets(
     local_config: dict[str, Any],
 ) -> list[Change]:
     ignore_patterns = _ignore_patterns(public_config)
+    mirror_delete = _mirror_delete_enabled(public_config)
     for rule in _require_items(public_config, 'rules'):
         filename = rule.get('file')
         if not isinstance(filename, str) or not filename:
@@ -363,6 +547,7 @@ def sync_public_assets(
             context.source_root / '.agents' / 'skills' / name,
             context.target_root / '.agents' / 'skills' / name,
             ignore_patterns,
+            mirror_delete,
         )
     for agent in _require_items(public_config, 'agent_prompts'):
         name = agent.get('name')
@@ -373,7 +558,7 @@ def sync_public_assets(
             context.source_root / '.agents' / 'agents' / f'{name}.md',
             context.target_root / '.agents' / 'agents' / f'{name}.md',
         )
-    _generate_wrappers(context, public_config, local_config)
+    _generate_wrappers(context, public_config, local_config, mirror_delete)
     _generate_agents_entry(context, public_config, local_config)
     return context.changes
 
@@ -391,8 +576,8 @@ def main(argv: list[str] | None = None) -> int:
     target_root = Path.cwd()
     skill_root = Path(__file__).resolve().parents[1]
     try:
-        public_config = load_json(skill_root / 'public_assets.json')
-        local_config = load_json(skill_root / 'local_assets.json')
+        public_config = load_json(skill_root / 'references' / 'public_assets.json')
+        local_config = discover_local_assets(target_root, public_config)
         source_root = resolve_source(target_root, args.source, public_config)
         context = SyncContext(
             target_root=target_root,
