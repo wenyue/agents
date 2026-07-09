@@ -7,7 +7,7 @@ generated assets, verification requirements, and workflow handoffs.
 
 ## Generation Contract
 
-This file is a project-local rule placeholder. During setup, `update-project-rules` creates the
+This file is a project-local rule placeholder. During setup, `setup-project-agents` creates the
 target repository's `.agents/rules/20-project-tools.md` from this placeholder when that rule is
 missing. The generated target rule must then be replaced or refreshed from concrete repository
 evidence.

@@ -5,6 +5,7 @@ import json
 import shutil
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 from pathlib import Path
 
@@ -59,12 +60,67 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertEqual(result, source.resolve())
 
+    def test_resolve_source_fetches_archive_when_default_source_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            archive = root / 'agents.zip'
+            with zipfile.ZipFile(archive, 'w') as package:
+                package.writestr('agents-master/.agents/rules/10-base-code.md', 'rule\n')
+            public_config = {
+                'source_default': '../agents',
+                'source_archive_url': archive.resolve().as_uri(),
+                'source_cache_dir': str(root / 'cache'),
+            }
+
+            try:
+                result = sync.resolve_source(target, None, public_config)
+            except sync.SyncError as error:
+                self.fail(f'resolve_source should fetch archive when default source is missing: {error}')
+
+            self.assertEqual((result / '.agents' / 'rules' / '10-base-code.md').read_text(), 'rule\n')
+
+    def test_archive_fallback_syncs_only_manifest_whitelisted_assets(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
+            skill_root.mkdir(parents=True)
+            archive = root / 'agents.zip'
+            with zipfile.ZipFile(archive, 'w') as package:
+                package.writestr('agents-master/README.md', 'public readme\n')
+                package.writestr('agents-master/.agents/rules/10-base-code.md', 'rule\n')
+                package.writestr('agents-master/.agents/skills/rename/SKILL.md', 'rename skill\n')
+                package.writestr('agents-master/.agents/skills/unlisted/SKILL.md', 'unlisted skill\n')
+                package.writestr('agents-master/.agents/agents/rename.md', 'rename agent\n')
+            public_config = {
+                'source_default': '../agents',
+                'source_archive_url': archive.resolve().as_uri(),
+                'source_cache_dir': str(root / 'cache'),
+                'mirror_delete': True,
+                'rules': [{'file': '10-base-code.md'}],
+                'skills': [{'name': 'rename'}],
+                'agent_prompts': [{'name': 'rename'}],
+            }
+            source = sync.resolve_source(target, None, public_config)
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertEqual((target / '.agents' / 'rules' / '10-base-code.md').read_text(), 'rule\n')
+            self.assertEqual((target / '.agents' / 'skills' / 'rename' / 'SKILL.md').read_text(), 'rename skill\n')
+            self.assertEqual((target / '.agents' / 'agents' / 'rename.md').read_text(), 'rename agent\n')
+            self.assertFalse((target / 'README.md').exists())
+            self.assertFalse((target / '.agents' / 'skills' / 'unlisted').exists())
+
     def test_sync_copies_public_rule_skill_and_agent_prompt(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / '.agents' / 'rules').mkdir(parents=True)
             (source / '.agents' / 'skills' / 'rename').mkdir(parents=True)
             (source / '.agents' / 'agents').mkdir(parents=True)
@@ -94,7 +150,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / '.agents' / 'rules').mkdir(parents=True)
             (target / '.agents' / 'rules').mkdir(parents=True)
             skill_root.mkdir(parents=True)
@@ -119,7 +175,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / '.agents' / 'skills' / 'rename').mkdir(parents=True)
             (target / '.agents' / 'skills' / 'rename').mkdir(parents=True)
             skill_root.mkdir(parents=True)
@@ -144,7 +200,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / '.agents' / 'skills' / 'rename').mkdir(parents=True)
             (target / '.agents' / 'skills' / 'rename').mkdir(parents=True)
             skill_root.mkdir(parents=True)
@@ -169,7 +225,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / '.agents' / 'skills' / 'rename').mkdir(parents=True)
             (target / '.agents' / 'skills' / 'rename' / 'unused' / 'nested').mkdir(parents=True)
             skill_root.mkdir(parents=True)
@@ -187,12 +243,70 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
             self.assertFalse((target / '.agents' / 'skills' / 'rename' / 'unused').exists())
 
+    def test_sync_deletes_legacy_public_skill_directory_for_renamed_skill(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
+            source_skill = source / '.agents' / 'skills' / 'setup-project-agents'
+            legacy_skill = target / '.agents' / 'skills' / 'update-project-rules'
+            source_skill.mkdir(parents=True)
+            legacy_skill.mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source_skill / 'SKILL.md').write_text('new skill\n', encoding='utf-8')
+            (legacy_skill / 'SKILL.md').write_text(
+                '---\nname: update-project-rules\ndescription: Legacy\n---\n',
+                encoding='utf-8',
+            )
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'rules': [],
+                'skills': [{'name': 'setup-project-agents', 'legacy_names': ['update-project-rules']}],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertFalse(legacy_skill.exists())
+            self.assertEqual(
+                (target / '.agents' / 'skills' / 'setup-project-agents' / 'SKILL.md').read_text(),
+                'new skill\n',
+            )
+
+    def test_sync_uses_running_skill_when_source_archive_lacks_renamed_skill(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
+            skill_root.mkdir(parents=True)
+            (source / '.agents' / 'skills').mkdir(parents=True)
+            (skill_root / 'SKILL.md').write_text('running skill\n', encoding='utf-8')
+            public_config = {
+                'source_default': '../agents',
+                'mirror_delete': True,
+                'rules': [],
+                'skills': [{'name': 'setup-project-agents'}],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
+
+            self.assertEqual(
+                (target / '.agents' / 'skills' / 'setup-project-agents' / 'SKILL.md').read_text(),
+                'running skill\n',
+            )
+
     def test_sync_ignores_generated_files_inside_public_skill(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_skill = source / '.agents' / 'skills' / 'rename'
             target_skill = target / '.agents' / 'skills' / 'rename'
             (source_skill / 'scripts' / '__pycache__').mkdir(parents=True)
@@ -230,7 +344,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
             (source / '.agents' / 'rules').mkdir(parents=True)
             templates.mkdir(parents=True)
@@ -263,7 +377,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
             (source / '.agents' / 'rules').mkdir(parents=True)
             templates.mkdir(parents=True)
@@ -294,7 +408,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
             templates.mkdir(parents=True)
             for template in REPO_TEMPLATES.glob('*'):
@@ -318,7 +432,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
             templates.mkdir(parents=True)
             for template in REPO_TEMPLATES.glob('*'):
@@ -346,7 +460,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
             templates.mkdir(parents=True)
             (templates / 'AGENTS.md').write_text(
@@ -398,7 +512,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_rules = source / '.agents' / 'rules'
             source_rules.mkdir(parents=True)
             skill_root.mkdir(parents=True)
@@ -425,7 +539,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_skill = source / '.agents' / 'skills' / 'project-development-workflow'
             source_skill.mkdir(parents=True)
             skill_root.mkdir(parents=True)
@@ -460,7 +574,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_skill = source / '.agents' / 'skills' / 'project-development-workflow'
             target_skill = target / '.agents' / 'skills' / 'project-development-workflow'
             source_skill.mkdir(parents=True)
@@ -546,7 +660,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
             rules_root = target / '.agents' / 'rules'
             cursor_root = target / '.cursor' / 'rules'
@@ -634,7 +748,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'update-project-rules'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / '.agents' / 'rules').mkdir(parents=True)
             skill_root.mkdir(parents=True)
             (source / '.agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')

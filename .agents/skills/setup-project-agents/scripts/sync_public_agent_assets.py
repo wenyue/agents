@@ -3,8 +3,13 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import re
+import shutil
+import tempfile
+import urllib.request
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -36,6 +41,7 @@ _PROJECT_RULE_PLACEHOLDERS = (
     '22-project-structure.md',
 )
 _PROJECT_WORKFLOW_SKILL = 'project-development-workflow'
+_DEFAULT_SOURCE_REF = 'master'
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -50,17 +56,82 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def resolve_source(target_root: Path, source_arg: str | None, public_config: dict[str, Any]) -> Path:
+def _configured_source_path(target_root: Path, source_arg: str | None, public_config: dict[str, Any]) -> Path:
     raw_source = source_arg or public_config.get('source_default')
     if not isinstance(raw_source, str) or not raw_source:
-        raise SyncError('public_assets.json requires a non-empty source_default')
+        raise SyncError('public_assets.json requires a non-empty source_default or --source')
     source = Path(raw_source)
     if not source.is_absolute():
         source = target_root / source
-    source = source.resolve()
-    if not source.exists():
+    return source.resolve()
+
+
+def _source_archive_url(public_config: dict[str, Any]) -> str:
+    configured_url = public_config.get('source_archive_url')
+    if isinstance(configured_url, str) and configured_url:
+        return configured_url
+    repo = public_config.get('source_repo')
+    if not isinstance(repo, str) or not repo:
+        raise SyncError('Source repository does not exist and public_assets.json has no source_repo')
+    ref = public_config.get('source_ref')
+    if not isinstance(ref, str) or not ref:
+        ref = _DEFAULT_SOURCE_REF
+    return f'{repo.rstrip("/")}/archive/refs/heads/{ref}.zip'
+
+
+def _source_cache_dir(public_config: dict[str, Any], archive_url: str) -> Path:
+    configured_dir = public_config.get('source_cache_dir')
+    if isinstance(configured_dir, str) and configured_dir:
+        return Path(configured_dir).expanduser().resolve()
+    digest = hashlib.sha256(archive_url.encode('utf-8')).hexdigest()[:16]
+    return Path(tempfile.gettempdir()) / 'setup-project-agents' / digest
+
+
+def _find_archive_repo_root(extract_root: Path) -> Path:
+    candidates = [path for path in extract_root.iterdir() if path.is_dir()]
+    if len(candidates) == 1 and (candidates[0] / '.agents').is_dir():
+        return candidates[0]
+    if (extract_root / '.agents').is_dir():
+        return extract_root
+    for candidate in candidates:
+        if (candidate / '.agents').is_dir():
+            return candidate
+    raise SyncError(f'Downloaded source archive does not contain a .agents directory: {extract_root}')
+
+
+def _fetch_archive_source(public_config: dict[str, Any]) -> Path:
+    archive_url = _source_archive_url(public_config)
+    cache_dir = _source_cache_dir(public_config, archive_url)
+    source_root = cache_dir / 'source'
+    if (source_root / '.agents').is_dir():
+        return source_root
+    archive_path = cache_dir / 'source.zip'
+    extract_root = cache_dir / 'extract'
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir)
+    cache_dir.mkdir(parents=True)
+    try:
+        urllib.request.urlretrieve(archive_url, archive_path)
+        with zipfile.ZipFile(archive_path) as archive:
+            archive.extractall(extract_root)
+        extracted_source = _find_archive_repo_root(extract_root)
+        shutil.move(str(extracted_source), source_root)
+    except OSError as error:
+        raise SyncError(f'Failed to fetch source archive {archive_url}: {error}') from error
+    except zipfile.BadZipFile as error:
+        raise SyncError(f'Source archive is not a valid zip file: {archive_url}') from error
+    if not (source_root / '.agents').is_dir():
+        raise SyncError(f'Downloaded source archive is missing .agents: {archive_url}')
+    return source_root
+
+
+def resolve_source(target_root: Path, source_arg: str | None, public_config: dict[str, Any]) -> Path:
+    source = _configured_source_path(target_root, source_arg, public_config)
+    if source.exists():
+        return source
+    if source_arg:
         raise SyncError(f'Source repository does not exist: {source}')
-    return source
+    return _fetch_archive_source(public_config)
 
 
 def _require_items(config: dict[str, Any], key: str) -> list[dict[str, Any]]:
@@ -381,6 +452,25 @@ def _read_frontmatter_value(path: Path, key: str) -> str:
     return _scalar_value(_read_frontmatter(path).get(key), '')
 
 
+def _public_skill_source(context: SyncContext, name: str) -> Path:
+    source = context.source_root / '.agents' / 'skills' / name
+    if source.is_dir():
+        return source
+    if context.skill_root.name == name and context.skill_root.is_dir():
+        return context.skill_root
+    return source
+
+
+def _delete_legacy_public_skill_dirs(context: SyncContext, skill: dict[str, Any], mirror_delete: bool) -> None:
+    if not mirror_delete:
+        return
+    for legacy_name in _list_value(skill.get('legacy_names')):
+        legacy_dir = context.target_root / '.agents' / 'skills' / legacy_name
+        skill_file = legacy_dir / 'SKILL.md'
+        if _read_frontmatter_value(skill_file, 'name') == legacy_name:
+            _delete_path(context, legacy_dir)
+
+
 def _referenced_skill_path(target_root: Path, agent_path: Path) -> Path | None:
     body = _strip_frontmatter(agent_path.read_text(encoding='utf-8'))
     match = re.fullmatch(r'Apply @(?P<path>\.agents/skills/[A-Za-z0-9_.-]+/SKILL\.md)', body)
@@ -693,11 +783,12 @@ def sync_public_assets(
             raise SyncError('Each public skill requires name')
         _mirror_dir(
             context,
-            context.source_root / '.agents' / 'skills' / name,
+            _public_skill_source(context, name),
             context.target_root / '.agents' / 'skills' / name,
             ignore_patterns,
             mirror_delete,
         )
+        _delete_legacy_public_skill_dirs(context, skill, mirror_delete)
     for agent in _require_items(public_config, 'agent_prompts'):
         name = agent.get('name')
         if not isinstance(name, str) or not name:

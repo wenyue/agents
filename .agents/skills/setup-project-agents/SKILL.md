@@ -1,16 +1,17 @@
 ---
-name: update-project-rules
+name: setup-project-agents
 description: >-
-  Update repository agent rule sources and their platform wrappers. Use when Codex must sync
-  shared/base rules with a reference project, refresh project-owned rules from current repository
-  facts, update AGENTS.md, align Cursor/Claude/GitHub/Codex rule or agent wrappers, or reconcile
-  MCP/runtime config that follows the shared agent configuration structure.
+  Set up or sync repository agent assets from the wenyue/agents public catalog. Use when Codex must
+  initialize .agents rules, public skills, shared subagents, AGENTS.md, and thin
+  Cursor/Claude/GitHub/Codex wrappers; refresh project-owned rules or project skills from current
+  repository facts; or reconcile MCP/runtime config that follows the shared agent configuration
+  structure.
 ---
 
-# Update Project Rules
+# Setup Project Agents
 
-Update rule and skill sources first. Then align every entry file, wrapper, and runtime config that
-follows from those sources.
+Set up or sync public agent assets first. Then align every entry file, wrapper, and runtime config
+that follows from those sources.
 
 ## Core Rules
 
@@ -19,6 +20,9 @@ follows from those sources.
 - Local project rules and local project skills are generated from their public placeholders, then
   completed from target repository evidence.
 - Run `scripts/sync_public_agent_assets.py` before manually editing project-owned assets.
+- The sync script should work without the user attaching `wenyue/agents`: use `--source <path>` for
+  a local checkout, otherwise let the script fetch the configured GitHub archive and copy only the
+  manifest-listed public assets.
 - Change public rules, public skills, or placeholder contracts in `wenyue/agents` first, then sync
   target repositories.
 - Treat `.agents/rules/<nn>-<name>.md` as the source of truth for project rules.
@@ -29,8 +33,8 @@ follows from those sources.
 
 1. Read `AGENTS.md`, then all applicable `00-*` through `09-*` rules.
 2. Run the public sync script:
-   `python3 .agents/skills/update-project-rules/scripts/sync_public_agent_assets.py`.
-   Use `--source <path>` when `../agents` is not the correct source.
+   `python3 .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py`.
+   Use `--source <path>` only when testing local `wenyue/agents` changes or a fork.
 3. Review the script report for created, updated, deleted, and unchanged files.
 4. Complete or refresh local project rules from current repository evidence, following each
    placeholder rule's contract.
@@ -73,13 +77,13 @@ skill. For example:
 For public-source edits in `wenyue/agents`, run:
 
 ```bash
-python3 .agents/skills/update-project-rules/scripts/test_sync_public_agent_assets.py
+python3 .agents/skills/setup-project-agents/scripts/test_sync_public_agent_assets.py
 ```
 
 For target repository updates after syncing public assets, run:
 
 ```bash
-python3 .agents/skills/update-project-rules/scripts/sync_public_agent_assets.py --check
+python3 .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py --check
 ```
 
 ## Output

@@ -3,29 +3,27 @@
 Shared agent configuration for projects that use `.agents/` rules, skills, and subagents.
 
 This repository provides public rules, reusable skills, reusable subagents, an `AGENTS.md` entry
-template, and the `update-project-rules` sync workflow.
+template, and the `setup-project-agents` sync workflow.
 
 ## New Project Setup
 
-Run these steps from the target project root.
-
-1. Provide `wenyue/agents` as repository reference or attached workspace context. The coding agent
-   only needs read access to the public source files.
-2. Ask the coding agent to use:
+From the target project root, ask the coding agent to use:
 
 ```text
-wenyue/agents/.agents/skills/update-project-rules/SKILL.md
+wenyue/agents/.agents/skills/setup-project-agents/SKILL.md
 ```
 
-The workflow syncs public assets, creates or refreshes local project rules and local project
-skills, then regenerates thin platform wrappers and `AGENTS.md`. Detailed generation requirements
-live in the relevant placeholders, such as `.agents/rules/20-project-tools.md` and
+The workflow fetches the public source archive when no local `wenyue/agents` checkout is supplied,
+syncs only manifest-listed public assets, creates or refreshes local project rules and local
+project skills, then regenerates thin platform wrappers and `AGENTS.md`. Detailed generation
+requirements live in the relevant placeholders, such as `.agents/rules/20-project-tools.md` and
 `.agents/skills/project-development-workflow/SKILL.md`.
 
 ## Updating Existing Projects
 
-Provide the latest `wenyue/agents` source to the coding agent, then run `update-project-rules` so
-public sources, local project assets, wrappers, and `AGENTS.md` stay aligned.
+Run `setup-project-agents` so public sources, local project assets, wrappers, and `AGENTS.md` stay
+aligned. Use the workflow's `--source <path>` option only when testing local `wenyue/agents`
+changes or a fork.
 
 ## Third-Party Skills
 
@@ -38,7 +36,7 @@ skillshare sync -p
 ```
 
 Do not use skillshare to install or sync the public rules, skills, or subagents from
-`wenyue/agents`. `update-project-rules` owns that copy step.
+`wenyue/agents`. `setup-project-agents` owns that copy step.
 
 ## Boundaries
 

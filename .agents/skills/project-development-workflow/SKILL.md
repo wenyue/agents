@@ -10,7 +10,7 @@ file as the final workflow inside a target repository.
 
 ## Generation Contract
 
-During setup, `update-project-rules` creates the target repository's
+During setup, `setup-project-agents` creates the target repository's
 `.agents/skills/project-development-workflow/SKILL.md` when it is missing. The generated target
 skill starts as `Status: Unverified` and must stay unverified until a real workflow test proves it.
 

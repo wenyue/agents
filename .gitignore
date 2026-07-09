@@ -5,6 +5,8 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+__pycache__/
+*.pyc
 
 # Local skillshare scratch data for third-party skills.
 .skillshare/logs/
