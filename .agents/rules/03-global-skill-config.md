@@ -4,6 +4,17 @@ Strength: `Mandatory`
 
 Scope: Project overrides for workflow tools, worktrees, git, and prose outputs.
 
+## Subagent Delegation
+
+- The user authorizes Codex to spawn subagents when a task clearly benefits from bounded parallel
+  delegation. This does not require repeating the authorization for each individual task.
+- Keep delegated work concrete and self-contained. Assign disjoint ownership for code-editing
+  subtasks so parallel agents do not overlap write scopes.
+- Do not delegate the immediate blocking task when the main agent should handle it directly to keep
+  the critical path moving.
+- Report subagent usage in the final response, including the delegated purpose and whether any
+  delegated changes were integrated.
+
 ## Git And Worktree
 
 - Assume `master` is the working branch — do not switch branches or ask to confirm the branch

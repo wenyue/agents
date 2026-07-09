@@ -22,9 +22,8 @@ repository evidence before regenerating entry files and wrappers.
 - Run `scripts/sync_public_agent_assets.py` before manually editing project-owned assets.
 - The sync script is limited to public assets, thin wrappers, entry files, and legacy cleanup. It
   must not generate project-local rule or workflow content from hardcoded scaffolds.
-- The sync script should work without the user attaching `wenyue/agents`: use `--source <path>` for
-  a local checkout, otherwise let the script fetch the configured GitHub archive and copy only the
-  manifest-listed public assets.
+- The sync script always fetches the configured public GitHub archive. Do not use local source
+  checkouts, source caches, or stale public asset snapshots.
 - Change public rules, public skills, or placeholder contracts in `wenyue/agents` first, then sync
   target repositories.
 - Treat `.agents/rules/<nn>-<name>.md` as the source of truth for project rules.
@@ -39,7 +38,6 @@ repository evidence before regenerating entry files and wrappers.
 1. Read `AGENTS.md`, then all applicable `00-*` through `09-*` rules.
 2. Run the public sync script:
    `python3 .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py`.
-   Use `--source <path>` only when testing local `wenyue/agents` changes or a fork.
 3. Review the script report for created, updated, deleted, and unchanged files.
 4. Dispatch a subagent to refresh local project rules from current repository evidence and the
    generator contracts, including `.agents/rules/20-project-tools.md`,

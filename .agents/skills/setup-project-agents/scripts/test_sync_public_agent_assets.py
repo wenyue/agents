@@ -22,11 +22,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_load_json_returns_object(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / 'config.json'
-            path.write_text('{"source_default": "../agents"}\n', encoding='utf-8')
+            path.write_text('{"source_repo": "https://example.invalid/repo"}\n', encoding='utf-8')
 
             result = sync.load_json(path)
 
-        self.assertEqual(result, {'source_default': '../agents'})
+        self.assertEqual(result, {'source_repo': 'https://example.invalid/repo'})
 
     def test_load_json_rejects_non_object(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -38,48 +38,52 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertIn('must contain a JSON object', str(error.exception))
 
-    def test_resolve_source_uses_argument(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            source = root / 'custom_source'
-            source.mkdir()
+    def test_parser_rejects_local_source_argument(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            sync.build_parser().parse_args(['--source', 'local-agents'])
 
-            result = sync.resolve_source(root / 'target', str(source), {'source_default': '../agents'})
-
-        self.assertEqual(result, source.resolve())
-
-    def test_resolve_source_uses_config_default(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            target = root / 'target'
-            source = root / 'agents'
-            target.mkdir()
-            source.mkdir()
-
-            result = sync.resolve_source(target, None, {'source_default': '../agents'})
-
-        self.assertEqual(result, source.resolve())
-
-    def test_resolve_source_fetches_archive_when_default_source_is_missing(self):
+    def test_resolve_source_ignores_local_default_and_fetches_archive(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
             target.mkdir()
+            local_source = root / 'agents'
+            (local_source / '.agents' / 'rules').mkdir(parents=True)
+            (local_source / '.agents' / 'rules' / '10-base-code.md').write_text('local\n', encoding='utf-8')
             archive = root / 'agents.zip'
             with zipfile.ZipFile(archive, 'w') as package:
-                package.writestr('agents-master/.agents/rules/10-base-code.md', 'rule\n')
+                package.writestr('agents-master/.agents/rules/10-base-code.md', 'archive\n')
             public_config = {
-                'source_default': '../agents',
                 'source_archive_url': archive.resolve().as_uri(),
-                'source_cache_dir': str(root / 'cache'),
             }
 
             try:
-                result = sync.resolve_source(target, None, public_config)
+                result = sync.resolve_source(public_config)
             except sync.SyncError as error:
-                self.fail(f'resolve_source should fetch archive when default source is missing: {error}')
+                self.fail(f'resolve_source should fetch archive: {error}')
 
-            self.assertEqual((result / '.agents' / 'rules' / '10-base-code.md').read_text(), 'rule\n')
+            self.assertEqual((result / '.agents' / 'rules' / '10-base-code.md').read_text(), 'archive\n')
+
+    def test_resolve_source_refetches_archive_every_time(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive = root / 'agents.zip'
+            public_config = {
+                'source_archive_url': archive.resolve().as_uri(),
+            }
+
+            with zipfile.ZipFile(archive, 'w') as package:
+                package.writestr('agents-master/.agents/rules/10-base-code.md', 'first\n')
+            first = sync.resolve_source(public_config)
+
+            archive.unlink()
+            with zipfile.ZipFile(archive, 'w') as package:
+                package.writestr('agents-master/.agents/rules/10-base-code.md', 'second\n')
+            second = sync.resolve_source(public_config)
+
+        self.assertNotEqual(first, second)
+        self.assertEqual((first / '.agents' / 'rules' / '10-base-code.md').read_text(), 'first\n')
+        self.assertEqual((second / '.agents' / 'rules' / '10-base-code.md').read_text(), 'second\n')
 
     def test_archive_fallback_syncs_only_manifest_whitelisted_assets(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -96,15 +100,13 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 package.writestr('agents-master/.agents/skills/unlisted/SKILL.md', 'unlisted skill\n')
                 package.writestr('agents-master/.agents/agents/rename.md', 'rename agent\n')
             public_config = {
-                'source_default': '../agents',
                 'source_archive_url': archive.resolve().as_uri(),
-                'source_cache_dir': str(root / 'cache'),
                 'mirror_delete': True,
                 'rules': [{'file': '10-base-code.md'}],
                 'skills': [{'name': 'rename'}],
                 'agent_prompts': [{'name': 'rename'}],
             }
-            source = sync.resolve_source(target, None, public_config)
+            source = sync.resolve_source(public_config)
             context = sync.SyncContext(target, source, skill_root, False, [])
 
             sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
@@ -130,7 +132,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             (source / '.agents' / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
             (source / '.agents' / 'agents' / 'rename.md').write_text('agent\n', encoding='utf-8')
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'rules': [{'file': '10-base-code.md'}],
                 'skills': [{'name': 'rename'}],
@@ -157,7 +158,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             (source / '.agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
             (target / '.agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'rules': [{'file': '10-base-code.md'}],
                 'skills': [],
@@ -183,7 +183,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             extra = target / '.agents' / 'skills' / 'rename' / 'extra.md'
             extra.write_text('local\n', encoding='utf-8')
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [{'name': 'rename'}],
@@ -208,7 +207,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             extra = target / '.agents' / 'skills' / 'rename' / 'extra.md'
             extra.write_text('local\n', encoding='utf-8')
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': False,
                 'rules': [],
                 'skills': [{'name': 'rename'}],
@@ -231,7 +229,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             skill_root.mkdir(parents=True)
             (source / '.agents' / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [{'name': 'rename'}],
@@ -260,7 +257,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 encoding='utf-8',
             )
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [{'name': 'setup-project-agents', 'legacy_names': ['update-project-rules']}],
@@ -286,7 +282,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             (source / '.agents' / 'skills').mkdir(parents=True)
             (skill_root / 'SKILL.md').write_text('running skill\n', encoding='utf-8')
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [{'name': 'setup-project-agents'}],
@@ -317,7 +312,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target_cache = target_skill / 'scripts' / '__pycache__' / 'target.cpython-310.pyc'
             target_cache.write_bytes(b'target')
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'ignore': [
                     '__pycache__',
@@ -518,7 +512,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             skill_root.mkdir(parents=True)
             (source_rules / '20-project-tools.md').write_text('project tools placeholder\n', encoding='utf-8')
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [],
@@ -550,7 +543,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 encoding='utf-8',
             )
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [],
@@ -635,6 +627,16 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('.agents/skills/project-development-workflow/SKILL.md', content)
         self.assertIn('blocker', content)
 
+    def test_setup_project_agents_uses_public_archive_without_local_source_or_cache(self):
+        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+
+        self.assertIn('always fetches the configured public GitHub archive', content)
+        self.assertNotIn('`--source', content)
+        self.assertIn('source_repo', public_config)
+        self.assertNotIn('source_default', public_config)
+        self.assertNotIn('source_cache_dir', public_config)
+
     def test_sync_preserves_target_specific_project_development_workflow(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -659,7 +661,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             )
             (target_skill / 'SKILL.md').write_text(existing, encoding='utf-8')
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [],
@@ -746,7 +747,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 encoding='utf-8',
             )
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [],
@@ -818,7 +818,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             skill_root.mkdir(parents=True)
             (source / '.agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
             public_config = {
-                'source_default': '../agents',
                 'mirror_delete': True,
                 'rules': [{'file': '10-base-code.md'}],
                 'skills': [],
@@ -841,9 +840,23 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target.mkdir()
             previous_cwd = Path.cwd()
             stdout = io.StringIO()
+            public_config = {
+                'mirror_delete': True,
+                'rules': [{'file': '00-global-rule-config.md'}],
+                'skills': [],
+                'agent_prompts': [],
+            }
             try:
                 os.chdir(target)
-                with contextlib.redirect_stdout(stdout):
+                with mock.patch.object(
+                    sync,
+                    'load_json',
+                    return_value=public_config,
+                ), mock.patch.object(
+                    sync,
+                    'resolve_source',
+                    return_value=source,
+                ), contextlib.redirect_stdout(stdout):
                     exit_code = sync.main(['--check'])
             finally:
                 os.chdir(previous_cwd)
@@ -853,7 +866,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_main_check_returns_zero_for_unchanged_only_changes(self):
         stdout = io.StringIO()
         public_config = {
-            'source_default': '../agents',
             'mirror_delete': True,
             'rules': [],
             'skills': [],
@@ -889,7 +901,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_main_check_returns_one_for_drift_changes(self):
         stdout = io.StringIO()
         public_config = {
-            'source_default': '../agents',
             'mirror_delete': True,
             'rules': [],
             'skills': [],

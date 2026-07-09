@@ -1,5 +1,4 @@
 {
-  "source_default": "../agents",
   "source_repo": "https://github.com/wenyue/agents",
   "source_ref": "master",
   "mirror_delete": true,

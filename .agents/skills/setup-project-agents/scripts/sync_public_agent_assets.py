@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
-import hashlib
 import json
 import re
 import shutil
@@ -50,35 +49,17 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def _configured_source_path(target_root: Path, source_arg: str | None, public_config: dict[str, Any]) -> Path:
-    raw_source = source_arg or public_config.get('source_default')
-    if not isinstance(raw_source, str) or not raw_source:
-        raise SyncError('public_assets.json requires a non-empty source_default or --source')
-    source = Path(raw_source)
-    if not source.is_absolute():
-        source = target_root / source
-    return source.resolve()
-
-
 def _source_archive_url(public_config: dict[str, Any]) -> str:
     configured_url = public_config.get('source_archive_url')
     if isinstance(configured_url, str) and configured_url:
         return configured_url
     repo = public_config.get('source_repo')
     if not isinstance(repo, str) or not repo:
-        raise SyncError('Source repository does not exist and public_assets.json has no source_repo')
+        raise SyncError('public_assets.json requires source_repo or source_archive_url')
     ref = public_config.get('source_ref')
     if not isinstance(ref, str) or not ref:
         ref = _DEFAULT_SOURCE_REF
     return f'{repo.rstrip("/")}/archive/refs/heads/{ref}.zip'
-
-
-def _source_cache_dir(public_config: dict[str, Any], archive_url: str) -> Path:
-    configured_dir = public_config.get('source_cache_dir')
-    if isinstance(configured_dir, str) and configured_dir:
-        return Path(configured_dir).expanduser().resolve()
-    digest = hashlib.sha256(archive_url.encode('utf-8')).hexdigest()[:16]
-    return Path(tempfile.gettempdir()) / 'setup-project-agents' / digest
 
 
 def _find_archive_repo_root(extract_root: Path) -> Path:
@@ -95,15 +76,10 @@ def _find_archive_repo_root(extract_root: Path) -> Path:
 
 def _fetch_archive_source(public_config: dict[str, Any]) -> Path:
     archive_url = _source_archive_url(public_config)
-    cache_dir = _source_cache_dir(public_config, archive_url)
-    source_root = cache_dir / 'source'
-    if (source_root / '.agents').is_dir():
-        return source_root
-    archive_path = cache_dir / 'source.zip'
-    extract_root = cache_dir / 'extract'
-    if cache_dir.exists():
-        shutil.rmtree(cache_dir)
-    cache_dir.mkdir(parents=True)
+    source_dir = Path(tempfile.mkdtemp(prefix='setup-project-agents-'))
+    source_root = source_dir / 'source'
+    archive_path = source_dir / 'source.zip'
+    extract_root = source_dir / 'extract'
     try:
         urllib.request.urlretrieve(archive_url, archive_path)
         with zipfile.ZipFile(archive_path) as archive:
@@ -111,20 +87,18 @@ def _fetch_archive_source(public_config: dict[str, Any]) -> Path:
         extracted_source = _find_archive_repo_root(extract_root)
         shutil.move(str(extracted_source), source_root)
     except OSError as error:
+        shutil.rmtree(source_dir, ignore_errors=True)
         raise SyncError(f'Failed to fetch source archive {archive_url}: {error}') from error
     except zipfile.BadZipFile as error:
+        shutil.rmtree(source_dir, ignore_errors=True)
         raise SyncError(f'Source archive is not a valid zip file: {archive_url}') from error
     if not (source_root / '.agents').is_dir():
+        shutil.rmtree(source_dir, ignore_errors=True)
         raise SyncError(f'Downloaded source archive is missing .agents: {archive_url}')
     return source_root
 
 
-def resolve_source(target_root: Path, source_arg: str | None, public_config: dict[str, Any]) -> Path:
-    source = _configured_source_path(target_root, source_arg, public_config)
-    if source.exists():
-        return source
-    if source_arg:
-        raise SyncError(f'Source repository does not exist: {source}')
+def resolve_source(public_config: dict[str, Any]) -> Path:
     return _fetch_archive_source(public_config)
 
 
@@ -727,7 +701,6 @@ def sync_public_assets(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Sync public agent assets from wenyue/agents.')
-    parser.add_argument('--source', help='Path to the public source repository.')
     parser.add_argument('--check', action='store_true', help='Report drift without writing files.')
     return parser
 
@@ -740,7 +713,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         public_config = load_json(skill_root / 'references' / 'public_assets.json')
         local_config = discover_local_assets(target_root, public_config)
-        source_root = resolve_source(target_root, args.source, public_config)
+        source_root = resolve_source(public_config)
         context = SyncContext(
             target_root=target_root,
             source_root=source_root,
