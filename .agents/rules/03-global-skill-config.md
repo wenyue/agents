@@ -8,13 +8,18 @@ Scope: Project overrides for workflow tools, worktrees, git, and prose outputs.
 
 - Assume `master` is the working branch — do not switch branches or ask to confirm the branch
   unless the user requests it.
-- Always operate in the current workspace. Do not create or switch into git worktrees.
-- Do not automatically call `git` tools or commands. Use `git` only when the user explicitly asks
-  for a git operation or asks to inspect git state.
-- Never create git commits unless the user explicitly asks. This applies even when an invoked skill
-  embeds `git commit` steps in its plans or prompts: skip those steps, do not pass them to
-  subagents, and do not generate them when writing new plans. If commits are ever needed, ask the
-  user first.
+- Default to the current workspace for small, direct edits.
+- Use an isolated git worktree when the user requests worktree-based development, when a workflow
+  skill such as `project-development-workflow` requires it, or when isolation is needed to protect
+  unrelated local changes.
+- Inside a dedicated workflow worktree, all git operations needed by the workflow are allowed,
+  including status, diff, branch creation, commits, rebases, merges, and cleanup.
+- Keep the original workspace available for final verification and merge-back. Do not overwrite
+  unrelated local changes in the original workspace.
+- Outside a dedicated workflow worktree, do not create commits or push unless the user explicitly
+  asks for that git operation.
+- When a generated workflow documents automatic merge-back, it may create the single merge-back
+  commit or PR described by that workflow without asking for a second confirmation.
 
 ## Prose Output
 
