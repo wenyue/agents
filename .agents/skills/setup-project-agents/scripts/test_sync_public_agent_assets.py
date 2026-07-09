@@ -567,6 +567,24 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 changes,
             )
 
+    def test_project_development_workflow_contract_stays_worktree_only(self):
+        workflow = (
+            REPO_ROOT
+            / '.agents'
+            / 'skills'
+            / 'project-development-workflow'
+            / 'SKILL.md'
+        )
+        content = workflow.read_text(encoding='utf-8')
+
+        self.assertIn('worktree-based', content)
+        self.assertIn('Superpowers', content)
+        self.assertIn('must not set up or sync agent configuration', content)
+        self.assertNotIn(
+            'How required agent instruction paths are made available in that worktree.',
+            content,
+        )
+
     def test_sync_preserves_target_specific_project_development_workflow(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

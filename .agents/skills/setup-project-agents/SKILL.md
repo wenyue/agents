@@ -65,6 +65,8 @@ Use concrete target-repository evidence when refreshing local assets:
   locations, and dependency enforcement.
 - Workflow facts: the current tooling rule, real bootstrap and verification commands, worktree
   handling, review checkpoints, merge-back behavior, and any unverified steps or blockers.
+- `project-development-workflow` is a worktree execution prompt for Superpowers-style development.
+  Do not include agent configuration setup as part of the ordinary development workflow.
 
 Do not persist intermediate diagnostic state, template versions, or refresh reports. Temporary
 notes are only for deciding the final edits and final user-facing output.
