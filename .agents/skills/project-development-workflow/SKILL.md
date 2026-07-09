@@ -18,8 +18,8 @@ Generate the target repository skill at `.agents/skills/project-development-work
 The generated skill must describe:
 
 - How to create or enter an isolated development worktree.
-- How to copy ignored local agent assets that the worktree needs, such as `AGENTS.md`, `.agents/`,
-  `.codex/`, `.cursor/`, `.claude/`, and `.github/instructions/` when those paths are local-only.
+- How to detect whether required agent instruction paths are tracked, ignored, generated, or
+  absent in the worktree, and how to make only the missing required paths available there.
 - How to bootstrap the project environment from concrete repository evidence.
 - Which verification commands to run inside the worktree and after merge-back.
 - Which git operations are allowed in the worktree, and which operations remain forbidden.
@@ -36,8 +36,9 @@ Generate these scripts when the target repository has enough evidence for them:
 
 - `bootstrap_worktree.sh`: install dependencies, generate required sources, and prepare the
   worktree for linting/tests.
-- `copy_agent_assets.sh`: copy local-only agent instructions into the worktree when those assets are
-  ignored or absent from git.
+- `copy_agent_assets.sh`: when needed, copy only required agent instruction paths that are
+  local-only, ignored, or absent from the worktree. If the required paths are already tracked and
+  present, the generated workflow should skip this script or make it a no-op.
 - `merge_back_workspace.sh`: integrate the completed worktree result back into the original
   workspace while refusing to overwrite unrelated local changes.
 
@@ -52,8 +53,8 @@ test. Simulation or static inspection is insufficient.
 Acceptance must include:
 
 1. Create a real git worktree from the target repository.
-2. Copy the generated `project-development-workflow` skill and any required local agent assets into
-   that worktree.
+2. Ensure the worktree can read the generated `project-development-workflow` skill and any required
+   agent instructions. Copy assets only when they are required and missing from the worktree.
 3. Run the generated worktree bootstrap script to completion.
 4. Run the generated worktree verification commands that are expected to pass in a clean prepared
    worktree.
