@@ -5,25 +5,45 @@ description: Use when defining, generating, or validating a target repository's 
 
 # Project Development Workflow
 
-This public skill is a local project skill placeholder and generation contract. Do not use this
-file as the final workflow inside a target repository.
+This public skill is a local project skill placeholder and generator contract. Do not use this file
+as the final workflow inside a target repository.
 
 ## Generation Contract
 
-During setup, `setup-project-agents` refreshes the target repository's
-`.agents/skills/project-development-workflow/SKILL.md` from current repository evidence every time
-it runs. The generated target skill must not persist template versions, refresh reports, or status
-fields that only describe one agent run.
+During setup, `setup-project-agents` uses this generator contract to refresh the target
+repository's `.agents/skills/project-development-workflow/SKILL.md` from current repository
+evidence every time it runs.
 
-The generated target skill is the repository-specific prompt for Superpowers-style isolated
-development work. It consumes tooling facts from `.agents/rules/20-project-tools.md` and turns them
-into a worktree-based execution workflow.
+The generated target skill is the repository-specific prompt for worktree-based development. It
+must consume tooling facts from `.agents/rules/20-project-tools.md` and turn them into an
+actionable execution workflow.
 
-The generated target skill must not set up or sync agent configuration. Agent asset synchronization
-belongs to `setup-project-agents` before the local refresh step; ordinary development workflow
-assumes tracked project instructions already exist in the repository checkout.
+The generated target skill must not persist template versions, refresh reports, or status fields
+that only describe one agent run. It must not set up or sync agent configuration; public asset sync
+belongs to `setup-project-agents` before the local refresh step.
 
-The generated target skill must describe:
+## What Belongs Here
+
+- Instructions for generating a target repository's local
+  `.agents/skills/project-development-workflow/SKILL.md`.
+- The required workflow topics that the generated target skill must cover.
+- The evidence sources that the generator must use, especially `.agents/rules/20-project-tools.md`.
+- Acceptance expectations for validating the generated target workflow.
+- Boundaries between agent configuration setup and ordinary development workflow execution.
+
+## What Does Not Belong Here
+
+- Concrete commands, ports, dependencies, or project-specific workflow facts from one target
+  repository.
+- A target repository's final development workflow.
+- Agent asset sync, wrapper generation, or public catalog update steps.
+- One-run refresh reports, template versions, timestamps, or status fields.
+- Helper scripts unless target repository evidence proves they are necessary for a repeatable
+  worktree operation.
+
+## Suggested Generated Content
+
+The generated target skill should describe:
 
 - When to use the current workspace and when to use an isolated worktree.
 - How to create or enter an isolated development worktree.
@@ -34,33 +54,17 @@ The generated target skill must describe:
 - Which git operations are allowed in the worktree and which remain forbidden.
 - How to merge back without overwriting unrelated original-workspace changes.
 
-Only create helper scripts when target repository evidence proves they are necessary for a
-repeatable worktree operation. Do not create scripts for agent configuration setup.
-
-## Acceptance
+## Verification Expectations
 
 The generated target skill is not accepted until it passes a real end-to-end workflow test.
-Simulation or static inspection is insufficient.
+Simulation or static inspection is insufficient. The test must create a real git worktree, run the
+generated workflow by starting from that worktree, invoke the generated skill, run the documented
+bootstrap and verification commands, make a harmless tracked change, exercise the merge-back path,
+and run authoritative verification in the original workspace.
 
-Acceptance must include:
+If invoking the generated skill exposes missing steps, stale commands, unclear checkpoints, or
+unsafe merge-back behavior, update the generated target skill and repeat the real worktree test
+until the generated workflow succeeds.
 
-1. Create a real git worktree from the target repository.
-2. Read the generated workflow skill and applicable project instructions from the worktree checkout.
-3. Run the documented bootstrap flow to completion.
-4. Run the documented verification commands expected to pass in a prepared worktree.
-5. Make a harmless test change and exercise the merge-back path.
-6. After merge-back, run authoritative verification in the original workspace.
-7. Confirm the original workspace remains usable after the full flow.
-
-If any acceptance step is blocked by missing dependencies, credentials, services, or generated
+If any verification step is blocked by missing dependencies, credentials, services, or generated
 assets, report the exact blocker in the final output for that run.
-
-## Update Rules
-
-When refreshing the target skill:
-
-- Use current repository evidence, not this placeholder's examples, for concrete commands.
-- Keep the workflow consistent with `.agents/rules/20-project-tools.md`.
-- Preserve target-specific facts unless repository evidence proves they are stale.
-- Regenerate scripts and references together with `SKILL.md`; do not leave mixed-version workflow
-  assets.

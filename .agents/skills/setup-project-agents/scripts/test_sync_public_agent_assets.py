@@ -567,7 +567,25 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 changes,
             )
 
-    def test_project_development_workflow_contract_stays_worktree_only(self):
+    def test_project_rules_use_generator_contract_style(self):
+        for filename in [
+            '20-project-tools.md',
+            '21-project-rules.md',
+            '22-project-structure.md',
+        ]:
+            with self.subTest(filename=filename):
+                content = (REPO_ROOT / '.agents' / 'rules' / filename).read_text(encoding='utf-8')
+
+                self.assertIn('\nStrength: `', content)
+                self.assertIn('\nScope: ', content)
+                self.assertIn('## Generation Contract', content)
+                self.assertIn('## What Belongs Here', content)
+                self.assertIn('## What Does Not Belong Here', content)
+                self.assertIn('## Suggested Generated Content', content)
+                self.assertNotIn('## Placeholder', content)
+                self.assertNotIn('## Suggested Content', content)
+
+    def test_project_development_workflow_is_generator_contract(self):
         workflow = (
             REPO_ROOT
             / '.agents'
@@ -577,13 +595,45 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         )
         content = workflow.read_text(encoding='utf-8')
 
-        self.assertIn('worktree-based', content)
-        self.assertIn('Superpowers', content)
-        self.assertIn('must not set up or sync agent configuration', content)
-        self.assertNotIn(
-            'How required agent instruction paths are made available in that worktree.',
-            content,
+        self.assertTrue(
+            content.startswith(
+                '---\n'
+                'name: project-development-workflow\n'
+                'description: Use when defining, generating, or validating a target repository'
+            )
         )
+        self.assertIn('## Generation Contract', content)
+        self.assertIn('## What Belongs Here', content)
+        self.assertIn('## What Does Not Belong Here', content)
+        self.assertIn('## Suggested Generated Content', content)
+        self.assertIn('generator contract', content)
+        self.assertIn('.agents/rules/20-project-tools.md', content)
+        self.assertIn('create a real git worktree', content)
+        self.assertIn('invoke the generated skill', content)
+        self.assertIn('until the generated workflow succeeds', content)
+        self.assertNotIn('\nStrength:', content)
+        self.assertNotIn('\nScope:', content)
+        self.assertFalse(
+            (
+                REPO_ROOT
+                / '.agents'
+                / 'skills'
+                / 'project-development-workflow'
+                / 'references'
+                / 'acceptance.md'
+            ).exists()
+        )
+
+    def test_setup_project_agents_requires_subagent_local_generation(self):
+        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+
+        self.assertIn('subagent', content)
+        self.assertIn('generator contracts', content)
+        self.assertIn('.agents/rules/20-project-tools.md', content)
+        self.assertIn('.agents/rules/21-project-rules.md', content)
+        self.assertIn('.agents/rules/22-project-structure.md', content)
+        self.assertIn('.agents/skills/project-development-workflow/SKILL.md', content)
+        self.assertIn('blocker', content)
 
     def test_sync_preserves_target_specific_project_development_workflow(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -35,3 +35,11 @@ worktree bootstrap, review checkpoints, and merge-back, in a local project skill
   `project-development-workflow`.
 - Project-specific facts in `wenyue/agents`; only target repositories should contain real local
   tooling facts.
+
+## Suggested Generated Content
+
+- Concrete setup, install, lint, test, build, generation, and verification commands.
+- Runtime services, ports, health checks, environment variables, and required credentials.
+- MCP and platform runtime entries that agents must preserve.
+- Generated files, regeneration owners, and files that must not be edited by hand.
+- Local project skills that execute project-specific workflows.

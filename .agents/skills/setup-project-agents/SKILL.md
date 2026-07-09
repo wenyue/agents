@@ -30,6 +30,9 @@ repository evidence before regenerating entry files and wrappers.
 - Treat `.agents/rules/<nn>-<name>.md` as the source of truth for project rules.
 - Treat `.agents/skills/<project-skill>/SKILL.md` as the source of truth for project workflows.
 - Keep wrappers thin: platform metadata plus one `Apply @...` reference.
+- After public sync, use a subagent to generate or refresh target-owned local project files from
+  the generator contracts. If no subagent capability is available, stop and report the missing
+  capability as a blocker instead of silently generating those files in the main agent.
 
 ## Workflow
 
@@ -38,13 +41,17 @@ repository evidence before regenerating entry files and wrappers.
    `python3 .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py`.
    Use `--source <path>` only when testing local `wenyue/agents` changes or a fork.
 3. Review the script report for created, updated, deleted, and unchanged files.
-4. Refresh local project rules from current repository evidence every time, including
-   `.agents/rules/20-project-tools.md`, `.agents/rules/21-project-rules.md`,
-   `.agents/rules/22-project-structure.md`, and any project-owned module or domain rules.
-5. Refresh local project skills from the same evidence every time, including
-   `.agents/skills/project-development-workflow/SKILL.md` and any project-owned workflow skills.
-6. Run the public sync script again so wrappers and entry files reflect the refreshed sources.
-7. Run validation and report only final changed files, preserved files, refresh work, and
+4. Dispatch a subagent to refresh local project rules from current repository evidence and the
+   generator contracts, including `.agents/rules/20-project-tools.md`,
+   `.agents/rules/21-project-rules.md`, `.agents/rules/22-project-structure.md`, and any
+   project-owned module or domain rules.
+5. Have the same subagent refresh local project skills from the same evidence and generator
+   contracts, including `.agents/skills/project-development-workflow/SKILL.md` and any
+   project-owned workflow skills.
+6. Review the subagent output before applying it. The subagent must return candidate file contents
+   or precise patch ranges; the main agent applies only reviewed local project files.
+7. Run the public sync script again so wrappers and entry files reflect the refreshed sources.
+8. Run validation and report only final changed files, preserved files, refresh work, and
    verification results.
 
 ## Skill Resources
@@ -55,21 +62,22 @@ repository evidence before regenerating entry files and wrappers.
 
 ## Local Refresh Evidence
 
-Use concrete target-repository evidence when refreshing local assets:
+Base every local refresh on evidence from the target repository, not on placeholder text or prior
+run notes. Collect evidence by the kind of local asset it will generate:
 
-- Tooling and runtime facts: MCP configs, shell scripts, package manifests, watcher configuration,
-  test and generation commands, runtime ports, and project skill handoffs.
-- Project conventions: language and framework usage, localization paths, route APIs,
-  generated-file ownership, lint behavior, persistence models, and public project APIs.
-- Structure facts: actual directories, module boundaries, analysis options, plugins, tests, shared
-  locations, and dependency enforcement.
-- Workflow facts: the current tooling rule, real bootstrap and verification commands, worktree
-  handling, review checkpoints, merge-back behavior, and any unverified steps or blockers.
-- `project-development-workflow` is a worktree execution prompt for Superpowers-style development.
-  Do not include agent configuration setup as part of the ordinary development workflow.
+- Tooling evidence: package manifests, scripts, runtime services, ports, MCP config, generated
+  assets, CI workflows, and verification commands.
+- Project behavior evidence: APIs, routes, schemas, generated-file ownership, lint behavior,
+  persistence models, lifecycle rules, and domain terminology.
+- Structure evidence: real directories, module owners, package boundaries, shared locations,
+  dependency direction, and enforcement tools.
+- Workflow evidence: bootstrap steps, worktree handling, review checkpoints, merge-back behavior,
+  post-merge verification, and known blockers.
 
-Do not persist intermediate diagnostic state, template versions, or refresh reports. Temporary
-notes are only for deciding the final edits and final user-facing output.
+Keep generated content in the asset that owns it: stable facts in project rules, executable
+development procedures in local project skills, and public asset synchronization only in this setup
+skill. Do not persist intermediate diagnostic state, template versions, refresh reports, or
+one-run status fields.
 
 ## Wrapper Maps
 
