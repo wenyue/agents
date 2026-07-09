@@ -35,12 +35,6 @@ class SyncContext:
 
 
 _TEMPLATE_PATTERN = re.compile(r'{{\s*([a-zA-Z0-9_.]+)\s*}}')
-_PROJECT_RULE_PLACEHOLDERS = (
-    '20-project-tools.md',
-    '21-project-rules.md',
-    '22-project-structure.md',
-)
-_PROJECT_WORKFLOW_SKILL = 'project-development-workflow'
 _DEFAULT_SOURCE_REF = 'master'
 
 
@@ -608,82 +602,6 @@ def _merge_local_assets(primary: dict[str, Any], secondary: dict[str, Any]) -> d
     }
 
 
-def _sync_project_rule_placeholders(context: SyncContext) -> None:
-    for filename in _PROJECT_RULE_PLACEHOLDERS:
-        source = context.source_root / '.agents' / 'rules' / filename
-        target = context.target_root / '.agents' / 'rules' / filename
-        if not source.is_file() or target.exists():
-            continue
-        _copy_file(context, source, target)
-
-
-def _is_generated_project_workflow_scaffold(path: Path) -> bool:
-    if not path.is_file():
-        return False
-    text = path.read_text(encoding='utf-8')
-    return 'generated from the public project-development-workflow contract' in text
-
-
-def _project_workflow_scaffold() -> str:
-    return '''---
-name: project-development-workflow
-description: Use when executing this repository's generated project development workflow.
----
-
-# Project Development Workflow
-
-Status: Unverified
-
-This target-local scaffold was generated from the public project-development-workflow contract in
-`wenyue/agents`. It is not accepted until an agent replaces the placeholders below with concrete
-repository evidence and validates the flow end to end.
-
-## Evidence To Read First
-
-- `.agents/rules/20-project-tools.md`
-- package manifests, CI config, build scripts, generated-file config, and developer docs
-- existing agent asset paths under `.agents/`, `.cursor/`, `.claude/`, `.codex/`, and `.github/`
-
-## Required Workflow Sections
-
-- Isolated worktree creation or reuse.
-- Required agent asset availability inside the worktree.
-- Bootstrap commands for dependencies and generated files.
-- Verification commands to run inside the worktree and after merge-back.
-- Review checkpoint requirements.
-- Merge-back procedure that refuses to overwrite unrelated original-workspace changes.
-
-## Acceptance
-
-Keep `Status: Unverified` until a real workflow test creates a worktree, bootstraps it, runs the
-documented verification commands, exercises merge-back with a harmless change, and verifies the
-original workspace still works.
-'''
-
-
-def _sync_project_workflow_scaffold(context: SyncContext) -> None:
-    source = (
-        context.source_root
-        / '.agents'
-        / 'skills'
-        / _PROJECT_WORKFLOW_SKILL
-        / 'SKILL.md'
-    )
-    if not source.is_file():
-        return
-    target = (
-        context.target_root
-        / '.agents'
-        / 'skills'
-        / _PROJECT_WORKFLOW_SKILL
-        / 'SKILL.md'
-    )
-    if target.exists() and not _is_generated_project_workflow_scaffold(target):
-        _record_file(context, 'unchanged', target)
-        return
-    _write_bytes(context, target, _project_workflow_scaffold().encode('utf-8'))
-
-
 def _rule_row(rule: dict[str, Any]) -> str:
     return f"| {rule['read_when']} | `.agents/rules/{rule['file']}` | `{rule['strength']}` |"
 
@@ -798,8 +716,6 @@ def sync_public_assets(
             context.source_root / '.agents' / 'agents' / f'{name}.md',
             context.target_root / '.agents' / 'agents' / f'{name}.md',
         )
-    _sync_project_rule_placeholders(context)
-    _sync_project_workflow_scaffold(context)
     merged_local_config = _merge_local_assets(
         local_config,
         discover_local_assets(context.target_root, public_config),

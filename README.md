@@ -10,8 +10,8 @@ From the target project root, ask the coding agent to use `setup-project-agents`
 wenyue/agents/.agents/skills/setup-project-agents/SKILL.md
 ```
 
-The skill fetches this public source when needed, syncs only manifest-listed public assets, creates
-or refreshes local project placeholders, and regenerates thin wrappers.
+The skill fetches this public source when needed, syncs only manifest-listed public assets,
+refreshes local project assets from target repository evidence, and regenerates thin wrappers.
 
 ## Boundaries
 

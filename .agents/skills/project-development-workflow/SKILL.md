@@ -10,9 +10,10 @@ file as the final workflow inside a target repository.
 
 ## Generation Contract
 
-During setup, `setup-project-agents` creates the target repository's
-`.agents/skills/project-development-workflow/SKILL.md` when it is missing. The generated target
-skill starts as `Status: Unverified` and must stay unverified until a real workflow test proves it.
+During setup, `setup-project-agents` refreshes the target repository's
+`.agents/skills/project-development-workflow/SKILL.md` from current repository evidence every time
+it runs. The generated target skill must not persist template versions, refresh reports, or status
+fields that only describe one agent run.
 
 The generated target skill is the procedural counterpart to `.agents/rules/20-project-tools.md`.
 That rule records tooling facts and verification requirements; this skill turns those facts into an
@@ -48,7 +49,7 @@ Acceptance must include:
 7. Confirm the original workspace remains usable after the full flow.
 
 If any acceptance step is blocked by missing dependencies, credentials, services, or generated
-assets, report the exact blocker and keep the generated target skill marked `Status: Unverified`.
+assets, report the exact blocker in the final output for that run.
 
 ## Update Rules
 

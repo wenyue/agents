@@ -507,7 +507,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 entry,
             )
 
-    def test_sync_creates_missing_project_rule_placeholder(self):
+    def test_sync_does_not_create_missing_project_rule_placeholder(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
@@ -528,13 +528,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
             changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
 
-            self.assertIn(sync.Change('created', '.agents/rules/20-project-tools.md'), changes)
-            self.assertEqual(
-                (target / '.agents' / 'rules' / '20-project-tools.md').read_text(encoding='utf-8'),
-                'project tools placeholder\n',
-            )
+            target_rule = target / '.agents' / 'rules' / '20-project-tools.md'
+            self.assertFalse(target_rule.exists())
+            self.assertNotIn(sync.Change('created', '.agents/rules/20-project-tools.md'), changes)
 
-    def test_sync_creates_project_development_workflow_scaffold(self):
+    def test_sync_does_not_create_project_development_workflow_scaffold(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
@@ -563,11 +561,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
 
             target_skill = target / '.agents' / 'skills' / 'project-development-workflow' / 'SKILL.md'
-            content = target_skill.read_text(encoding='utf-8')
-            self.assertIn(sync.Change('created', '.agents/skills/project-development-workflow/SKILL.md'), changes)
-            self.assertIn('Status: Unverified', content)
-            self.assertIn('generated from the public project-development-workflow contract', content)
-            self.assertNotIn('This public skill is a local project skill placeholder.', content)
+            self.assertFalse(target_skill.exists())
+            self.assertNotIn(
+                sync.Change('created', '.agents/skills/project-development-workflow/SKILL.md'),
+                changes,
+            )
 
     def test_sync_preserves_target_specific_project_development_workflow(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -589,7 +587,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'name: project-development-workflow\n'
                 'description: Target workflow\n'
                 '---\n\n'
-                'Status: Verified\n\n'
                 'Target-specific workflow.\n'
             )
             (target_skill / 'SKILL.md').write_text(existing, encoding='utf-8')

@@ -10,16 +10,18 @@ description: >-
 
 # Setup Project Agents
 
-Set up or sync public agent assets first. Then align every entry file, wrapper, and runtime config
-that follows from those sources.
+Set up or sync public agent assets first. Then refresh project-local rules and skills from current
+repository evidence before regenerating entry files and wrappers.
 
 ## Core Rules
 
 - Public assets mirrored from `wenyue/agents` stay public; do not locally adapt them in target
   repositories.
-- Local project rules and local project skills are generated from their public placeholders, then
-  completed from target repository evidence.
+- Local project rules and local project skills are target-owned facts. Refresh them from current
+  target repository evidence on every invocation.
 - Run `scripts/sync_public_agent_assets.py` before manually editing project-owned assets.
+- The sync script is limited to public assets, thin wrappers, entry files, and legacy cleanup. It
+  must not generate project-local rule or workflow content from hardcoded scaffolds.
 - The sync script should work without the user attaching `wenyue/agents`: use `--source <path>` for
   a local checkout, otherwise let the script fetch the configured GitHub archive and copy only the
   manifest-listed public assets.
@@ -36,10 +38,14 @@ that follows from those sources.
    `python3 .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py`.
    Use `--source <path>` only when testing local `wenyue/agents` changes or a fork.
 3. Review the script report for created, updated, deleted, and unchanged files.
-4. Complete or refresh local project rules from current repository evidence, following each
-   placeholder rule's contract.
-5. Complete or refresh local project skills from the same evidence, following each placeholder
-   skill's contract.
+4. Refresh local project rules from current repository evidence every time, including
+   `.agents/rules/20-project-tools.md`, `.agents/rules/21-project-rules.md`,
+   `.agents/rules/22-project-structure.md`, and any project-owned module or domain rules.
+5. Refresh local project skills from the same evidence every time, including
+   `.agents/skills/project-development-workflow/SKILL.md` and any project-owned workflow skills.
+6. Run the public sync script again so wrappers and entry files reflect the refreshed sources.
+7. Run validation and report only final changed files, preserved files, refresh work, and
+   verification results.
 
 ## Skill Resources
 
@@ -47,14 +53,21 @@ that follows from those sources.
 - `references/`: JSON manifests that describe the `wenyue/agents` public base catalog.
 - `assets/templates/`: wrapper and entry-file templates copied or rendered by the sync script.
 
-## Placeholder Routing
+## Local Refresh Evidence
 
-Detailed generation requirements belong in the relevant placeholder, not in this orchestration
-skill. For example:
+Use concrete target-repository evidence when refreshing local assets:
 
-- `.agents/rules/20-project-tools.md` defines how to create and fill the local tooling rule.
-- `.agents/skills/project-development-workflow/SKILL.md` defines how to create and validate the
-  local workflow skill.
+- Tooling and runtime facts: MCP configs, shell scripts, package manifests, watcher configuration,
+  test and generation commands, runtime ports, and project skill handoffs.
+- Project conventions: language and framework usage, localization paths, route APIs,
+  generated-file ownership, lint behavior, persistence models, and public project APIs.
+- Structure facts: actual directories, module boundaries, analysis options, plugins, tests, shared
+  locations, and dependency enforcement.
+- Workflow facts: the current tooling rule, real bootstrap and verification commands, worktree
+  handling, review checkpoints, merge-back behavior, and any unverified steps or blockers.
+
+Do not persist intermediate diagnostic state, template versions, or refresh reports. Temporary
+notes are only for deciding the final edits and final user-facing output.
 
 ## Wrapper Maps
 
