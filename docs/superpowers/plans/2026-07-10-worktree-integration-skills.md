@@ -59,12 +59,7 @@ def test_sync_deletes_legacy_project_skill_without_copying_generator_contract(se
             'mirror_delete': True,
             'rules': [],
             'skills': [],
-            'project_skill_generators': [
-                {
-                    'name': 'worktree-environment-setup',
-                    'legacy_names': ['project-development-workflow'],
-                }
-            ],
+            'project_skill_generators': [{'name': 'worktree-environment-setup'}],
             'agent_prompts': [],
         }
         context = sync.SyncContext(target, source, skill_root, False, [])
@@ -177,35 +172,36 @@ public sync
 
 Require the acceptance worktree to receive byte-identical candidate skill and relevant tooling-rule content when those files are not yet committed. Do not restore or consult the legacy skill on failure.
 
-- [ ] **Step 4: Implement generator-driven legacy deletion**
+- [ ] **Step 4: Implement generator-driven retired-directory deletion**
 
 Add `project_skill_generators` to `public_assets.json`:
 
 ```json
 "project_skill_generators": [
-  {
-    "name": "worktree-environment-setup",
-    "legacy_names": ["project-development-workflow"]
-  }
+  {"name": "worktree-environment-setup"}
 ]
 ```
 
 Add this sync helper and call it from `sync_public_assets()` without mirroring the generator directory:
 
 ```python
-def _delete_legacy_project_skill_dirs(
+_RETIRED_SKILL_NAMES_BY_REPLACEMENT = {
+    'worktree-environment-setup': ('project-development-workflow',),
+}
+
+
+def _delete_retired_skill_dirs(
     context: SyncContext,
-    generators: list[dict[str, Any]],
+    replacement_name: str,
     mirror_delete: bool,
 ) -> None:
     if not mirror_delete:
         return
-    for generator in generators:
-        for legacy_name in _list_value(generator.get('legacy_names')):
-            legacy_dir = context.target_root / '.agents' / 'skills' / legacy_name
-            skill_file = legacy_dir / 'SKILL.md'
-            if _read_frontmatter_value(skill_file, 'name') == legacy_name:
-                _delete_path(context, legacy_dir)
+    for retired_name in _RETIRED_SKILL_NAMES_BY_REPLACEMENT.get(replacement_name, ()):
+        retired_dir = context.target_root / '.agents' / 'skills' / retired_name
+        skill_file = retired_dir / 'SKILL.md'
+        if _read_frontmatter_value(skill_file, 'name') == retired_name:
+            _delete_path(context, retired_dir)
 ```
 
 - [ ] **Step 5: Remove stale responsibilities from project rule contracts and README**

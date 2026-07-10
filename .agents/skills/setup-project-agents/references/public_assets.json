@@ -157,15 +157,12 @@
     {"name": "debug-mode"},
     {"name": "refactor-code"},
     {"name": "rename"},
-    {"name": "setup-project-agents", "legacy_names": ["update-project-rules"]},
+    {"name": "setup-project-agents"},
     {"name": "worktree-integrate"},
     {"name": "write-comment"}
   ],
   "project_skill_generators": [
-    {
-      "name": "worktree-environment-setup",
-      "legacy_names": ["project-development-workflow"]
-    }
+    {"name": "worktree-environment-setup"}
   ],
   "agent_prompts": [
     {

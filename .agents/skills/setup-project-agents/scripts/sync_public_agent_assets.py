@@ -35,6 +35,10 @@ class SyncContext:
 
 _TEMPLATE_PATTERN = re.compile(r'{{\s*([a-zA-Z0-9_.]+)\s*}}')
 _DEFAULT_SOURCE_REF = 'master'
+_RETIRED_SKILL_NAMES_BY_REPLACEMENT = {
+    'setup-project-agents': ('update-project-rules',),
+    'worktree-environment-setup': ('project-development-workflow',),
+}
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -429,29 +433,18 @@ def _public_skill_source(context: SyncContext, name: str) -> Path:
     return source
 
 
-def _delete_legacy_public_skill_dirs(context: SyncContext, skill: dict[str, Any], mirror_delete: bool) -> None:
-    if not mirror_delete:
-        return
-    for legacy_name in _list_value(skill.get('legacy_names')):
-        legacy_dir = context.target_root / '.agents' / 'skills' / legacy_name
-        skill_file = legacy_dir / 'SKILL.md'
-        if _read_frontmatter_value(skill_file, 'name') == legacy_name:
-            _delete_path(context, legacy_dir)
-
-
-def _delete_legacy_project_skill_dirs(
+def _delete_retired_skill_dirs(
     context: SyncContext,
-    generators: list[dict[str, Any]],
+    replacement_name: str,
     mirror_delete: bool,
 ) -> None:
     if not mirror_delete:
         return
-    for generator in generators:
-        for legacy_name in _list_value(generator.get('legacy_names')):
-            legacy_dir = context.target_root / '.agents' / 'skills' / legacy_name
-            skill_file = legacy_dir / 'SKILL.md'
-            if _read_frontmatter_value(skill_file, 'name') == legacy_name:
-                _delete_path(context, legacy_dir)
+    for retired_name in _RETIRED_SKILL_NAMES_BY_REPLACEMENT.get(replacement_name, ()):
+        retired_dir = context.target_root / '.agents' / 'skills' / retired_name
+        skill_file = retired_dir / 'SKILL.md'
+        if _read_frontmatter_value(skill_file, 'name') == retired_name:
+            _delete_path(context, retired_dir)
 
 
 def _referenced_skill_path(target_root: Path, agent_path: Path) -> Path | None:
@@ -695,12 +688,11 @@ def sync_public_assets(
             ignore_patterns,
             mirror_delete,
         )
-        _delete_legacy_public_skill_dirs(context, skill, mirror_delete)
-    _delete_legacy_project_skill_dirs(
-        context,
-        _require_items(public_config, 'project_skill_generators'),
-        mirror_delete,
-    )
+        _delete_retired_skill_dirs(context, name, mirror_delete)
+    for generator in _require_items(public_config, 'project_skill_generators'):
+        name = generator.get('name')
+        if isinstance(name, str) and name:
+            _delete_retired_skill_dirs(context, name, mirror_delete)
     for agent in _require_items(public_config, 'agent_prompts'):
         name = agent.get('name')
         if not isinstance(name, str) or not name:

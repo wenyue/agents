@@ -19,7 +19,8 @@ repository evidence.
 - Project-owned rules and skills are regenerated from current target repository evidence.
 - Run `scripts/sync_public_agent_assets.py` before changing project-owned agent assets.
 - The sync script mirrors public assets, regenerates thin wrappers and entry files, and deletes
-  declared legacy directories. It does not generate project-owned content.
+  retired skill directories associated with catalog entries. It does not generate project-owned
+  content.
 - The sync script always fetches the configured public GitHub archive. Do not use local source
   checkouts, caches, or stale snapshots.
 - Treat `.agents/rules/<nn>-<name>.md` and `.agents/skills/<project-skill>/SKILL.md` as sources of

@@ -259,7 +259,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = {
                 'mirror_delete': True,
                 'rules': [],
-                'skills': [{'name': 'setup-project-agents', 'legacy_names': ['update-project-rules']}],
+                'skills': [{'name': 'setup-project-agents'}],
                 'agent_prompts': [],
             }
             context = sync.SyncContext(target, source, skill_root, False, [])
@@ -554,12 +554,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [],
-                'project_skill_generators': [
-                    {
-                        'name': 'worktree-environment-setup',
-                        'legacy_names': ['project-development-workflow'],
-                    },
-                ],
+                'project_skill_generators': [{'name': 'worktree-environment-setup'}],
                 'agent_prompts': [],
             }
             context = sync.SyncContext(target, source, skill_root, False, [])
@@ -725,12 +720,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [],
-                'project_skill_generators': [
-                    {
-                        'name': 'worktree-environment-setup',
-                        'legacy_names': ['project-development-workflow'],
-                    },
-                ],
+                'project_skill_generators': [{'name': 'worktree-environment-setup'}],
                 'agent_prompts': [],
             }
             context = sync.SyncContext(target, source, skill_root, False, [])
