@@ -1,4 +1,0 @@
-interface:
-  display_name: "Worktree Environment Setup"
-  short_description: "Prepare a project environment in an existing worktree"
-  default_prompt: "Prepare the required project environment in this existing worktree."

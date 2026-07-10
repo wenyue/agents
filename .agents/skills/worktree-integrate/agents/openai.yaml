@@ -1,4 +1,0 @@
-interface:
-  display_name: "Worktree Integrate"
-  short_description: "Return worktree changes for review or integrate one commit"
-  default_prompt: "Integrate this completed worktree safely, using review mode unless I explicitly request commit mode."
