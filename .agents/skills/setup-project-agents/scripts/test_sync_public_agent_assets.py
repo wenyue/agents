@@ -653,6 +653,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_worktree_integrate_is_public_skill(self):
         skill_path = REPO_ROOT / '.agents' / 'skills' / 'worktree-integrate' / 'SKILL.md'
         content = skill_path.read_text(encoding='utf-8')
+        normalized_content = ' '.join(content.split())
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
         rule = (REPO_ROOT / '.agents' / 'rules' / '03-global-skill-config.md').read_text(
             encoding='utf-8'
@@ -672,6 +673,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('three-way merge', content)
         self.assertIn('downgrade to review mode', content)
         self.assertIn('Keep the task branch and worktree', content)
+        self.assertIn('confirmed task-owned uncommitted changes', normalized_content)
+        self.assertIn('Git common directory', normalized_content)
+        self.assertIn('rebase again before transfer', normalized_content)
+        self.assertIn('keep the returned working-tree result', normalized_content)
+        self.assertIn('creation ownership', normalized_content)
+        self.assertIn('platform or host', normalized_content)
         self.assertIn('git merge --ff-only', content)
         self.assertIn('superpowers:finishing-a-development-branch', content)
         self.assertIn('superpowers:using-git-worktrees', rule)
