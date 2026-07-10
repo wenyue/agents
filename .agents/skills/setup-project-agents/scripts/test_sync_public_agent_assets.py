@@ -525,37 +525,53 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             self.assertFalse(target_rule.exists())
             self.assertNotIn(sync.Change('created', '.agents/rules/20-project-tools.md'), changes)
 
-    def test_sync_does_not_create_project_development_workflow_scaffold(self):
+    def test_sync_deletes_legacy_project_skill_without_copying_generator_contract(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_skill = source / '.agents' / 'skills' / 'project-development-workflow'
+            source_skill = source / '.agents' / 'skills' / 'worktree-environment-setup'
+            legacy_skill = target / '.agents' / 'skills' / 'project-development-workflow'
             source_skill.mkdir(parents=True)
+            legacy_skill.mkdir(parents=True)
             skill_root.mkdir(parents=True)
             (source_skill / 'SKILL.md').write_text(
                 '---\n'
+                'name: worktree-environment-setup\n'
+                'description: Generator contract\n'
+                '---\n',
+                encoding='utf-8',
+            )
+            (legacy_skill / 'SKILL.md').write_text(
+                '---\n'
                 'name: project-development-workflow\n'
-                'description: Placeholder contract\n'
-                '---\n\n'
-                'This public skill is a local project skill placeholder.\n',
+                'description: Legacy\n'
+                '---\n',
                 encoding='utf-8',
             )
             public_config = {
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [],
+                'project_skill_generators': [
+                    {
+                        'name': 'worktree-environment-setup',
+                        'legacy_names': ['project-development-workflow'],
+                    },
+                ],
                 'agent_prompts': [],
             }
             context = sync.SyncContext(target, source, skill_root, False, [])
 
             changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
 
-            target_skill = target / '.agents' / 'skills' / 'project-development-workflow' / 'SKILL.md'
-            self.assertFalse(target_skill.exists())
-            self.assertNotIn(
-                sync.Change('created', '.agents/skills/project-development-workflow/SKILL.md'),
+            self.assertFalse(legacy_skill.exists())
+            self.assertFalse(
+                (target / '.agents' / 'skills' / 'worktree-environment-setup').exists()
+            )
+            self.assertIn(
+                sync.Change('deleted', '.agents/skills/project-development-workflow/SKILL.md'),
                 changes,
             )
 
@@ -577,12 +593,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 self.assertNotIn('## Placeholder', content)
                 self.assertNotIn('## Suggested Content', content)
 
-    def test_project_development_workflow_is_generator_contract(self):
+    def test_worktree_environment_setup_is_generator_contract(self):
         workflow = (
             REPO_ROOT
             / '.agents'
             / 'skills'
-            / 'project-development-workflow'
+            / 'worktree-environment-setup'
             / 'SKILL.md'
         )
         content = workflow.read_text(encoding='utf-8')
@@ -590,7 +606,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertTrue(
             content.startswith(
                 '---\n'
-                'name: project-development-workflow\n'
+                'name: worktree-environment-setup\n'
                 'description: Use when defining, generating, or validating a target repository'
             )
         )
@@ -600,21 +616,17 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('## Suggested Generated Content', content)
         self.assertIn('generator contract', content)
         self.assertIn('.agents/rules/20-project-tools.md', content)
-        self.assertIn('create a real git worktree', content)
-        self.assertIn('invoke the generated skill', content)
-        self.assertIn('until the generated workflow succeeds', content)
+        self.assertIn('already-created Git worktree', content)
+        self.assertIn('linter', content)
+        self.assertIn('formatter', content)
+        self.assertIn('generated files', content)
+        self.assertIn('real temporary worktree', content)
+        self.assertIn('ordinary use', content)
+        self.assertNotIn('merge-back', content)
+        self.assertNotIn('create or enter an isolated', content)
         self.assertNotIn('\nStrength:', content)
         self.assertNotIn('\nScope:', content)
-        self.assertFalse(
-            (
-                REPO_ROOT
-                / '.agents'
-                / 'skills'
-                / 'project-development-workflow'
-                / 'references'
-                / 'acceptance.md'
-            ).exists()
-        )
+        self.assertFalse((REPO_ROOT / '.agents' / 'skills' / 'project-development-workflow').exists())
 
     def test_setup_project_agents_requires_subagent_local_generation(self):
         content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
@@ -624,8 +636,19 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('.agents/rules/20-project-tools.md', content)
         self.assertIn('.agents/rules/21-project-rules.md', content)
         self.assertIn('.agents/rules/22-project-structure.md', content)
-        self.assertIn('.agents/skills/project-development-workflow/SKILL.md', content)
+        self.assertIn('.agents/skills/worktree-environment-setup/SKILL.md', content)
         self.assertIn('blocker', content)
+
+    def test_setup_project_agents_regenerates_environment_skill(self):
+        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+
+        self.assertIn('delete `.agents/skills/project-development-workflow/`', content)
+        self.assertIn('Do not read, copy, or migrate', content)
+        self.assertIn('current target repository evidence', content)
+        self.assertIn('real temporary worktree', content)
+        self.assertIn('byte-identical', content)
+        self.assertIn('created or materially changed', content)
+        self.assertIn('ordinary use', content)
 
     def test_setup_project_agents_uses_public_archive_without_local_source_or_cache(self):
         content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
@@ -637,33 +660,39 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertNotIn('source_default', public_config)
         self.assertNotIn('source_cache_dir', public_config)
 
-    def test_sync_preserves_target_specific_project_development_workflow(self):
+    def test_sync_preserves_target_specific_worktree_environment_setup(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_skill = source / '.agents' / 'skills' / 'project-development-workflow'
-            target_skill = target / '.agents' / 'skills' / 'project-development-workflow'
+            source_skill = source / '.agents' / 'skills' / 'worktree-environment-setup'
+            target_skill = target / '.agents' / 'skills' / 'worktree-environment-setup'
             source_skill.mkdir(parents=True)
             target_skill.mkdir(parents=True)
             skill_root.mkdir(parents=True)
             (source_skill / 'SKILL.md').write_text(
-                '---\nname: project-development-workflow\ndescription: Placeholder contract\n---\n',
+                '---\nname: worktree-environment-setup\ndescription: Generator contract\n---\n',
                 encoding='utf-8',
             )
             existing = (
                 '---\n'
-                'name: project-development-workflow\n'
-                'description: Target workflow\n'
+                'name: worktree-environment-setup\n'
+                'description: Target environment setup\n'
                 '---\n\n'
-                'Target-specific workflow.\n'
+                'Target-specific environment setup.\n'
             )
             (target_skill / 'SKILL.md').write_text(existing, encoding='utf-8')
             public_config = {
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [],
+                'project_skill_generators': [
+                    {
+                        'name': 'worktree-environment-setup',
+                        'legacy_names': ['project-development-workflow'],
+                    },
+                ],
                 'agent_prompts': [],
             }
             context = sync.SyncContext(target, source, skill_root, False, [])
@@ -671,7 +700,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
 
             self.assertEqual((target_skill / 'SKILL.md').read_text(encoding='utf-8'), existing)
-            self.assertNotIn(sync.Change('updated', '.agents/skills/project-development-workflow/SKILL.md'), changes)
+            self.assertNotIn(
+                sync.Change('updated', '.agents/skills/worktree-environment-setup/SKILL.md'),
+                changes,
+            )
 
     def test_discover_local_agent_description_from_referenced_skill(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -781,7 +813,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             REPO_ROOT
             / '.agents'
             / 'skills'
-            / 'project-development-workflow'
+            / 'worktree-environment-setup'
             / 'SKILL.md'
         ).read_text(encoding='utf-8')
 

@@ -10,88 +10,89 @@ description: >-
 
 # Setup Project Agents
 
-Set up or sync public agent assets first. Then refresh project-local rules and skills from current
-repository evidence before regenerating entry files and wrappers.
+Sync public assets, then regenerate project-owned rules and environment setup from current target
+repository evidence.
 
 ## Core Rules
 
-- Public assets mirrored from `wenyue/agents` stay public; do not locally adapt them in target
-  repositories.
-- Local project rules and local project skills are target-owned facts. Refresh them from current
-  target repository evidence on every invocation.
-- Run `scripts/sync_public_agent_assets.py` before manually editing project-owned assets.
-- The sync script is limited to public assets, thin wrappers, entry files, and legacy cleanup. It
-  must not generate project-local rule or workflow content from hardcoded scaffolds.
+- Public assets mirrored from `wenyue/agents` stay public; do not locally adapt them.
+- Project-owned rules and skills are regenerated from current target repository evidence.
+- Run `scripts/sync_public_agent_assets.py` before changing project-owned agent assets.
+- The sync script mirrors public assets, regenerates thin wrappers and entry files, and deletes
+  declared legacy directories. It does not generate project-owned content.
 - The sync script always fetches the configured public GitHub archive. Do not use local source
-  checkouts, source caches, or stale public asset snapshots.
-- Change public rules, public skills, or placeholder contracts in `wenyue/agents` first, then sync
-  target repositories.
-- Treat `.agents/rules/<nn>-<name>.md` as the source of truth for project rules.
-- Treat `.agents/skills/<project-skill>/SKILL.md` as the source of truth for project workflows.
-- Keep wrappers thin: platform metadata plus one `Apply @...` reference.
-- After public sync, use a subagent to generate or refresh target-owned local project files from
-  the generator contracts. If no subagent capability is available, stop and report the missing
-  capability as a blocker instead of silently generating those files in the main agent.
+  checkouts, caches, or stale snapshots.
+- Treat `.agents/rules/<nn>-<name>.md` and `.agents/skills/<project-skill>/SKILL.md` as sources of
+  truth in the target repository.
+- Use a subagent to generate project-owned files from generator contracts and current evidence. If
+  no subagent capability is available, report a blocker instead of generating them in the main
+  agent.
+- Review complete candidate file contents before applying them. Do not request or apply patch
+  fragments for generated project-owned assets.
 
 ## Workflow
 
 1. Read `AGENTS.md`, then all applicable `00-*` through `09-*` rules.
-2. Run the public sync script:
-   `python3 .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py`.
-3. Review the script report for created, updated, deleted, and unchanged files.
-4. Dispatch a subagent to refresh local project rules from current repository evidence and the
-   generator contracts, including `.agents/rules/20-project-tools.md`,
-   `.agents/rules/21-project-rules.md`, `.agents/rules/22-project-structure.md`, and any
-   project-owned module or domain rules.
-5. Have the same subagent refresh local project skills from the same evidence and generator
-   contracts, including `.agents/skills/project-development-workflow/SKILL.md` and any
-   project-owned workflow skills.
-6. Review the subagent output before applying it. The subagent must return candidate file contents
-   or precise patch ranges; the main agent applies only reviewed local project files.
-7. Run the public sync script again so wrappers and entry files reflect the refreshed sources.
-8. Run validation and report only final changed files, preserved files, refresh work, and
-   verification results.
+2. Run `python3 .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py`.
+3. Review created, updated, and deleted paths. The public sync must
+   delete `.agents/skills/project-development-workflow/` when present.
+4. Do not read, copy, or migrate the deleted skill. Do not restore it if later generation or
+   validation fails.
+5. Dispatch a subagent to regenerate project rules from current target repository evidence and the
+   public generator contracts, including `.agents/rules/20-project-tools.md`,
+   `.agents/rules/21-project-rules.md`, and `.agents/rules/22-project-structure.md`.
+6. Have the same subagent generate `.agents/skills/worktree-environment-setup/SKILL.md` entirely
+   from current target repository evidence. The generated skill prepares an already-created
+   worktree; it does not create, implement, verify a baseline, integrate, or clean up worktrees.
+7. Review and apply the complete candidate files.
+8. If `worktree-environment-setup` was created or materially changed, run the acceptance workflow
+   below. The ordinary use of an unchanged generated skill does not repeat acceptance.
+9. Run the public sync script again so wrappers and entry files reflect the refreshed sources.
+10. Run validation and report final changed files, deletion/regeneration work, acceptance results,
+    and blockers.
 
-## Skill Resources
+## Environment Skill Evidence
 
-- `scripts/`: executable sync and validation tools.
-- `references/`: JSON manifests that describe the `wenyue/agents` public base catalog.
-- `assets/templates/`: wrapper and entry-file templates copied or rendered by the sync script.
+Generate the environment skill from:
 
-## Local Refresh Evidence
+- `.agents/rules/20-project-tools.md`;
+- package manifests and lock files;
+- build, lint, type-check, format, test, and code-generation configuration;
+- project scripts and CI workflows;
+- generated-file ownership;
+- required local services, environment variables, credentials, data, and command working
+  directories.
 
-Base every local refresh on evidence from the target repository, not on placeholder text or prior
-run notes. Collect evidence by the kind of local asset it will generate:
+Do not infer commands from the deleted skill or from generic language conventions when the target
+repository provides a concrete command.
 
-- Tooling evidence: package manifests, scripts, runtime services, ports, MCP config, generated
-  assets, CI workflows, and verification commands.
-- Project behavior evidence: APIs, routes, schemas, generated-file ownership, lint behavior,
-  persistence models, lifecycle rules, and domain terminology.
-- Structure evidence: real directories, module owners, package boundaries, shared locations,
-  dependency direction, and enforcement tools.
-- Workflow evidence: bootstrap steps, worktree handling, review checkpoints, merge-back behavior,
-  post-merge verification, and known blockers.
+## Environment Skill Acceptance
 
-Keep generated content in the asset that owns it: stable facts in project rules, executable
-development procedures in local project skills, and public asset synchronization only in this setup
-skill. Do not persist intermediate diagnostic state, template versions, refresh reports, or
-one-run status fields.
+When the candidate was created or materially changed:
+
+1. Create a real temporary worktree outside the generated environment skill.
+2. Make the exact candidate skill and relevant tooling rules available there. When they are not
+   committed, copy byte-identical content and verify equality before invoking the candidate.
+3. Invoke the candidate from the temporary worktree.
+4. Verify dependency setup, required generated files, required services, and command working
+   directories.
+5. Functionally invoke every required linter, checker, and formatter with real project
+   configuration. A version command alone is insufficient; formatters use non-writing check or
+   dry-run modes.
+6. Confirm the candidate did not create or remove worktrees, implement business changes, create
+   commits, integrate branches, or modify agent configuration.
+7. Mark the candidate accepted only after every required check passes, then remove the acceptance
+   worktree safely.
+
+If acceptance fails, keep the new candidate marked unaccepted, report the exact failing command and
+blocker, and do not restore `project-development-workflow`.
 
 ## Wrapper Maps
 
-- Rule source `.agents/rules/<name>.md` maps to:
-  - `.cursor/rules/<name>.mdc`
-  - `.claude/rules/<name>.md`
-  - `.github/instructions/<name>.instructions.md`
-- Agent source `.agents/agents/<name>.md` maps to:
-  - `.cursor/agents/<name>.md`
-  - `.claude/agents/<name>.md`
-  - `.codex/agents/<name>.toml`
-  - `.github/agents/<name>.agent.md`
-- MCP/runtime config uses the repository's shared platform files. Preserve platform schema
-  differences and keep server intent aligned across platforms.
-- Preserve required wrapper metadata or schema fields. Thin wrappers may keep platform metadata,
-  but their reusable instruction body should be only the `Apply @...` reference.
+- Rule source `.agents/rules/<name>.md` maps to Cursor, Claude, and GitHub thin wrappers.
+- Agent source `.agents/agents/<name>.md` maps to Cursor, Claude, Codex, and GitHub thin wrappers.
+- Preserve platform metadata and schema differences; reusable wrapper bodies contain only their
+  `Apply @...` reference.
 
 ## Validation
 
@@ -109,7 +110,7 @@ python3 .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py 
 
 ## Output
 
-- List changed files, or state that no edits were required.
-- Summarize the public-sync result and any local project rule or local project skill work done
-  afterward.
-- Report validation commands and whether language build/test commands were skipped.
+- List final changed and deleted files.
+- Summarize public sync and project-owned regeneration separately.
+- Report environment-skill acceptance only when it ran.
+- Report validation commands and blockers exactly; do not describe skipped checks as passed.

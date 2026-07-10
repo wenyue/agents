@@ -439,6 +439,21 @@ def _delete_legacy_public_skill_dirs(context: SyncContext, skill: dict[str, Any]
             _delete_path(context, legacy_dir)
 
 
+def _delete_legacy_project_skill_dirs(
+    context: SyncContext,
+    generators: list[dict[str, Any]],
+    mirror_delete: bool,
+) -> None:
+    if not mirror_delete:
+        return
+    for generator in generators:
+        for legacy_name in _list_value(generator.get('legacy_names')):
+            legacy_dir = context.target_root / '.agents' / 'skills' / legacy_name
+            skill_file = legacy_dir / 'SKILL.md'
+            if _read_frontmatter_value(skill_file, 'name') == legacy_name:
+                _delete_path(context, legacy_dir)
+
+
 def _referenced_skill_path(target_root: Path, agent_path: Path) -> Path | None:
     body = _strip_frontmatter(agent_path.read_text(encoding='utf-8'))
     match = re.fullmatch(r'Apply @(?P<path>\.agents/skills/[A-Za-z0-9_.-]+/SKILL\.md)', body)
@@ -681,6 +696,11 @@ def sync_public_assets(
             mirror_delete,
         )
         _delete_legacy_public_skill_dirs(context, skill, mirror_delete)
+    _delete_legacy_project_skill_dirs(
+        context,
+        _require_items(public_config, 'project_skill_generators'),
+        mirror_delete,
+    )
     for agent in _require_items(public_config, 'agent_prompts'):
         name = agent.get('name')
         if not isinstance(name, str) or not name:

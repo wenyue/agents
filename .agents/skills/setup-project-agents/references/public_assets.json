@@ -160,6 +160,12 @@
     {"name": "setup-project-agents", "legacy_names": ["update-project-rules"]},
     {"name": "write-comment"}
   ],
+  "project_skill_generators": [
+    {
+      "name": "worktree-environment-setup",
+      "legacy_names": ["project-development-workflow"]
+    }
+  ],
   "agent_prompts": [
     {
       "name": "rename",

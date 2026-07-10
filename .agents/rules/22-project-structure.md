@@ -33,8 +33,6 @@ Record stable ownership and dependency boundaries here. Put tooling commands in
 - Tool, runtime, build, test, or verification commands; use `20-project-tools.md`.
 - Public API contracts, payload fields, domain vocabulary, or lint interpretation; use
   `21-project-rules.md`.
-- Full worktree, bootstrap, review, or merge-back procedures; put those in
-  `project-development-workflow`.
 - General architecture advice that is not proven by the target repository.
 - Project-specific facts in `wenyue/agents`; only target repositories should contain real local
   structure facts.
