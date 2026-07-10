@@ -650,6 +650,37 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('created or materially changed', content)
         self.assertIn('ordinary use', content)
 
+    def test_worktree_integrate_is_public_skill(self):
+        skill_path = REPO_ROOT / '.agents' / 'skills' / 'worktree-integrate' / 'SKILL.md'
+        content = skill_path.read_text(encoding='utf-8')
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+        rule = (REPO_ROOT / '.agents' / 'rules' / '03-global-skill-config.md').read_text(
+            encoding='utf-8'
+        )
+
+        self.assertIn({'name': 'worktree-integrate'}, public_config['skills'])
+        self.assertTrue(
+            content.startswith(
+                '---\n'
+                'name: worktree-integrate\n'
+                'description: Use when implementation in a named Git worktree is complete'
+            )
+        )
+        self.assertIn('## Review Mode (Default)', content)
+        self.assertIn('## Commit Mode (Explicit Only)', content)
+        self.assertIn('HEAD and index unchanged', content)
+        self.assertIn('three-way merge', content)
+        self.assertIn('downgrade to review mode', content)
+        self.assertIn('Keep the task branch and worktree', content)
+        self.assertIn('git merge --ff-only', content)
+        self.assertIn('superpowers:finishing-a-development-branch', content)
+        self.assertIn('superpowers:using-git-worktrees', rule)
+        self.assertIn('worktree-environment-setup', rule)
+        self.assertIn('worktree-integrate', rule)
+        self.assertIn('superpowers:finishing-a-development-branch', rule)
+        self.assertNotIn('Assume `master`', rule)
+        self.assertNotIn('project-development-workflow', rule)
+
     def test_setup_project_agents_uses_public_archive_without_local_source_or_cache(self):
         content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')

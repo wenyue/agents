@@ -158,6 +158,7 @@
     {"name": "refactor-code"},
     {"name": "rename"},
     {"name": "setup-project-agents", "legacy_names": ["update-project-rules"]},
+    {"name": "worktree-integrate"},
     {"name": "write-comment"}
   ],
   "project_skill_generators": [
