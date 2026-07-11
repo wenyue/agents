@@ -15,9 +15,8 @@ Do not keep this placeholder as project policy in a real project. Use evidence s
 manifests, scripts, build and test commands, runtime ports, MCP configuration, service
 dependencies, generated-file requirements, CI workflows, and verification requirements.
 
-Record stable facts and constraints here. Put executable procedural flows, such as isolated
-worktree bootstrap, review checkpoints, and merge-back, in a local project skill such as
-`.agents/skills/project-development-workflow/`.
+Record stable facts and constraints here. Put the executable procedure that prepares an
+already-created worktree in `.agents/skills/worktree-environment-setup/`.
 
 ## What Belongs Here
 
@@ -31,8 +30,10 @@ worktree bootstrap, review checkpoints, and merge-back, in a local project skill
 ## What Does Not Belong Here
 
 - General code style; use base or project convention rules instead.
-- Full worktree, bootstrap, review, or merge-back procedures; put those in
-  `project-development-workflow`.
+- Worktree selection, creation, integration, or cleanup procedures; use their public workflow
+  skills.
+- The executable environment preparation sequence; generate it in
+  `worktree-environment-setup` from the facts recorded here.
 - Project-specific facts in `wenyue/agents`; only target repositories should contain real local
   tooling facts.
 
@@ -42,4 +43,4 @@ worktree bootstrap, review checkpoints, and merge-back, in a local project skill
 - Runtime services, ports, health checks, environment variables, and required credentials.
 - MCP and platform runtime entries that agents must preserve.
 - Generated files, regeneration owners, and files that must not be edited by hand.
-- Local project skills that execute project-specific workflows.
+- The target-owned `worktree-environment-setup` skill that executes project-specific preparation.

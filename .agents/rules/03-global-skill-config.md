@@ -17,20 +17,21 @@ Scope: Project overrides for workflow tools, worktrees, git, and prose outputs.
 
 ## Git And Worktree
 
-- Assume `master` is the working branch — do not switch branches or ask to confirm the branch
-  unless the user requests it.
-- Default to the current workspace for small, direct edits.
-- Use an isolated git worktree when the user requests worktree-based development, when a workflow
-  skill such as `project-development-workflow` requires it, or when isolation is needed to protect
-  unrelated local changes.
-- Inside a dedicated workflow worktree, all git operations needed by the workflow are allowed,
-  including status, diff, branch creation, commits, rebases, merges, and cleanup.
-- Keep the original workspace available for final verification and merge-back. Do not overwrite
-  unrelated local changes in the original workspace.
-- Outside a dedicated workflow worktree, do not create commits or push unless the user explicitly
-  asks for that git operation.
-- When a generated workflow documents automatic merge-back, it may create the single merge-back
-  commit or PR described by that workflow without asking for a second confirmation.
+- Delegate worktree timing, detection, consent, location, and creation to
+  `superpowers:using-git-worktrees`; do not define a second trigger policy here.
+- After creating a worktree, use the target repository's `worktree-environment-setup` skill when it
+  exists, then run the baseline verification required by `superpowers:using-git-worktrees`.
+- When worktree implementation is complete, use `worktree-integrate`. Its default review mode
+  returns changes to the current checkout as unstaged or untracked work while preserving the
+  current HEAD, index, and unrelated local changes.
+- Use `worktree-integrate` commit mode only when the user explicitly requests committed local
+  integration. The task's business changes must form one commit; a separate infrastructure commit
+  that adds a missing worktree directory to `.gitignore` is allowed on the current branch.
+- Use `superpowers:finishing-a-development-branch` for PR, keep-branch, or discard outcomes.
+- Never overwrite, stash, reset, clean, or silently discard pre-existing local changes. A same-file
+  overlap is not automatically a blocker: merge it when confidence is high and the result can be
+  verified; otherwise stop and ask.
+- Do not push or create a PR unless the user explicitly requests that remote action.
 
 ## Prose Output
 

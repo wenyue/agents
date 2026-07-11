@@ -34,8 +34,6 @@ Record stable conventions and behavioral contracts here. Put tooling commands in
 - Top-level directory maps, module ownership, or dependency direction; use
   `22-project-structure.md`.
 - General code style; use base language rules unless the project has a concrete override.
-- Full worktree, bootstrap, review, or merge-back procedures; put those in
-  `project-development-workflow`.
 - Project-specific facts in `wenyue/agents`; only target repositories should contain real local
   project conventions.
 
