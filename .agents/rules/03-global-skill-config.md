@@ -17,9 +17,9 @@ Scope: Project overrides for workflow tools, worktrees, git, and prose outputs.
 
 ## Superpowers
 
-- Do not invoke `superpowers:using-superpowers` as a routine entrypoint.
-- For small, straightforward changes, do not use `superpowers:*` unless explicitly requested.
-- Otherwise, use Superpowers only when it clearly benefits the task.
+- Never invoke `superpowers:*` proactively.
+- Use Superpowers only when the user explicitly requests it.
+- References to Superpowers elsewhere do not authorize automatic activation.
 
 ## Git And Worktree
 
