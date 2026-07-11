@@ -19,6 +19,7 @@ repository evidence before regenerating entry files and wrappers.
   repositories.
 - Local project rules and local project skills are target-owned facts. Refresh them from current
   target repository evidence on every invocation.
+- Write every generated or refreshed project-owned rule and skill in English.
 - Run `scripts/sync_public_agent_assets.py` before manually editing project-owned assets.
 - The sync script is limited to public assets, thin wrappers, entry files, and legacy cleanup. It
   must not generate project-local rule or workflow content from hardcoded scaffolds.

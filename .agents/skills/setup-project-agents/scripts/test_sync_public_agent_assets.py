@@ -627,6 +627,14 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('.agents/skills/project-development-workflow/SKILL.md', content)
         self.assertIn('blocker', content)
 
+    def test_setup_project_agents_requires_english_for_generated_project_assets(self):
+        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+
+        self.assertIn(
+            'Write every generated or refreshed project-owned rule and skill in English.',
+            content,
+        )
+
     def test_setup_project_agents_uses_public_archive_without_local_source_or_cache(self):
         content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
