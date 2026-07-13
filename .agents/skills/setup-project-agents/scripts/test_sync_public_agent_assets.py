@@ -597,6 +597,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             / 'SKILL.md'
         )
         content = workflow.read_text(encoding='utf-8')
+        normalized_content = ' '.join(content.split())
 
         self.assertTrue(
             content.startswith(
@@ -617,6 +618,14 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('generated files', content)
         self.assertIn('real temporary worktree', content)
         self.assertIn('ordinary use', content)
+        self.assertIn('## Script-First Setup', content)
+        self.assertIn('scripts/setup.sh', content)
+        self.assertIn('#!/usr/bin/env bash', content)
+        self.assertIn('set -euo pipefail', content)
+        self.assertIn(
+            'review the complete generated `SKILL.md` and every generated script',
+            normalized_content,
+        )
         self.assertNotIn('merge-back', content)
         self.assertNotIn('create or enter an isolated', content)
         self.assertNotIn('\nStrength:', content)
@@ -652,6 +661,22 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('byte-identical', content)
         self.assertIn('created or materially changed', content)
         self.assertIn('ordinary use', content)
+
+    def test_setup_project_agents_reviews_environment_skill_before_acceptance(self):
+        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+
+        self.assertIn('## Environment Skill Review', content)
+        self.assertIn('## Environment Skill Acceptance', content)
+        review_index = content.index('## Environment Skill Review')
+        acceptance_index = content.index('## Environment Skill Acceptance')
+
+        self.assertLess(review_index, acceptance_index)
+        self.assertIn('scripts/setup.sh', content)
+        self.assertIn('#!/usr/bin/env bash', content)
+        self.assertIn('set -euo pipefail', content)
+        self.assertIn('Do not start environment-skill acceptance', content)
+        self.assertIn('only after the environment-skill review passes', content)
+        self.assertIn('Run `bash -n` on every generated Bash script.', content)
 
     def test_worktree_integrate_is_public_skill(self):
         skill_path = REPO_ROOT / '.agents' / 'skills' / 'worktree-integrate' / 'SKILL.md'
@@ -711,6 +736,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target_skill = target / '.agents' / 'skills' / 'worktree-environment-setup'
             source_skill.mkdir(parents=True)
             target_skill.mkdir(parents=True)
+            target_scripts = target_skill / 'scripts'
+            target_scripts.mkdir()
             skill_root.mkdir(parents=True)
             (source_skill / 'SKILL.md').write_text(
                 '---\nname: worktree-environment-setup\ndescription: Generator contract\n---\n',
@@ -724,6 +751,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'Target-specific environment setup.\n'
             )
             (target_skill / 'SKILL.md').write_text(existing, encoding='utf-8')
+            setup_script = '#!/usr/bin/env bash\nset -euo pipefail\n'
+            (target_scripts / 'setup.sh').write_text(setup_script, encoding='utf-8')
             public_config = {
                 'mirror_delete': True,
                 'rules': [],
@@ -736,6 +765,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             changes = sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
 
             self.assertEqual((target_skill / 'SKILL.md').read_text(encoding='utf-8'), existing)
+            self.assertEqual(
+                (target_scripts / 'setup.sh').read_text(encoding='utf-8'),
+                setup_script,
+            )
             self.assertNotIn(
                 sync.Change('updated', '.agents/skills/worktree-environment-setup/SKILL.md'),
                 changes,
