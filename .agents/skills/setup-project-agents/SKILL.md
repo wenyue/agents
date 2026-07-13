@@ -36,101 +36,56 @@ repository evidence.
 
 1. Read `AGENTS.md`, then all applicable `00-*` through `09-*` rules.
 2. Run `python3 .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py`.
-3. Review created, updated, and deleted paths. The public sync must
-   delete `.agents/skills/project-development-workflow/` when present.
-4. Do not read, copy, or migrate the deleted skill. Do not restore it if later generation or
-   validation fails.
-5. Dispatch a subagent to regenerate project rules from current target repository evidence and the
+3. Review created, updated, and deleted paths. Delete
+   `.agents/skills/project-development-workflow/` when the public catalog retires it; do not use it
+   as generation evidence.
+4. Dispatch a subagent to regenerate project rules from current target repository evidence and the
    public generator contracts, including `.agents/rules/20-project-tools.md`,
    `.agents/rules/21-project-rules.md`, and `.agents/rules/22-project-structure.md`.
-6. Have the same subagent generate the complete `.agents/skills/worktree-environment-setup/`
-   directory from current target repository evidence. Generate
-   `.agents/skills/worktree-environment-setup/SKILL.md` and any required `scripts/setup.sh`
-   together. The generated skill prepares an already-created worktree; it does not create,
-   implement, verify a baseline, integrate, or clean up worktrees.
-7. Review the complete candidate rules, skill, and scripts using the environment-skill review gate
+5. Have the same subagent generate the complete `.agents/skills/worktree-environment-setup/`
+   directory from its public generator contract and current repository evidence.
+6. Review the complete candidate rules, skill, and scripts using the review gate
    below. Do not invoke the candidate or run actual setup or acceptance tests during this review.
-8. Resolve every review finding, repeat the review, and apply the complete candidate files only
+7. Resolve every review finding, repeat the review, and apply the complete candidate files only
    after the review passes.
-9. If `worktree-environment-setup` was created or materially changed, run the acceptance workflow
+8. If `worktree-environment-setup` was created or materially changed, run the acceptance workflow
    below. The ordinary use of an unchanged generated skill does not repeat acceptance.
-10. Run the public sync script again so wrappers and entry files reflect the refreshed sources.
-11. Run validation and report final changed files, deletion/regeneration work, review results,
-    acceptance results, and blockers.
+9. Run the public sync script again so wrappers and entry files reflect the refreshed sources.
+10. Run validation and report final changed files, deletion/regeneration work, review results,
+     acceptance results, and blockers.
 
-## Environment Skill Evidence
+## Review
 
-Generate the environment skill from:
+Review complete candidate files before invoking them. Confirm that:
 
-- `.agents/rules/20-project-tools.md`;
-- package manifests and lock files;
-- build, lint, type-check, format, test, and code-generation configuration;
-- project setup scripts and CI workflows;
-- generated-file ownership;
-- required local services, environment variables, credentials, data, and command working
-  directories.
-
-Do not infer commands from the deleted skill or from generic language conventions when the target
-repository provides a concrete command.
-
-## Environment Skill Script Selection
-
-Prefer a repository-owned setup script when it is narrow enough for worktree preparation, uses the
-correct working directories, guards against primary-checkout mutation, propagates command failures,
-and is safe to rerun. Invoke it directly from the generated skill instead of copying its commands
-into `SKILL.md`. Do not rewrite a suitable existing script solely to change its language; the Bash
-requirement applies to new target-owned scripts.
-
-Reject an existing script when it couples setup to unrelated platform builds, tests, deployment,
-machine-level provisioning, user-level configuration, or other task-specific work. If no existing
-script is suitable, generate
-`.agents/skills/worktree-environment-setup/scripts/setup.sh` as a target-owned Bash script. Require
-`#!/usr/bin/env bash`, `set -euo pipefail`, location-independent path resolution, a pre-mutation
-linked-worktree guard, quoted arguments, explicit prerequisite checks, rerun safety, and nonzero
-failure propagation. Keep optional expensive setup behind explicit script arguments or branches.
-
-The generated `SKILL.md` must identify the selected script as the canonical setup entry point and
-must not duplicate the script's command sequence. A child script cannot persist environment
-changes in its caller; use an evidenced repository environment helper or document a repeatable
-sourcing/wrapper command when later commands need those values.
-
-## Environment Skill Review
-
-Review the finished environment-skill candidate before invoking it or running actual tests. Review
-the complete `SKILL.md`, every generated script, and the repository evidence used to select or
-reject existing scripts. Confirm that:
-
-- the selected entry point is the narrowest suitable setup path;
-- the linked-worktree check happens before any mutation;
-- command failures and missing prerequisites stop the script with a nonzero status;
-- reruns after partial setup are safe and unrelated local state is preserved;
-- core setup is separated from expensive or task-specific branches;
-- environment-variable lifetime is represented accurately;
-- the candidate does not run tests, implement business changes, manage worktrees, commit, or sync
-  agent configuration.
+- project-owned rules and skills are written in English and match current repository evidence;
+- claims about commands, generated files, services, and ownership are backed by concrete files;
+- the environment skill contains `SKILL.md`, `scripts/setup.sh`, and `scripts/setup.ps1` and follows
+  its public generator contract;
+- both setup entry points prepare the same core environment, guard the primary checkout, surface
+  failures, and are safe to rerun;
+- the candidate does not absorb tests, business implementation, worktree lifecycle, Git
+  integration, or agent sync work owned by other workflows.
 
 Resolve all findings and repeat the review. Do not start environment-skill acceptance while any
 review finding remains unresolved. Report a review blocker instead of treating later test results
 as a substitute for review.
 
-## Environment Skill Acceptance
+## Acceptance
 
-Run this workflow only after the environment-skill review passes and when the candidate was created
-or materially changed:
+Run this workflow only after review passes and when the candidate was created or materially
+changed:
 
-1. Run `bash -n` on every generated Bash script.
-2. Create a real temporary worktree outside the generated environment skill.
+1. Validate the generated skill and parse both setup scripts with their native shell tooling.
+2. Create a real temporary linked worktree outside the generated environment skill.
 3. Make the exact candidate skill and relevant tooling rules available there. When they are not
    committed, copy byte-identical content and verify equality before invoking the candidate.
-4. Invoke the candidate from the temporary worktree.
-5. Verify dependency setup, required generated files, required services, and command working
-   directories.
-6. Functionally invoke every required linter, checker, and formatter with real project
-   configuration. A version command alone is insufficient; formatters use non-writing check or
-   dry-run modes.
-7. Confirm the candidate did not create or remove worktrees, implement business changes, create
-   commits, integrate branches, or modify agent configuration.
-8. Mark the candidate accepted only after every required check passes, then remove the acceptance
+4. Invoke the generated setup entry point for the acceptance host from the temporary worktree:
+   PowerShell on Windows and Bash on non-Windows.
+5. Verify required dependencies, generated files, services, working directories, linters, checkers,
+   and formatters with real project configuration rather than version-only probes.
+6. Inspect repository and worktree state to confirm setup stayed within its contract.
+7. Mark the candidate accepted only after every required check passes, then remove the acceptance
    worktree safely.
 
 If acceptance fails, keep the new candidate marked unaccepted, report the exact failing command and

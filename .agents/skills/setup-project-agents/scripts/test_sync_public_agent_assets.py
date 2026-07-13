@@ -597,35 +597,29 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             / 'SKILL.md'
         )
         content = workflow.read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
 
         self.assertTrue(
             content.startswith(
                 '---\n'
                 'name: worktree-environment-setup\n'
-                'description: Use when defining, generating, or validating a target repository'
+                'description: Use when defining or generating a target repository'
             )
         )
-        self.assertIn('## Generation Contract', content)
-        self.assertIn('## What Belongs Here', content)
-        self.assertIn('## What Does Not Belong Here', content)
-        self.assertIn('## Suggested Generated Content', content)
-        self.assertIn('generator contract', content)
+        self.assertIn('## Authoring Workflow', content)
+        self.assertIn('## Generated Skill Contract', content)
+        self.assertIn('## Handoff', content)
         self.assertIn('.agents/rules/20-project-tools.md', content)
-        self.assertIn('already-created Git worktree', content)
-        self.assertIn('linter', content)
-        self.assertIn('formatter', content)
+        self.assertIn('minimum preparation', content)
+        self.assertIn('already-created linked worktree', content)
         self.assertIn('generated files', content)
-        self.assertIn('real temporary worktree', content)
-        self.assertIn('ordinary use', content)
-        self.assertIn('## Script-First Setup', content)
         self.assertIn('scripts/setup.sh', content)
-        self.assertIn('#!/usr/bin/env bash', content)
-        self.assertIn('set -euo pipefail', content)
-        self.assertIn(
-            'review the complete generated `SKILL.md` and every generated script',
-            normalized_content,
-        )
+        self.assertIn('scripts/setup.ps1', content)
+        self.assertIn('same core environment result', content)
+        self.assertIn('owns review and acceptance', content)
+        self.assertNotIn('## Review', content)
+        self.assertNotIn('## Acceptance', content)
+        self.assertNotIn('[CmdletBinding()]', content)
+        self.assertNotIn('$LASTEXITCODE', content)
         self.assertNotIn('merge-back', content)
         self.assertNotIn('create or enter an isolated', content)
         self.assertNotIn('\nStrength:', content)
@@ -640,7 +634,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('.agents/rules/20-project-tools.md', content)
         self.assertIn('.agents/rules/21-project-rules.md', content)
         self.assertIn('.agents/rules/22-project-structure.md', content)
-        self.assertIn('.agents/skills/worktree-environment-setup/SKILL.md', content)
+        self.assertIn('.agents/skills/worktree-environment-setup/', content)
         self.assertIn('blocker', content)
 
     def test_setup_project_agents_requires_english_for_generated_project_assets(self):
@@ -654,10 +648,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_setup_project_agents_regenerates_environment_skill(self):
         content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
 
-        self.assertIn('delete `.agents/skills/project-development-workflow/`', content)
-        self.assertIn('Do not read, copy, or migrate', content)
+        self.assertIn('`.agents/skills/project-development-workflow/`', content)
+        self.assertIn('as generation evidence', content)
         self.assertIn('current target repository evidence', content)
-        self.assertIn('real temporary worktree', content)
+        self.assertIn('real temporary linked worktree', content)
         self.assertIn('byte-identical', content)
         self.assertIn('created or materially changed', content)
         self.assertIn('ordinary use', content)
@@ -665,18 +659,24 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_setup_project_agents_reviews_environment_skill_before_acceptance(self):
         content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
 
-        self.assertIn('## Environment Skill Review', content)
-        self.assertIn('## Environment Skill Acceptance', content)
-        review_index = content.index('## Environment Skill Review')
-        acceptance_index = content.index('## Environment Skill Acceptance')
+        self.assertIn('## Review', content)
+        self.assertIn('## Acceptance', content)
+        review_index = content.index('## Review')
+        acceptance_index = content.index('## Acceptance')
 
         self.assertLess(review_index, acceptance_index)
         self.assertIn('scripts/setup.sh', content)
-        self.assertIn('#!/usr/bin/env bash', content)
-        self.assertIn('set -euo pipefail', content)
+        self.assertIn('scripts/setup.ps1', content)
+        self.assertIn('Review complete candidate files', content)
         self.assertIn('Do not start environment-skill acceptance', content)
-        self.assertIn('only after the environment-skill review passes', content)
-        self.assertIn('Run `bash -n` on every generated Bash script.', content)
+        self.assertIn('only after review passes', content)
+        self.assertIn('native shell tooling', content)
+        self.assertIn('real temporary linked worktree', content)
+        self.assertIn('Inspect repository and worktree state', content)
+        self.assertNotIn('## Environment Skill Evidence', content)
+        self.assertNotIn('## Environment Skill Script Selection', content)
+        self.assertNotIn('[CmdletBinding()]', content)
+        self.assertNotIn('$LASTEXITCODE', content)
 
     def test_worktree_integrate_is_public_skill(self):
         skill_path = REPO_ROOT / '.agents' / 'skills' / 'worktree-integrate' / 'SKILL.md'
@@ -753,6 +753,13 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             (target_skill / 'SKILL.md').write_text(existing, encoding='utf-8')
             setup_script = '#!/usr/bin/env bash\nset -euo pipefail\n'
             (target_scripts / 'setup.sh').write_text(setup_script, encoding='utf-8')
+            setup_ps1 = (
+                '[CmdletBinding()]\n'
+                'param()\n'
+                "Set-StrictMode -Version Latest\n"
+                "$ErrorActionPreference = 'Stop'\n"
+            )
+            (target_scripts / 'setup.ps1').write_text(setup_ps1, encoding='utf-8')
             public_config = {
                 'mirror_delete': True,
                 'rules': [],
@@ -768,6 +775,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             self.assertEqual(
                 (target_scripts / 'setup.sh').read_text(encoding='utf-8'),
                 setup_script,
+            )
+            self.assertEqual(
+                (target_scripts / 'setup.ps1').read_text(encoding='utf-8'),
+                setup_ps1,
             )
             self.assertNotIn(
                 sync.Change('updated', '.agents/skills/worktree-environment-setup/SKILL.md'),
