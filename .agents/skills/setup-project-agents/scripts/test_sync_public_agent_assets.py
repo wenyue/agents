@@ -356,13 +356,14 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
             expected = (
                 '---\n'
-                'paths:\n'
-                '  - "**/*.{dart,cpp,c,h,hpp,cc,py,js,jsx,ts,tsx,sh}"\n'
+                'description: "[default] Cross-language code taste for ownership, extraction, state, and flow"\n'
+                'globs: **/*.{dart,cpp,c,h,hpp,cc,py,js,jsx,ts,tsx,sh}\n'
+                'alwaysApply: false\n'
                 '---\n\n'
                 'Apply @.agents/rules/10-base-code.md\n'
             )
             self.assertEqual(
-                (target / '.claude' / 'rules' / '10-base-code.md').read_text(encoding='utf-8'),
+                (target / '.cursor' / 'rules' / '10-base-code.mdc').read_text(encoding='utf-8'),
                 expected,
             )
 
@@ -378,10 +379,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             for template in REPO_TEMPLATES.glob('*'):
                 shutil.copy2(template, templates / template.name)
             (source / '.agents' / 'rules' / '00-global-rule-config.md').write_text('rule\n', encoding='utf-8')
-            stale_wrapper = target / '.claude' / 'rules' / '10-base-code.md'
+            stale_wrapper = target / '.cursor' / 'rules' / '10-base-code.mdc'
             stale_wrapper.parent.mkdir(parents=True)
             stale_wrapper.write_text(
-                '---\npaths:\n  []\n---\n\nApply @.agents/rules/10-base-code.md\n',
+                '---\nalwaysApply: false\n---\n\nApply @.agents/rules/10-base-code.md\n',
                 encoding='utf-8',
             )
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
@@ -671,6 +672,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('Do not start environment-skill acceptance', content)
         self.assertIn('only after review passes', content)
         self.assertIn('native shell tooling', content)
+        self.assertIn('Bash on Linux and macOS', content)
+        self.assertIn('PowerShell on Windows', content)
+        self.assertIn("Do not parse or invoke the other platform's setup script", content)
+        self.assertNotIn('parse both setup scripts', content)
         self.assertIn('real temporary linked worktree', content)
         self.assertIn('Inspect repository and worktree state', content)
         self.assertNotIn('## Environment Skill Evidence', content)
@@ -1079,7 +1084,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                         'globs': '""',
                         'alwaysApply': True,
                     },
-                    'claude': {'paths': []},
                     'github': {'applyTo': '**'},
                 }
             ],
@@ -1095,11 +1099,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             rules_root = target / '.agents' / 'rules'
             cursor_root = target / '.cursor' / 'rules'
-            claude_root = target / '.claude' / 'rules'
             github_root = target / '.github' / 'instructions'
             rules_root.mkdir(parents=True)
             cursor_root.mkdir(parents=True)
-            claude_root.mkdir(parents=True)
             github_root.mkdir(parents=True)
             (target / 'AGENTS.md').write_text(
                 '| Read when | Rule | Strength |\n'
@@ -1116,10 +1118,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'alwaysApply: false\n'
                 '---\n\n'
                 'Apply @.agents/rules/30-module-common.md\n',
-                encoding='utf-8',
-            )
-            (claude_root / '30-module-common.md').write_text(
-                '---\npaths:\n  - "common/**"\n---\n\nApply @.agents/rules/30-module-common.md\n',
                 encoding='utf-8',
             )
             (github_root / '30-module-common.instructions.md').write_text(
@@ -1143,7 +1141,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                         'globs': 'common/**',
                         'alwaysApply': False,
                     },
-                    'claude': {'paths': ['common/**']},
                     'github': {'applyTo': 'common/**'},
                 }
             ],

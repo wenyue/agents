@@ -3,7 +3,7 @@ name: setup-project-agents
 description: >-
   Set up or sync repository agent assets from the wenyue/agents public catalog. Use when Codex must
   initialize .agents rules, public skills, shared subagents, AGENTS.md, and thin
-  Cursor/Claude/GitHub/Codex wrappers; refresh project-owned rules or project skills from current
+  Cursor/GitHub/Codex wrappers; refresh project-owned rules or project skills from current
   repository facts; or reconcile MCP/runtime config that follows the shared agent configuration
   structure.
 ---
@@ -76,12 +76,14 @@ as a substitute for review.
 Run this workflow only after review passes and when the candidate was created or materially
 changed:
 
-1. Validate the generated skill and parse both setup scripts with their native shell tooling.
+1. Validate the generated skill and parse only the setup script for the acceptance host with its
+   native shell tooling: Bash on Linux and macOS for `scripts/setup.sh`, and PowerShell on Windows
+   for `scripts/setup.ps1`. Do not parse or invoke the other platform's setup script during
+   acceptance.
 2. Create a real temporary linked worktree outside the generated environment skill.
 3. Make the exact candidate skill and relevant tooling rules available there. When they are not
    committed, copy byte-identical content and verify equality before invoking the candidate.
-4. Invoke the generated setup entry point for the acceptance host from the temporary worktree:
-   PowerShell on Windows and Bash on non-Windows.
+4. Invoke the same host-specific setup entry point from the temporary worktree.
 5. Verify required dependencies, generated files, services, working directories, linters, checkers,
    and formatters with real project configuration rather than version-only probes.
 6. Inspect repository and worktree state to confirm setup stayed within its contract.
@@ -93,8 +95,8 @@ blocker, and do not restore `project-development-workflow`.
 
 ## Wrapper Maps
 
-- Rule source `.agents/rules/<name>.md` maps to Cursor, Claude, and GitHub thin wrappers.
-- Agent source `.agents/agents/<name>.md` maps to Cursor, Claude, Codex, and GitHub thin wrappers.
+- Rule source `.agents/rules/<name>.md` maps to Cursor and GitHub thin wrappers.
+- Agent source `.agents/agents/<name>.md` maps to Cursor, Codex, and GitHub thin wrappers.
 - Preserve platform metadata and schema differences; reusable wrapper bodies contain only their
   `Apply @...` reference.
 

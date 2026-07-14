@@ -45,7 +45,6 @@ Core requirements:
 For rule sources, keep platform wrappers as references:
 
 - Cursor: `.cursor/rules/<same-name>.mdc`
-- Claude: `.claude/rules/<same-name>.md`
 - Copilot: `.github/instructions/<same-name>.instructions.md`
 
 Wrapper bodies should use this form:
@@ -57,13 +56,13 @@ Apply @.agents/rules/<nn>-<name>.md
 When adding a rule:
 
 1. Author the source at `.agents/rules/<nn>-<name>.md`.
-2. Add platform wrappers for Cursor, Claude, and Copilot when that platform should load the rule.
+2. Add platform wrappers for Cursor and Copilot when that platform should load the rule.
 3. Update `AGENTS.md` when the rule changes which paths or workflows it applies to.
 
 When adding a subagent:
 
 1. Author the shared prompt at `.agents/agents/<name>.md`.
-2. Add thin wrappers for Cursor, Claude, Codex, and Copilot when those platforms should expose it.
+2. Add thin wrappers for Cursor, Codex, and Copilot when those platforms should expose it.
 3. Keep repository-wide Copilot guidance in `.github/instructions/*.instructions.md`; subagent
    prompts do not duplicate it.
 
@@ -91,7 +90,6 @@ paths.
 | Platform    | File                 | Notes                                    |
 | ----------- | -------------------- | ---------------------------------------- |
 | Cursor      | `.cursor/mcp.json`   | Shared intent.                           |
-| Claude      | `.claude/mcp.json`   | Thin wrapper aligned with shared intent. |
 | Codex       | `.codex/config.toml` | Runtime MCP entries.                     |
 | Copilot CLI | `.vscode/mcp.json`   | Top-level key is `servers`.              |
 

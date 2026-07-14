@@ -221,12 +221,6 @@ def _scalar_value(value: Any, default: str = '') -> str:
     return text if text else default
 
 
-def _list_value(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value]
-
-
 def render_template(template: str, data: dict[str, Any], template_name: str) -> str:
     def replace(match: re.Match[str]) -> str:
         return _lookup_template_value(data, match.group(1), template_name)
@@ -338,16 +332,9 @@ def _is_generated_thin_wrapper(path: Path) -> bool:
     return False
 
 
-def _yaml_list(values: list[str]) -> str:
-    if not values:
-        return '  []'
-    return ''.join(f'  - "{value}"\n' for value in values).rstrip()
-
-
 def _rule_data(rule: dict[str, Any]) -> dict[str, Any]:
     filename = rule['file']
     cursor = rule.get('cursor', {})
-    claude = rule.get('claude', {})
     github = rule.get('github', {})
     return {
         'rule': {
@@ -358,7 +345,6 @@ def _rule_data(rule: dict[str, Any]) -> dict[str, Any]:
             'cursor_description': _scalar_value(cursor.get('description'), ''),
             'cursor_globs': _scalar_value(cursor.get('globs'), '""'),
             'cursor_always_apply': str(bool(cursor.get('alwaysApply', False))).lower(),
-            'claude_paths': _yaml_list(_list_value(claude.get('paths'))),
             'github_apply_to': _scalar_value(github.get('applyTo'), '**'),
         },
     }
@@ -502,7 +488,6 @@ def _default_project_cursor_description(filename: str) -> str:
 def _local_rule_metadata(target_root: Path, filename: str, agents_rows: dict[str, dict[str, str]]) -> dict[str, Any]:
     name = filename.removesuffix('.md')
     cursor_frontmatter = _read_frontmatter(target_root / '.cursor' / 'rules' / f'{name}.mdc')
-    claude_frontmatter = _read_frontmatter(target_root / '.claude' / 'rules' / filename)
     github_frontmatter = _read_frontmatter(
         target_root / '.github' / 'instructions' / f'{name}.instructions.md'
     )
@@ -518,7 +503,6 @@ def _local_rule_metadata(target_root: Path, filename: str, agents_rows: dict[str
             'globs': _scalar_value(cursor_frontmatter.get('globs'), '""'),
             'alwaysApply': cursor_frontmatter.get('alwaysApply', True),
         },
-        'claude': {'paths': _list_value(claude_frontmatter.get('paths'))},
         'github': {'applyTo': _scalar_value(github_frontmatter.get('applyTo'), '**')},
     }
 
@@ -541,7 +525,6 @@ def discover_local_assets(target_root: Path, public_config: dict[str, Any]) -> d
                     'strength': metadata['strength'],
                     'section': 'project',
                     'cursor': metadata['cursor'],
-                    'claude': metadata['claude'],
                     'github': metadata['github'],
                 }
             )
