@@ -4,4 +4,4 @@ description: {{agent.description}}
 model: {{agent.github_model}}
 ---
 
-Apply @{{agent.apply_ref}}
+应用 @{{agent.apply_ref}}

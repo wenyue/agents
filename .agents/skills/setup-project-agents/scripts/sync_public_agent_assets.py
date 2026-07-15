@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import tempfile
+import tomllib
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -35,9 +36,24 @@ class SyncContext:
 
 _TEMPLATE_PATTERN = re.compile(r'{{\s*([a-zA-Z0-9_.]+)\s*}}')
 _DEFAULT_SOURCE_REF = 'master'
-_RETIRED_SKILL_NAMES_BY_REPLACEMENT = {
-    'setup-project-agents': ('update-project-rules',),
-    'worktree-environment-setup': ('project-development-workflow',),
+_ASSET_NAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+$')
+_RULE_FILENAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+\.md$')
+_RETIRED_ASSET_KINDS = ('rules', 'skills', 'agents')
+_CODEX_RUNTIME_FIELDS = ('model', 'model_reasoning_effort', 'sandbox_mode')
+_CURSOR_RUNTIME_FIELDS = ('model', 'readonly')
+_GITHUB_RUNTIME_FIELDS = ('model',)
+_AGENT_WRAPPER_MODEL_FIELDS = {
+    'agent_wrapper.codex.toml': (
+        ('codex_model', 'model'),
+        ('codex_model_reasoning_effort', 'model_reasoning_effort'),
+    ),
+    'agent_wrapper.cursor.md': (('cursor_model', 'model'),),
+    'agent_wrapper.github.agent.md': (('github_model', 'model'),),
+}
+_PUBLIC_AGENT_MODEL_FIELDS = {
+    'codex': ('model', 'model_reasoning_effort'),
+    'cursor': ('model',),
+    'github': ('model',),
 }
 
 
@@ -130,6 +146,138 @@ def _mirror_delete_enabled(config: dict[str, Any]) -> bool:
     return value
 
 
+def _retired_assets(config: dict[str, Any]) -> dict[str, tuple[str, ...]]:
+    value = config.get('retired_assets', {})
+    if not isinstance(value, dict):
+        raise SyncError('retired_assets must be an object')
+    unknown_kinds = sorted(set(value) - set(_RETIRED_ASSET_KINDS))
+    if unknown_kinds:
+        raise SyncError(f"retired_assets contains unsupported kinds: {', '.join(unknown_kinds)}")
+    retired: dict[str, tuple[str, ...]] = {}
+    for kind in _RETIRED_ASSET_KINDS:
+        names = value.get(kind, [])
+        if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+            raise SyncError(f'retired_assets.{kind} must be a list of strings')
+        if len(names) != len(set(names)):
+            raise SyncError(f'retired_assets.{kind} must not contain duplicate names')
+        pattern = _RULE_FILENAME_PATTERN if kind == 'rules' else _ASSET_NAME_PATTERN
+        for name in names:
+            if (
+                not name
+                or name in {'.', '..'}
+                or Path(name).name != name
+                or not pattern.fullmatch(name)
+            ):
+                raise SyncError(f'Unsafe retired asset name in retired_assets.{kind}: {name!r}')
+        retired[kind] = tuple(names)
+
+    active = {
+        'rules': {
+            rule.get('file')
+            for rule in _require_items(config, 'rules')
+            if isinstance(rule.get('file'), str)
+        },
+        'skills': {
+            skill.get('name')
+            for key in ('skills', 'project_skill_generators')
+            for skill in _require_items(config, key)
+            if isinstance(skill.get('name'), str)
+        },
+        'agents': {
+            agent.get('name')
+            for agent in _require_items(config, 'agent_prompts')
+            if isinstance(agent.get('name'), str)
+        },
+    }
+    for kind in _RETIRED_ASSET_KINDS:
+        overlap = sorted(active[kind].intersection(retired[kind]))
+        if overlap:
+            raise SyncError(
+                f"Assets cannot be active and retired in {kind}: {', '.join(overlap)}"
+            )
+    return retired
+
+
+def _validate_public_agent_model_ownership(config: dict[str, Any]) -> None:
+    for agent in _require_items(config, 'agent_prompts'):
+        name = agent.get('name')
+        if not isinstance(name, str) or not name:
+            raise SyncError('Each public agent prompt requires name')
+        for platform, model_fields in _PUBLIC_AGENT_MODEL_FIELDS.items():
+            platform_config = agent.get(platform) or {}
+            if not isinstance(platform_config, dict):
+                raise SyncError(f'Agent {platform} config for {name} must be an object')
+            forbidden = sorted(set(platform_config).intersection(model_fields))
+            if forbidden:
+                raise SyncError(
+                    f"Public agent {name} must not define target-owned {platform} fields: "
+                    f"{', '.join(forbidden)}"
+                )
+
+
+def _codex_agent_runtime_overrides(config: dict[str, Any]) -> dict[str, dict[str, str]]:
+    return _platform_runtime_overrides(
+        config,
+        'codex_agent_runtime_overrides',
+        _CODEX_RUNTIME_FIELDS,
+    )
+
+
+def _cursor_agent_runtime_overrides(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return _platform_runtime_overrides(
+        config,
+        'cursor_agent_runtime_overrides',
+        _CURSOR_RUNTIME_FIELDS,
+        boolean_fields={'readonly'},
+    )
+
+
+def _github_agent_runtime_overrides(config: dict[str, Any]) -> dict[str, dict[str, str]]:
+    return _platform_runtime_overrides(
+        config,
+        'github_agent_runtime_overrides',
+        _GITHUB_RUNTIME_FIELDS,
+    )
+
+
+def _platform_runtime_overrides(
+    config: dict[str, Any],
+    config_key: str,
+    supported_fields: tuple[str, ...],
+    *,
+    boolean_fields: set[str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    value = config.get(config_key, {})
+    if not isinstance(value, dict):
+        raise SyncError(f'{config_key} must be an object')
+    boolean_fields = boolean_fields or set()
+    overrides: dict[str, dict[str, Any]] = {}
+    for name, fields in value.items():
+        if not isinstance(name, str) or not _ASSET_NAME_PATTERN.fullmatch(name):
+            raise SyncError(f'Invalid {config_key} name: {name!r}')
+        if not isinstance(fields, dict):
+            raise SyncError(f'{config_key} for {name} must be an object')
+        unknown_fields = sorted(set(fields) - set(supported_fields))
+        if unknown_fields:
+            raise SyncError(
+                f"{config_key} for {name} contains unsupported fields: "
+                f"{', '.join(unknown_fields)}"
+            )
+        normalized: dict[str, Any] = {}
+        for field, field_value in fields.items():
+            if field in boolean_fields:
+                if not isinstance(field_value, bool):
+                    raise SyncError(f'{config_key} {name}.{field} must be a boolean')
+                normalized[field] = field_value
+                continue
+            if not isinstance(field_value, str) or not field_value.strip():
+                raise SyncError(f'{config_key} {name}.{field} must be a non-empty string')
+            normalized[field] = field_value.strip()
+        if normalized:
+            overrides[name] = normalized
+    return overrides
+
+
 def _is_ignored(relative: Path, ignore_patterns: list[str]) -> bool:
     path = relative.as_posix()
     return any(fnmatch.fnmatch(path, pattern) for pattern in ignore_patterns)
@@ -173,6 +321,12 @@ def _prune_empty_dirs(
 
 
 def _delete_path(context: SyncContext, target: Path) -> None:
+    relative_target = _relative(target, context.target_root)
+    if any(
+        change.action == 'deleted' and change.path == relative_target
+        for change in context.changes
+    ):
+        return
     if not target.exists():
         return
     if target.is_dir():
@@ -219,6 +373,15 @@ def _scalar_value(value: Any, default: str = '') -> str:
         return default
     text = str(value)
     return text if text else default
+
+
+def _optional_config_string(config: dict[str, Any], key: str, label: str) -> str:
+    if key not in config:
+        return ''
+    value = config[key]
+    if not isinstance(value, str) or not value.strip():
+        raise SyncError(f'{label}.{key} must be a non-empty string when present')
+    return value.strip()
 
 
 def render_template(template: str, data: dict[str, Any], template_name: str) -> str:
@@ -352,6 +515,26 @@ def _rule_data(rule: dict[str, Any]) -> dict[str, Any]:
 
 def _agent_data(agent: dict[str, Any]) -> dict[str, Any]:
     name = agent['name']
+    codex = agent.get('codex') or {}
+    cursor = agent.get('cursor') or {}
+    github = agent.get('github') or {}
+    if not isinstance(codex, dict):
+        raise SyncError(f'Agent codex config for {name} must be an object')
+    if not isinstance(cursor, dict):
+        raise SyncError(f'Agent cursor config for {name} must be an object')
+    if not isinstance(github, dict):
+        raise SyncError(f'Agent github config for {name} must be an object')
+    cursor_readonly = cursor.get('readonly', False)
+    if not isinstance(cursor_readonly, bool):
+        raise SyncError(f'Agent cursor config {name}.readonly must be a boolean')
+    codex_model = _optional_config_string(codex, 'model', f'Agent codex config {name}')
+    codex_model_reasoning_effort = _optional_config_string(
+        codex,
+        'model_reasoning_effort',
+        f'Agent codex config {name}',
+    )
+    cursor_model = _optional_config_string(cursor, 'model', f'Agent cursor config {name}')
+    github_model = _optional_config_string(github, 'model', f'Agent github config {name}')
     return {
         'agent': {
             **agent,
@@ -359,11 +542,148 @@ def _agent_data(agent: dict[str, Any]) -> dict[str, Any]:
                 agent.get('description'),
                 f'Project-local agent: {name}',
             ),
-            'model': _scalar_value(agent.get('model'), 'sonnet'),
+            'cursor_model': cursor_model,
+            'cursor_readonly': str(cursor_readonly).lower(),
+            'github_model': github_model,
+            'codex_model': codex_model,
+            'codex_model_reasoning_effort': codex_model_reasoning_effort,
+            'codex_sandbox_mode': _scalar_value(
+                codex.get('sandbox_mode'),
+                'workspace-write',
+            ),
             'path': f'.agents/agents/{name}.md',
             'apply_ref': f'.agents/agents/{name}.md',
         },
     }
+
+
+def _agent_with_runtime_overrides(
+    agent: dict[str, Any],
+    codex_override: dict[str, str] | None,
+    cursor_override: dict[str, Any] | None,
+    github_override: dict[str, str] | None,
+) -> dict[str, Any]:
+    effective = {**agent}
+    for platform, override in (
+        ('codex', codex_override),
+        ('cursor', cursor_override),
+        ('github', github_override),
+    ):
+        if not override:
+            continue
+        platform_config = agent.get(platform) or {}
+        if not isinstance(platform_config, dict):
+            raise SyncError(
+                f"Agent {platform} config for {agent.get('name', '')} must be an object"
+            )
+        effective[platform] = {**platform_config, **override}
+    return effective
+
+
+def _agent_wrapper_pattern(
+    public_config: dict[str, Any],
+    template_name: str,
+) -> str | None:
+    platforms = public_config.get('platforms') or {}
+    if not isinstance(platforms, dict):
+        raise SyncError('platforms must be an object')
+    for wrapper in _require_items(platforms, 'agent_wrappers'):
+        if wrapper.get('template') == template_name:
+            path = wrapper.get('path')
+            if not isinstance(path, str) or not path:
+                raise SyncError(f'{template_name} requires path')
+            return path
+    return None
+
+
+def _discover_codex_agent_runtime_overrides(
+    target_root: Path,
+    public_config: dict[str, Any],
+    agents: list[dict[str, Any]],
+) -> dict[str, dict[str, str]]:
+    target_pattern = _agent_wrapper_pattern(public_config, 'agent_wrapper.codex.toml')
+    if not target_pattern:
+        return {}
+    overrides: dict[str, dict[str, str]] = {}
+    for agent in agents:
+        name = agent.get('name')
+        if not isinstance(name, str) or not name:
+            raise SyncError('Each agent prompt requires name')
+        relative_target = render_template(target_pattern, _agent_data(agent), target_pattern)
+        wrapper_path = target_root / relative_target
+        if not wrapper_path.is_file():
+            continue
+        try:
+            wrapper = tomllib.loads(wrapper_path.read_text(encoding='utf-8'))
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+            raise SyncError(f'Invalid Codex agent wrapper {wrapper_path}: {error}') from error
+        runtime: dict[str, str] = {}
+        for field in _CODEX_RUNTIME_FIELDS:
+            if field not in wrapper:
+                continue
+            value = wrapper[field]
+            if not isinstance(value, str) or not value.strip():
+                raise SyncError(f'Codex agent wrapper field {name}.{field} must be a non-empty string')
+            runtime[field] = value.strip()
+        if runtime:
+            overrides[name] = runtime
+    return overrides
+
+
+def _discover_cursor_agent_runtime_overrides(
+    target_root: Path,
+    public_config: dict[str, Any],
+    agents: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    target_pattern = _agent_wrapper_pattern(public_config, 'agent_wrapper.cursor.md')
+    if not target_pattern:
+        return {}
+    overrides: dict[str, dict[str, Any]] = {}
+    for agent in agents:
+        name = agent.get('name')
+        if not isinstance(name, str) or not name:
+            raise SyncError('Each agent prompt requires name')
+        relative_target = render_template(target_pattern, _agent_data(agent), target_pattern)
+        wrapper_path = target_root / relative_target
+        frontmatter = _read_frontmatter(wrapper_path)
+        runtime: dict[str, Any] = {}
+        if 'model' in frontmatter:
+            model = frontmatter['model']
+            if not isinstance(model, str) or not model.strip():
+                raise SyncError(f'Cursor agent wrapper field {name}.model must be a non-empty string')
+            runtime['model'] = model.strip()
+        if 'readonly' in frontmatter:
+            readonly = frontmatter['readonly']
+            if not isinstance(readonly, bool):
+                raise SyncError(f'Cursor agent wrapper field {name}.readonly must be a boolean')
+            runtime['readonly'] = readonly
+        if runtime:
+            overrides[name] = runtime
+    return overrides
+
+
+def _discover_github_agent_runtime_overrides(
+    target_root: Path,
+    public_config: dict[str, Any],
+    agents: list[dict[str, Any]],
+) -> dict[str, dict[str, str]]:
+    target_pattern = _agent_wrapper_pattern(public_config, 'agent_wrapper.github.agent.md')
+    if not target_pattern:
+        return {}
+    overrides: dict[str, dict[str, str]] = {}
+    for agent in agents:
+        name = agent.get('name')
+        if not isinstance(name, str) or not name:
+            raise SyncError('Each agent prompt requires name')
+        relative_target = render_template(target_pattern, _agent_data(agent), target_pattern)
+        frontmatter = _read_frontmatter(target_root / relative_target)
+        if 'model' not in frontmatter:
+            continue
+        model = frontmatter['model']
+        if not isinstance(model, str) or not model.strip():
+            raise SyncError(f'GitHub agent wrapper field {name}.model must be a non-empty string')
+        overrides[name] = {'model': model.strip()}
+    return overrides
 
 
 def _read_strength(path: Path) -> str:
@@ -419,18 +739,39 @@ def _public_skill_source(context: SyncContext, name: str) -> Path:
     return source
 
 
-def _delete_retired_skill_dirs(
+def _delete_retired_assets(
     context: SyncContext,
-    replacement_name: str,
+    public_config: dict[str, Any],
+    retired: dict[str, tuple[str, ...]],
     mirror_delete: bool,
 ) -> None:
     if not mirror_delete:
         return
-    for retired_name in _RETIRED_SKILL_NAMES_BY_REPLACEMENT.get(replacement_name, ()):
-        retired_dir = context.target_root / '.agents' / 'skills' / retired_name
-        skill_file = retired_dir / 'SKILL.md'
-        if _read_frontmatter_value(skill_file, 'name') == retired_name:
-            _delete_path(context, retired_dir)
+    platforms = public_config.get('platforms') or {}
+    if not isinstance(platforms, dict):
+        raise SyncError('platforms must be an object')
+    rule_wrappers = _require_items(platforms, 'rule_wrappers')
+    agent_wrappers = _require_items(platforms, 'agent_wrappers')
+    for filename in retired['rules']:
+        rule_data = _rule_data({'file': filename})
+        _delete_path(context, context.target_root / '.agents' / 'rules' / filename)
+        for wrapper in rule_wrappers:
+            target_pattern = wrapper.get('path')
+            if not isinstance(target_pattern, str) or not target_pattern:
+                raise SyncError('Each rule wrapper requires path')
+            relative_target = render_template(target_pattern, rule_data, target_pattern)
+            _delete_path(context, context.target_root / relative_target)
+    for name in retired['skills']:
+        _delete_path(context, context.target_root / '.agents' / 'skills' / name)
+    for name in retired['agents']:
+        agent_data = _agent_data({'name': name})
+        _delete_path(context, context.target_root / '.agents' / 'agents' / f'{name}.md')
+        for wrapper in agent_wrappers:
+            target_pattern = wrapper.get('path')
+            if not isinstance(target_pattern, str) or not target_pattern:
+                raise SyncError('Each agent wrapper requires path')
+            relative_target = render_template(target_pattern, agent_data, target_pattern)
+            _delete_path(context, context.target_root / relative_target)
 
 
 def _referenced_skill_path(target_root: Path, agent_path: Path) -> Path | None:
@@ -508,8 +849,13 @@ def _local_rule_metadata(target_root: Path, filename: str, agents_rows: dict[str
 
 
 def discover_local_assets(target_root: Path, public_config: dict[str, Any]) -> dict[str, Any]:
-    public_rule_files = {rule['file'] for rule in _require_items(public_config, 'rules')}
-    public_agent_names = {agent['name'] for agent in _require_items(public_config, 'agent_prompts')}
+    retired = _retired_assets(public_config)
+    public_rule_files = {
+        rule['file'] for rule in _require_items(public_config, 'rules')
+    }.union(retired['rules'])
+    public_agent_names = {
+        agent['name'] for agent in _require_items(public_config, 'agent_prompts')
+    }.union(retired['agents'])
     rules = []
     rules_root = target_root / '.agents' / 'rules'
     agents_rows = _read_agents_rule_rows(target_root)
@@ -538,7 +884,61 @@ def discover_local_assets(target_root: Path, public_config: dict[str, Any]) -> d
             description = _local_agent_description(target_root, agent_path, name)
             model = _read_frontmatter_value(agent_path, 'model') or 'sonnet'
             agent_prompts.append({'name': name, 'description': description, 'model': model})
-    return {'rules': rules, 'agent_prompts': agent_prompts}
+    all_agents = _require_items(public_config, 'agent_prompts') + agent_prompts
+    return {
+        'rules': rules,
+        'agent_prompts': agent_prompts,
+        'codex_agent_runtime_overrides': _discover_codex_agent_runtime_overrides(
+            target_root,
+            public_config,
+            all_agents,
+        ),
+        'cursor_agent_runtime_overrides': _discover_cursor_agent_runtime_overrides(
+            target_root,
+            public_config,
+            all_agents,
+        ),
+        'github_agent_runtime_overrides': _discover_github_agent_runtime_overrides(
+            target_root,
+            public_config,
+            all_agents,
+        ),
+    }
+
+
+def _exclude_retired_local_assets(
+    local_config: dict[str, Any],
+    retired: dict[str, tuple[str, ...]],
+) -> dict[str, Any]:
+    retired_rules = set(retired['rules'])
+    retired_agents = set(retired['agents'])
+    return {
+        'rules': [
+            rule
+            for rule in _require_items(local_config, 'rules')
+            if rule.get('file') not in retired_rules
+        ],
+        'agent_prompts': [
+            agent
+            for agent in _require_items(local_config, 'agent_prompts')
+            if agent.get('name') not in retired_agents
+        ],
+        'codex_agent_runtime_overrides': {
+            name: fields
+            for name, fields in _codex_agent_runtime_overrides(local_config).items()
+            if name not in retired_agents
+        },
+        'cursor_agent_runtime_overrides': {
+            name: fields
+            for name, fields in _cursor_agent_runtime_overrides(local_config).items()
+            if name not in retired_agents
+        },
+        'github_agent_runtime_overrides': {
+            name: fields
+            for name, fields in _github_agent_runtime_overrides(local_config).items()
+            if name not in retired_agents
+        },
+    }
 
 
 def _merge_local_assets(primary: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:
@@ -561,9 +961,18 @@ def _merge_local_assets(primary: dict[str, Any], secondary: dict[str, Any]) -> d
             )
         ):
             merged_agents[agent['name']] = {**existing, 'description': discovered_description}
+    runtime_overrides = _codex_agent_runtime_overrides(secondary)
+    runtime_overrides.update(_codex_agent_runtime_overrides(primary))
+    cursor_runtime_overrides = _cursor_agent_runtime_overrides(secondary)
+    cursor_runtime_overrides.update(_cursor_agent_runtime_overrides(primary))
+    github_runtime_overrides = _github_agent_runtime_overrides(secondary)
+    github_runtime_overrides.update(_github_agent_runtime_overrides(primary))
     return {
         'rules': list(merged_rules.values()),
         'agent_prompts': list(merged_agents.values()),
+        'codex_agent_runtime_overrides': runtime_overrides,
+        'cursor_agent_runtime_overrides': cursor_runtime_overrides,
+        'github_agent_runtime_overrides': github_runtime_overrides,
     }
 
 
@@ -576,11 +985,21 @@ def _rows_for_section(rules: list[dict[str, Any]], section: str) -> str:
     return '\n'.join(rows)
 
 
+def _missing_agent_wrapper_model_fields(
+    wrapper: dict[str, Any],
+    agent_data: dict[str, Any],
+) -> list[str]:
+    requirements = _AGENT_WRAPPER_MODEL_FIELDS.get(wrapper.get('template'), ())
+    values = agent_data['agent']
+    return [display_name for data_key, display_name in requirements if not values[data_key]]
+
+
 def _generate_wrappers(
     context: SyncContext,
     public_config: dict[str, Any],
     local_config: dict[str, Any],
     mirror_delete: bool,
+    require_agent_runtime: bool,
 ) -> None:
     platforms = public_config.get('platforms') or {}
     rule_wrappers = _require_items(platforms, 'rule_wrappers')
@@ -590,6 +1009,9 @@ def _generate_wrappers(
         local_config,
         'agent_prompts',
     )
+    runtime_overrides = _codex_agent_runtime_overrides(local_config)
+    cursor_runtime_overrides = _cursor_agent_runtime_overrides(local_config)
+    github_runtime_overrides = _github_agent_runtime_overrides(local_config)
     desired_rule_paths_by_wrapper = {wrapper['path']: set() for wrapper in rule_wrappers}
     desired_agent_paths_by_wrapper = {wrapper['path']: set() for wrapper in agent_wrappers}
     for rule in all_rules:
@@ -600,12 +1022,37 @@ def _generate_wrappers(
             )
             _render_to_target(context, wrapper['template'], wrapper['path'], _rule_data(rule))
     for agent in all_agents:
+        effective_agent = _agent_with_runtime_overrides(
+            agent,
+            runtime_overrides.get(agent['name']),
+            cursor_runtime_overrides.get(agent['name']),
+            github_runtime_overrides.get(agent['name']),
+        )
         for wrapper in agent_wrappers:
-            rendered_target = render_template(wrapper['path'], _agent_data(agent), wrapper['path'])
-            desired_agent_paths_by_wrapper[wrapper['path']].add(
-                Path(rendered_target).relative_to(_wrapper_root(wrapper['path'])).as_posix()
+            agent_data = _agent_data(effective_agent)
+            rendered_target = render_template(
+                wrapper['path'],
+                agent_data,
+                wrapper['path'],
             )
-            _render_to_target(context, wrapper['template'], wrapper['path'], _agent_data(agent))
+            relative_wrapper_path = Path(rendered_target).relative_to(
+                _wrapper_root(wrapper['path'])
+            ).as_posix()
+            desired_agent_paths_by_wrapper[wrapper['path']].add(relative_wrapper_path)
+            missing_fields = _missing_agent_wrapper_model_fields(wrapper, agent_data)
+            if missing_fields:
+                if require_agent_runtime:
+                    raise SyncError(
+                        f"Agent wrapper {rendered_target} requires reviewed fields: "
+                        f"{', '.join(missing_fields)}"
+                    )
+                continue
+            _render_to_target(
+                context,
+                wrapper['template'],
+                wrapper['path'],
+                agent_data,
+            )
     for wrapper in rule_wrappers:
         _delete_stale_wrapper_files(
             context,
@@ -648,9 +1095,15 @@ def sync_public_assets(
     context: SyncContext,
     public_config: dict[str, Any],
     local_config: dict[str, Any],
+    *,
+    require_agent_runtime: bool = False,
 ) -> list[Change]:
+    _validate_public_agent_model_ownership(public_config)
     ignore_patterns = _ignore_patterns(public_config)
     mirror_delete = _mirror_delete_enabled(public_config)
+    retired = _retired_assets(public_config)
+    _delete_retired_assets(context, public_config, retired, mirror_delete)
+    retained_local_config = _exclude_retired_local_assets(local_config, retired)
     for rule in _require_items(public_config, 'rules'):
         filename = rule.get('file')
         if not isinstance(filename, str) or not filename:
@@ -671,11 +1124,6 @@ def sync_public_assets(
             ignore_patterns,
             mirror_delete,
         )
-        _delete_retired_skill_dirs(context, name, mirror_delete)
-    for generator in _require_items(public_config, 'project_skill_generators'):
-        name = generator.get('name')
-        if isinstance(name, str) and name:
-            _delete_retired_skill_dirs(context, name, mirror_delete)
     for agent in _require_items(public_config, 'agent_prompts'):
         name = agent.get('name')
         if not isinstance(name, str) or not name:
@@ -686,10 +1134,16 @@ def sync_public_assets(
             context.target_root / '.agents' / 'agents' / f'{name}.md',
         )
     merged_local_config = _merge_local_assets(
-        local_config,
+        retained_local_config,
         discover_local_assets(context.target_root, public_config),
     )
-    _generate_wrappers(context, public_config, merged_local_config, mirror_delete)
+    _generate_wrappers(
+        context,
+        public_config,
+        merged_local_config,
+        mirror_delete,
+        require_agent_runtime,
+    )
     _generate_agents_entry(context, public_config, merged_local_config)
     return context.changes
 
@@ -716,7 +1170,12 @@ def main(argv: list[str] | None = None) -> int:
             check=args.check,
             changes=[],
         )
-        changes = sync_public_assets(context, public_config, local_config)
+        changes = sync_public_assets(
+            context,
+            public_config,
+            local_config,
+            require_agent_runtime=args.check,
+        )
     except SyncError as error:
         print(f'ERROR: {error}')
         return 2

@@ -1,4 +1,8 @@
-model = "gpt-5.4-mini"
+name = "{{agent.name}}"
+description = "{{agent.description}}"
+model = "{{agent.codex_model}}"
+model_reasoning_effort = "{{agent.codex_model_reasoning_effort}}"
+sandbox_mode = "{{agent.codex_sandbox_mode}}"
 developer_instructions = """
 Follow `{{agent.apply_ref}}`.
 Keep this file thin and use the shared agent prompt as the source of truth.

@@ -17,9 +17,12 @@ Scope: Project overrides for workflow tools, worktrees, git, and prose outputs.
 
 ## Superpowers
 
-- Never invoke `superpowers:*` proactively.
-- Use Superpowers only when the user explicitly requests it.
-- References to Superpowers elsewhere do not authorize automatic activation.
+- Never invoke `superpowers:brainstorming` proactively.
+- Use `superpowers:brainstorming` only when the user explicitly requests it.
+- Other `superpowers:*` skills follow their own trigger conditions and applicable higher-priority
+  rules.
+- References to Superpowers elsewhere do not authorize automatic activation of
+  `superpowers:brainstorming`.
 
 ## Git And Worktree
 

@@ -2,54 +2,42 @@
 
 Strength: `Mandatory`
 
-Scope: Placeholder and generation contract for repository-wide tool facts, capabilities, and
-invocation constraints, runtime services, and generated assets.
+Scope: Generation contract for repository-wide tool facts, capabilities, and invocation constraints,
+runtime services, and generated-asset tooling.
 
 ## Generation Contract
 
-This file is a project-local rule placeholder. During setup, `setup-project-agents` refreshes the
-target repository's `.agents/rules/20-project-tools.md` from concrete repository evidence every
-time it runs.
+Author the target rule from current repository evidence. Keep only stable facts that another agent
+needs to invoke, scope, or preserve project tooling correctly.
 
-Do not keep this placeholder as project policy in a real project. Use evidence such as package
-manifests, scripts, build and test commands, runtime ports, MCP configuration, service
-dependencies, generated-file requirements, and CI workflows.
+## Evidence
 
-Record stable tool facts and constraints here. Put the workflows that select and order those tools
-in the generated `.agents/skills/worktree-environment-setup/` and
-`.agents/skills/project-verification/` skills.
+- Package manifests, lock files, toolchain pins, workspace configuration, and package-manager files.
+- Repository scripts, task runners, CI workflows, tool configuration, and command help output.
+- Runtime entry points, service configuration, ports, environment templates, and health checks.
+- Code generation configuration, generated outputs, and repository-owned orchestration selectors.
+- MCP and native agent-platform configuration that affects project tooling.
 
-## What Belongs Here
+## Content
 
-- Package manager, language/runtime versions, and workspace layout.
-- Common scripts for development, testing, building, linting, generation, and verification.
-- Each tool's exact invocation, required working directory, supported scope selection, mutation
-  behavior, safe-fix capability, prerequisites, environment, outputs, and relative cost.
-- Runtime services, ports, environment variables, data directories, and health checks.
-- MCP or platform runtime configuration that agents must preserve.
-- Generated assets or files that should not be edited by hand.
-- Existing repository-owned selectors or orchestration entry points that generated project skills
-  can reuse without copying their implementation.
+- Record runtime versions, package managers, workspace layout, and required working directories.
+- Record development, setup, build, generation, formatting, analysis, lint, test, and packaging
+  commands with prerequisites, inputs, outputs, supported scope selection, mutation behavior,
+  safe-fix capability, and relative cost.
+- Record runtime services, ports, environment variables, data directories, credentials requirements,
+  startup dependencies, and health checks.
+- Record generation entry points and their inputs and outputs. Put semantic ownership and the
+  prohibition on hand-editing generated files in `21-project-rules.md`.
+- Record existing repository-owned selectors that generated project skills can call without
+  duplicating their implementation.
 
-## What Does Not Belong Here
+## Boundaries
 
-- General code style; use base or project convention rules instead.
-- Worktree selection, creation, integration, or cleanup procedures; use their public workflow
-  skills.
-- Environment preparation sequencing, verification trigger timing, check ordering, deduplication,
-  risk-based broadening, baseline-failure handling, or result-reporting policy; generate those
-  workflows in their owning project skills from the facts recorded here.
-- Unconditional instructions to run every listed command. Listing a tool describes a capability,
-  not a workflow requirement.
-- Project-specific facts in `wenyue/agents`; only target repositories should contain real local
-  tooling facts.
-
-## Suggested Generated Content
-
-- Concrete setup, install, lint, test, build, generation, and verification commands with their
-  supported scopes, mutation modes, safe fixes, prerequisites, outputs, and relative costs.
-- Runtime services, ports, health checks, environment variables, and required credentials.
-- MCP and platform runtime entries that agents must preserve.
-- Generated files, regeneration owners, and files that must not be edited by hand.
-- References to the target-owned `worktree-environment-setup` and `project-verification` skills
-  that own project-specific execution policy.
+- Keep environment preparation order in `.agents/skills/worktree-environment-setup/` and completed
+  change verification in `.agents/skills/change-set-verification/`.
+- Exclude verification trigger timing, check ordering, deduplication, risk-based broadening,
+  baseline comparison, and result policy; the generated verification skill owns those decisions.
+- Exclude API and domain conventions owned by `21-project-rules.md`, and module/dependency ownership
+  owned by `22-project-structure.md`.
+- Do not turn a command inventory into an instruction to run every command.
+- Do not infer tools, commands, scope support, or costs that current evidence does not prove.

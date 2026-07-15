@@ -2,46 +2,37 @@
 
 Strength: `Default`
 
-Scope: Placeholder for project APIs, generated-file boundaries, lint interpretation, lifecycle
-rules, and domain conventions.
+Scope: Generation contract for project APIs, domain conventions, generated-file ownership, lint
+interpretation, persistence, and lifecycle behavior.
 
 ## Generation Contract
 
-This file is a project-local rule placeholder. During setup, `setup-project-agents` refreshes the
-target repository's `.agents/rules/21-project-rules.md` from concrete repository evidence every
-time it runs.
+Author the target rule from stable behavioral evidence. Record constraints that implementation and
+review agents must preserve; omit conventions that are merely common practice or personal taste.
 
-Do not keep this placeholder as project policy in a real project. Update it from concrete evidence
-such as source modules, framework conventions, API contracts, generated-file configs, custom lint
-rules, domain terminology, storage behavior, state management, and lifecycle constraints.
+## Evidence
 
-Record stable conventions and behavioral contracts here. Put tooling commands in
-`.agents/rules/20-project-tools.md` and directory ownership in
-`.agents/rules/22-project-structure.md`.
+- Public APIs, routes, schemas, event definitions, serialization code, and compatibility tests.
+- Framework configuration, established call sites, custom lints, and repository-specific analyzers.
+- Generated-file headers, source schemas, generator configuration, and ownership documentation.
+- Domain models, persistence and migration code, lifecycle owners, and concurrency boundaries.
+- Existing naming, terminology, localization, and user-visible copy conventions with repeated use.
 
-## What Belongs Here
+## Content
 
-- Public API contracts, route boundaries, event names, payload fields, and compatibility rules.
-- Framework or library conventions already used by the project.
-- Generated-file ownership, external schema ownership, and regeneration requirements.
-- Domain terms, naming conventions, prefixes, and user-visible copy conventions.
-- Persistence, migration, ownership, lifecycle, or concurrency rules.
-- Project-specific interpretations of lints, analyzers, or formatting tools.
+- Record public API, route, event, payload, and compatibility contracts.
+- Record project-specific framework use and interpretations of formatter, analyzer, or lint output.
+- Record semantic owners for generated files and external schemas, regeneration requirements, and
+  files that must not be edited by hand.
+- Record domain terms, naming constraints, prefixes, identifiers, and user-visible copy conventions.
+- Record persistence, migration, state ownership, lifecycle, cancellation, and concurrency rules.
+- State exceptions to base rules only when current project evidence establishes a real override.
 
-## What Does Not Belong Here
+## Boundaries
 
-- Tool, runtime, build, test, or verification commands; use `20-project-tools.md`.
-- Top-level directory maps, module ownership, or dependency direction; use
-  `22-project-structure.md`.
-- General code style; use base language rules unless the project has a concrete override.
-- Project-specific facts in `wenyue/agents`; only target repositories should contain real local
-  project conventions.
-
-## Suggested Generated Content
-
-- Public API contracts, route boundaries, event names, payload fields, and compatibility rules.
-- Framework or library conventions already used by the project.
-- Generated files, external schema ownership, and regeneration requirements.
-- Domain terms, naming conventions, prefixes, and user-visible copy conventions.
-- Persistence, migration, ownership, lifecycle, or concurrency rules.
-- Project-specific interpretations of lints, analyzers, or formatting tools.
+- Keep tool invocations, generation commands, runtimes, and verification capabilities in
+  `20-project-tools.md`.
+- Keep directory ownership, module layout, and dependency direction in `22-project-structure.md`.
+- Exclude generic language style already covered by base rules and unsupported architectural advice.
+- Do not duplicate the same generated-file fact here and in `20-project-tools.md`: this rule owns
+  semantic ownership and edit boundaries; the tooling rule owns how the generator is invoked.

@@ -5,4 +5,4 @@ model: {{agent.cursor_model}}
 readonly: {{agent.cursor_readonly}}
 ---
 
-Apply @{{agent.apply_ref}}
+应用 @{{agent.apply_ref}}

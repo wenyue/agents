@@ -95,14 +95,11 @@ paths.
 
 ## Skill Layout
 
-- Public skills must stay portable. Describe project targets semantically and do not hardcode
-  repository-specific paths into their `SKILL.md` files.
-- Project-generated skills may record concrete paths, commands, and constraints when each detail is
-  backed by current target-repository evidence. Keep reusable workflow policy in the public
-  generator contract instead of duplicating it across generated skills.
+- Skills are portable units. Do not hardcode repository-specific paths into `SKILL.md`.
 - Inside `SKILL.md`, reference skill-owned files relative to the skill directory.
 - `.agents/skills/` is the runtime skill location. It can contain project-owned skills, public
   skills sourced from `wenyue/agents`, and third-party skills managed separately through
   `.skillshare/skills/`.
+- Describe project targets semantically; let the agent resolve concrete paths at runtime.
 - Repository-specific policy belongs in `.agents/rules/`. Reusable workflow that would apply in
   another repo belongs in a skill.

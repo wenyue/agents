@@ -2,46 +2,37 @@
 
 Strength: `Advisory`
 
-Scope: Placeholder for top-level modules, feature layout, dependency direction, shared locations,
-and configuration ownership.
+Scope: Generation contract for repository layout, module ownership, dependency direction, shared
+locations, and configuration ownership.
 
 ## Generation Contract
 
-This file is a project-local rule placeholder. During setup, `setup-project-agents` refreshes the
-target repository's `.agents/rules/22-project-structure.md` from concrete repository evidence every
-time it runs.
+Author the target rule from observed repository structure and enforced dependency boundaries. Keep
+the map selective: include locations and relationships that guide placement or prevent invalid
+dependencies, not a directory-by-directory inventory.
 
-Do not keep this placeholder as project policy in a real project. Update it from concrete evidence
-such as the repository tree, package boundaries, import rules, module owners, feature directories,
-shared libraries, configuration locations, and dependency enforcement tools.
+## Evidence
 
-Record stable ownership and dependency boundaries here. Put tooling commands in
-`.agents/rules/20-project-tools.md` and API or domain conventions in
-`.agents/rules/21-project-rules.md`.
+- Repository and workspace trees, package manifests, module declarations, and import graphs.
+- Feature directories, shared libraries, configuration owners, tests, assets, generated sources,
+  scripts, infrastructure, and documentation locations.
+- Dependency checks, lint rules, build targets, package boundaries, and representative imports.
+- Ownership files or repeated placement patterns that establish a stable boundary.
 
-## What Belongs Here
+## Content
 
-- Top-level directories and what each one owns.
-- Feature/module layout and naming conventions.
-- Allowed and forbidden dependency directions.
-- Shared locations for config, test helpers, assets, generated sources, and scripts.
-- Ownership boundaries for UI, backend, data, infrastructure, or documentation.
-- Real dependency enforcement mechanisms, if the project has them.
+- Record top-level areas and the responsibility each one owns.
+- Record feature or module layout, placement conventions, and shared locations.
+- Record allowed and forbidden dependency directions and the boundary they protect.
+- Record ownership boundaries across UI, backend, domain, data, infrastructure, tests, assets,
+  generated sources, configuration, scripts, and documentation when those areas exist.
+- Name real enforcement mechanisms, but leave their exact invocation in `20-project-tools.md`.
 
-## What Does Not Belong Here
+## Boundaries
 
-- Tool, runtime, build, test, or verification commands; use `20-project-tools.md`.
-- Public API contracts, payload fields, domain vocabulary, or lint interpretation; use
-  `21-project-rules.md`.
-- General architecture advice that is not proven by the target repository.
-- Project-specific facts in `wenyue/agents`; only target repositories should contain real local
-  structure facts.
-
-## Suggested Generated Content
-
-- Top-level directories and what each one owns.
-- Feature/module layout and naming conventions.
-- Allowed and forbidden dependency directions.
-- Shared locations for config, test helpers, assets, generated sources, and scripts.
-- Ownership boundaries for UI, backend, data, infrastructure, or documentation.
-- Real dependency enforcement mechanisms, if the project has them.
+- Keep tool, runtime, build, test, and verification commands in `20-project-tools.md`.
+- Keep API contracts, payloads, domain vocabulary, generated-file edit policy, and lint
+  interpretation in `21-project-rules.md`.
+- Exclude generic architecture advice, speculative future layout, and directories whose names are
+  self-explanatory and impose no placement or dependency constraint.
+- Do not duplicate the same ownership statement across multiple sections or rules.

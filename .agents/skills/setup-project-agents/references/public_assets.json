@@ -10,6 +10,18 @@
     "*.pyc",
     "**/*.pyc"
   ],
+  "retired_assets": {
+    "rules": [],
+    "skills": [
+      "update-project-rules",
+      "project-development-workflow",
+      "project-verification"
+    ],
+    "agents": [
+      "rename",
+      "verifier"
+    ]
+  },
   "rules": [
     {
       "file": "00-global-rule-config.md",
@@ -135,28 +147,43 @@
     }
   ],
   "skills": [
-    {"name": "debug-mode"},
-    {"name": "refactor-code"},
-    {"name": "rename"},
-    {"name": "setup-project-agents"},
-    {"name": "worktree-integrate"},
-    {"name": "write-comment"}
+    {
+      "name": "debug-mode"
+    },
+    {
+      "name": "refactor-code"
+    },
+    {
+      "name": "rename"
+    },
+    {
+      "name": "setup-project-agents"
+    },
+    {
+      "name": "worktree-integrate"
+    },
+    {
+      "name": "write-comment"
+    }
   ],
   "project_skill_generators": [
-    {"name": "worktree-environment-setup"},
-    {"name": "project-verification"}
+    {
+      "name": "worktree-environment-setup"
+    },
+    {
+      "name": "change-set-verification"
+    }
   ],
   "agent_prompts": [
     {
-      "name": "rename",
-      "description": "Renaming specialist for classes, functions, methods, variables, and other symbols.",
-      "model": "sonnet"
-    },
-    {
-      "name": "verifier",
-      "description": "Validates completed work after tasks are marked done.",
-      "model": "sonnet",
-      "readonly": true
+      "name": "change-set-verifier",
+      "description": "Normalizes and verifies a coherent completed change set, then returns semantic diagnostics to the parent agent.",
+      "codex": {
+        "sandbox_mode": "workspace-write"
+      },
+      "cursor": {
+        "readonly": false
+      }
     }
   ],
   "platforms": {

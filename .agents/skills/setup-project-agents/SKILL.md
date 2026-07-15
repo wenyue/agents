@@ -1,172 +1,217 @@
 ---
 name: setup-project-agents
 description: >-
-  Set up or sync repository agent assets from the wenyue/agents public catalog. Use when Codex must
-  initialize .agents rules, public skills, shared subagents, AGENTS.md, and thin
-  Cursor/GitHub/Codex wrappers; refresh project-owned rules or project skills from current
-  repository facts; or reconcile MCP/runtime config that follows the shared agent configuration
-  structure.
+  Set up or update repository agent assets from the wenyue/agents public catalog. Use when Codex
+  must reconcile public rules, skills, subagents, retired assets, wrappers, generated project
+  rules and skills, or target-owned agent runtime configuration.
 ---
 
 # Setup Project Agents
 
-Sync public assets, then regenerate project-owned rules, environment setup, and verification from
-current target-repository evidence.
+Run the same complete reconciliation for initial setup and later updates: synchronize public
+assets, regenerate managed project assets from current evidence, review complete candidates, and
+accept the result in the target repository.
 
-## Core Rules
+## Ownership
 
-- Public assets mirrored from `wenyue/agents` stay public; do not locally adapt them.
-- Project-owned rules and skills are regenerated from current target repository evidence.
+- Treat setup and update as the same idempotent workflow.
+- Always fetch the configured public GitHub archive. Do not use a local source checkout, cache, or
+  stale snapshot.
+- Mirror catalog-listed public assets exactly and delete only catalog-declared retired assets.
+- Preserve project-local assets outside the public, generated, and retired sets. Report ownership
+  collisions instead of resolving them silently.
+- Regenerate managed project assets as complete candidates on every run. Read their previous
+  versions only as omission checklists; they are not authoritative generation inputs.
+- Revalidate every retained command, path, service, convention, and ownership claim against current
+  target-repository evidence.
+- Use one subagent to generate all project-owned candidates from the same evidence set. If subagents
+  are unavailable, report a blocker instead of generating the files in the main agent.
+
+## Managed Project Assets
+
+- `.agents/rules/20-project-tools.md`
+- `.agents/rules/21-project-rules.md`
+- `.agents/rules/22-project-structure.md`
+- `.agents/skills/worktree-environment-setup/`
+- `.agents/skills/change-set-verification/`
+
+Accepted candidates become the target repository's runtime sources of truth.
+
+## Shared Generation Requirements
+
+Apply only requirements shared by every generated asset here. Follow each target rule or generator
+skill for its content, organization, optional resources, and workflow-specific constraints.
+
 - Write every generated or refreshed project-owned rule and skill in English.
-- Run `scripts/sync_public_agent_assets.py` before changing project-owned agent assets.
-- The sync script mirrors public assets, regenerates thin wrappers and entry files, and deletes
-  retired skill directories associated with catalog entries. It does not generate project-owned
-  content.
-- The sync script always fetches the configured public GitHub archive. Do not use local source
-  checkouts, caches, or stale snapshots.
-- Treat `.agents/rules/<nn>-<name>.md` and `.agents/skills/<project-skill>/SKILL.md` as sources of
-  truth in the target repository.
-- Use a subagent to generate project-owned files from generator contracts and current evidence. If
-  no subagent capability is available, report a blocker instead of generating them in the main
-  agent.
-- Review complete candidate file contents, including generated scripts, before applying or testing
-  them. Do not request or apply patch fragments for generated project-owned assets.
+- Use current repository evidence. Omit unsupported, stale, speculative, and duplicate guidance.
+- Generate complete files and directories, not patch fragments. Keep the result concise while
+  preserving every required constraint and ownership boundary.
+- Make every generated rule conform to `.agents/rules/00-global-rule-config.md`. Include a title,
+  `Strength:`, `Scope:`, and rule-specific body; use its numbered location and thin wrappers as the
+  source-of-truth contract requires.
+- Give every generated skill YAML frontmatter containing only `name` and `description`. Use
+  imperative instructions, relative references for skill-owned resources, and semantic target
+  descriptions rather than machine-specific paths.
+- For rule-specific or skill-specific authoring decisions, follow the target generator skill itself
+  or the target rule's generation contract instead of restating that guidance here.
+- Review complete candidate contents, including references and scripts, before applying or invoking
+  them.
 
 ## Workflow
 
-1. Read `AGENTS.md`, then all applicable `00-*` through `09-*` rules.
-2. Run `python3 .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py`.
-3. Review created, updated, and deleted paths. Delete
-   `.agents/skills/project-development-workflow/` when the public catalog retires it; do not use it
-   as generation evidence.
-4. Dispatch a subagent to regenerate project rules from current target-repository evidence and the
-   public generator contracts, including `.agents/rules/20-project-tools.md`,
-   `.agents/rules/21-project-rules.md`, and `.agents/rules/22-project-structure.md`.
-5. Have the same subagent generate the complete `.agents/skills/worktree-environment-setup/` and
-   `.agents/skills/project-verification/` directories from their public generator contracts and the
-   same evidence.
-6. Review the complete candidate rules, skills, references, and scripts using the review gate
-   below. Do not invoke the candidate or run actual setup or acceptance tests during this review.
-7. Resolve every review finding, repeat the review, and apply the complete candidate files only
-   after the review passes.
-8. Run environment-skill acceptance when `worktree-environment-setup` was created or materially
-   changed. Run verification-skill acceptance after the temporary worktree environment is ready
-   when `project-verification` was created or materially changed. The ordinary use of an unchanged
-   generated skill does not repeat its acceptance.
-9. Run the public sync script again so wrappers and entry files reflect the refreshed sources.
-10. Run validation and report final changed files, deletion/regeneration work, review results,
-     acceptance results, and blockers.
+1. Read `AGENTS.md` and all applicable `00-*` through `09-*` rules.
+2. Run `python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py`.
+3. Review every reported creation, update, and deletion. Confirm public ownership, declared
+   retirements, wrapper reconciliation, and preservation of unrelated local assets.
+4. Collect current evidence for tools, runtimes, services, generated files, APIs, conventions,
+   modules, dependencies, wrappers, and platform configuration.
+5. Inventory the previous managed assets only as omission checklists, then revalidate each retained
+   fact.
+6. Review agent runtime and platform configuration using the sections below.
+7. Dispatch one subagent to generate complete candidates for all managed project assets from the
+   generator contracts and shared evidence.
+8. Review the complete candidates. Resolve all findings and repeat review before replacing any
+   managed asset.
+9. Run the public sync so wrappers and entry files reflect the reviewed candidates.
+10. Run generated-rule acceptance for each rule that was created or materially changed. Then run
+    environment-skill acceptance when `worktree-environment-setup` changed and verification-skill
+    acceptance after the environment is ready when `change-set-verification` changed. Skip
+    acceptance for a byte-equivalent regenerated skill or rule.
+11. Smoke-test changed platform runtime fields when a safe representative invocation is available.
+12. Run the public sync again, then final validation including `sync_public_agent_assets.py --check`.
+
+## Agent Runtime Review
+
+Review every catalog-listed agent during every setup or update for each installed or targeted
+platform.
+
+- Do not store model or reasoning-effort choices in the public catalog. Existing wrapper values are
+  prior target decisions, not public defaults.
+- Retain a current target value only after confirming that it remains supported and appropriate.
+  Initialize missing values with an explicit supported model; do not rely on inheritance.
+- Change a value only when support, responsibility, permissions, observed quality, project
+  complexity, or an explicit cost/latency/quality policy justifies it.
+- Codex wrappers require non-empty `model` and `model_reasoning_effort`; Cursor `model` and GitHub
+  Copilot `model` must also be non-empty. Never omit these required target-owned fields.
+- Preserve stable public role permissions such as writable Codex `sandbox_mode`; keep target
+  permission overrides only when current platform and role evidence supports them.
+- The final public sync must preserve reviewed target-owned runtime fields. Treat missing or empty
+  required fields as a blocker at the strict final gate.
+- When runtime fields change, run a representative smoke invocation if the installed platform has a
+  safe surface; otherwise report the smoke result as inconclusive.
+
+## Platform Configuration Review
+
+- Keep per-agent runtime fields in native wrappers and project-wide MCP, hook, concurrency, or
+  permission policy in native root configuration.
+- Do not create `.codex/config.toml` only to register those agents; Codex discovers standalone agent
+  TOML files directly.
+- Do not translate fields across platforms by name alone. Model selection, sandboxing, read-only
+  state, tool access, and invocation policy are different controls.
+- Merge only evidence-backed project-owned keys. Preserve unrelated keys and never write secrets or
+  user-global settings.
+- Report uncertain platform schemas instead of emitting guessed fields.
 
 ## Review
 
-Review complete candidate files before invoking them. Confirm that:
+Review complete candidate files before acceptance. Confirm that:
 
-- project-owned rules and skills are written in English and match current repository evidence;
-- claims about commands, generated files, services, and ownership are backed by concrete files;
-- `20-project-tools.md` records tool capabilities and invocation constraints without absorbing
-  environment or verification workflow policy;
-- the environment skill contains `SKILL.md`, `scripts/setup.sh`, and `scripts/setup.ps1` and follows
-  its public generator contract;
-- both setup entry points prepare the same core environment, guard the primary checkout, surface
-  failures, and are safe to rerun;
-- the environment skill stops at readiness and hands completed-change verification to
-  `project-verification` instead of embedding verification selection policy;
-- the verification skill's trigger, task scope, verification matrix, command scopes, cost claims,
-  broadening rules, and path-scoped safe fixes match current repository evidence;
-- verification excludes unrelated dirty files, does not require unconditional full-suite runs,
-  deduplicates already-covered surfaces, and permits mutation only after an observed in-scope
-  diagnostic;
-- the candidate does not absorb tests, business implementation, worktree lifecycle, Git
-  integration, or agent sync work owned by other workflows.
+- every claim has current evidence and every retained previous fact was revalidated;
+- all shared generation requirements and each file's own generation contract are satisfied;
+- no candidate absorbs worktree lifecycle, business implementation, Git integration, public sync,
+  or another workflow's policy.
 
-Resolve all findings and repeat the review. Do not start environment-skill acceptance or
-verification-skill acceptance while any review finding remains unresolved. Report a review blocker
-instead of treating later test results as a substitute for review.
+### Generated Rules
+
+- Confirm that each rule has the correct title, `Strength:`, `Scope:`, number, and rule-specific
+  body required by `.agents/rules/00-global-rule-config.md`.
+- Confirm that the three rules have distinct ownership, contain no placeholder language, and do not
+  repeat policy already owned by another rule or skill.
+- Confirm that every rule remains concise, actionable, and traceable to current repository evidence.
+
+### Generated Skills
+
+- Confirm that skill-owned references and scripts are necessary, internally consistent, and
+  reachable from `SKILL.md`.
+- Confirm that `worktree-environment-setup` contains `scripts/setup.sh` and `scripts/setup.ps1`, and
+  that both entry points satisfy its generation contract.
+- Confirm that `change-set-verification` uses a verification matrix or executable script only when
+  its generation contract and repository evidence justify one.
+
+Do not start acceptance while any review finding remains. Resolve findings in complete candidates,
+then repeat the complete review.
 
 ## Acceptance
 
-Run only after review passes, and only for acceptance phases required by created or materially
-changed generated skills. When both phases apply, keep one temporary linked worktree and run them
-in the order below.
+Run only after candidate review passes. Accept every created or materially changed managed rule or
+skill; skip byte-equivalent regenerated assets.
 
-### Environment Skill
+### Generated Rules
 
-1. Validate the generated skill and parse only the setup script for the acceptance host with its
-   native shell tooling: Bash on Linux and macOS for `scripts/setup.sh`, and PowerShell on Windows
-   for `scripts/setup.ps1`. Do not parse or invoke the other platform's setup script during
-   acceptance.
-2. Create a real temporary linked worktree outside the generated environment skill.
-3. Make the exact candidate skill and relevant tooling rules available there. When they are not
-   committed, copy byte-identical content and verify equality before invoking the candidate.
-4. Invoke the same host-specific setup entry point from the temporary worktree.
-5. Verify required dependencies, generated files, services, working directories, linters, checkers,
-   and formatters with real project configuration rather than version-only probes.
-6. Inspect repository and worktree state to confirm setup stayed within its contract.
-7. Mark the environment candidate accepted only after every required check passes. Keep the ready
-   worktree when verification-skill acceptance follows; otherwise remove it safely.
+1. Validate each complete rule source against `.agents/rules/00-global-rule-config.md`, including its
+   strength, scope, numbering, source-of-truth location, and repository-root-relative references.
+2. Trace every retained claim to current evidence and confirm that previous generated rules were
+   used only as omission checklists.
+3. Confirm that placeholder language is absent and that tooling, conventions, and structure remain
+   owned by `20-project-tools.md`, `21-project-rules.md`, and `22-project-structure.md` respectively.
+4. Inspect `AGENTS.md` and the synchronized Cursor and Copilot rule wrappers. Confirm that applicable
+   rules are discoverable, wrappers remain thin, and each wrapper points to the rule's single source
+   of truth.
+5. Keep every affected rule unaccepted until all static and integration checks pass.
 
-### Verification Skill
+### Generated Skills
 
-Run this phase only after the temporary linked worktree environment is ready. If the environment
-skill was unchanged, use its accepted host entry point to prepare the worktree without treating
-ordinary setup as a repeated environment-skill acceptance.
+Run only for created or materially changed generated skills. When both skills changed, reuse one
+real temporary linked worktree and accept the environment skill before the verification skill.
 
-1. Validate the complete generated verification skill and load its verification matrix when one
-   exists.
-2. Make the exact candidate and relevant project rules available in the temporary worktree. Verify
-   byte equality for uncommitted candidate files before using them.
-3. Exercise a narrow representative change set and confirm that the skill selects the minimum
-   supported checks once, excludes unrelated dirty files, and records scope and rationale.
-4. When the project exposes a documented formatter or safe fixer, create an isolated in-scope
-   diagnostic, confirm check-before-fix behavior, apply one path-scoped safe fix, and repeat the
-   affected checks. Confirm no unrelated file changed.
-5. Confirm that a failed prerequisite or focused preflight prevents dependent expensive checks,
-   and that a representative high-risk change selects the documented broader or full verification
-   surface.
-6. Confirm output distinguishes `passed`, `failed`, `inconclusive`, and `not applicable`, including
-   commands, scopes, selection reasons, fixes, and gaps.
-7. Do not run an expensive full suite only to accept the skill. Run it during acceptance only when
-   repository evidence proves it is inexpensive and required for every coherent code change.
-8. Inspect repository and worktree state, mark the verification candidate accepted only after every
-   applicable scenario passes, and remove the temporary worktree safely.
+#### Environment Skill
 
-### Failure Recovery
+1. Validate the complete skill and parse only the host entry point with native shell tooling: Bash
+   on Linux and macOS for `scripts/setup.sh`, and PowerShell on Windows for `scripts/setup.ps1`. Do
+   not parse or invoke the other platform's setup script.
+2. Copy uncommitted candidates into the temporary worktree when needed and verify byte equality.
+3. Invoke the host entry point and verify the required environment outcome using real project
+   configuration rather than version-only probes.
+4. Inspect repository and worktree state for primary-checkout mutation, unrelated changes, leaked
+   files, or lifecycle operations outside the skill's contract.
 
-If any generated script fails, stop immediately and keep every affected candidate unaccepted.
-Report the exact failing command and blocker. Do not patch the temporary acceptance worktree, skip
-the failure, or resume from the failing step. Fix the complete candidate on the target repository's
-current branch, repeat the complete review, copy the revised candidate byte-for-byte, and restart
-acceptance from its first step. Preserve unrelated current-branch changes throughout recovery.
+#### Verification Skill
 
-For non-script acceptance failures, keep the affected candidate unaccepted, fix it in the current
-branch, repeat review, and restart that acceptance phase from its first step. Do not restore
-`project-development-workflow`.
+1. Prepare the temporary worktree with the accepted environment skill and validate the complete
+   verification skill plus its verification matrix when present.
+2. Exercise a narrow representative change set. Confirm minimum supported checks run once and
+   unrelated dirty files remain outside the selected scope.
+3. When an approved automatic fixer exists, exercise its documented normalization path and confirm
+   that its changed files join the verification scope.
+4. Exercise one prerequisite failure and one documented high-risk change. Confirm dependent checks
+   stop after the prerequisite and broader verification is selected only for the stated risk.
+5. Confirm required surfaces report `passed`, `failed`, `inconclusive`, or `not applicable`, and that
+   semantic diagnostics return to the parent agent.
+6. Do not run unconditional whole-project checks or an expensive full suite only to accept the
+   skill unless current repository evidence requires that surface for every coherent change set.
+7. Inspect repository and worktree state, then remove the temporary worktree safely.
 
-## Wrapper Maps
-
-- Rule source `.agents/rules/<name>.md` maps to Cursor and GitHub thin wrappers.
-- Agent source `.agents/agents/<name>.md` maps to Cursor, Codex, and GitHub thin wrappers.
-- Preserve platform metadata and schema differences; reusable wrapper bodies contain only their
-  `Apply @...` reference.
+On any acceptance failure, keep the candidate unaccepted, report the exact evidence, return the
+complete candidate to its generator for revision, repeat review, and restart the affected
+acceptance phase.
 
 ## Validation
 
 For public-source edits in `wenyue/agents`, run:
 
 ```bash
-python3 .agents/skills/setup-project-agents/scripts/test_sync_public_agent_assets.py
+python .agents/skills/setup-project-agents/scripts/test_sync_public_agent_assets.py
 ```
 
-For target repository updates after syncing public assets, run:
+For target repository updates after final synchronization, run:
 
 ```bash
-python3 .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py --check
+python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py --check
 ```
 
 ## Output
 
-- List final changed and deleted files.
-- Summarize public sync and project-owned regeneration separately.
-- Report the shared candidate review result before any acceptance result.
-- Report environment-skill and verification-skill acceptance separately and only when each ran.
-- Report validation commands and blockers exactly; do not describe skipped checks as passed.
+- List created, updated, deleted, and unchanged managed files.
+- Report public synchronization, retirements, project regeneration, omission review, runtime review,
+  platform configuration, candidate review, acceptance, smoke checks, and validation separately.
+- Include exact commands and blockers. Never describe skipped or inconclusive checks as passed.
