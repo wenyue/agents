@@ -143,7 +143,8 @@
     {"name": "write-comment"}
   ],
   "project_skill_generators": [
-    {"name": "worktree-environment-setup"}
+    {"name": "worktree-environment-setup"},
+    {"name": "project-verification"}
   ],
   "agent_prompts": [
     {

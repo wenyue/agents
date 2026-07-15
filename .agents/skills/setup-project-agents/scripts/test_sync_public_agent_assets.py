@@ -616,6 +616,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('scripts/setup.sh', content)
         self.assertIn('scripts/setup.ps1', content)
         self.assertIn('same core environment result', content)
+        self.assertIn('`project-verification`', content)
+        self.assertIn('verification trigger timing', content)
+        self.assertIn('scope selection', content)
         self.assertIn('owns review and acceptance', content)
         self.assertNotIn('## Review', content)
         self.assertNotIn('## Acceptance', content)
@@ -627,6 +630,74 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertNotIn('\nScope:', content)
         self.assertFalse((REPO_ROOT / '.agents' / 'skills' / 'project-development-workflow').exists())
 
+    def test_public_config_lists_project_verification_generator(self):
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+
+        generator_names = {
+            generator['name'] for generator in public_config['project_skill_generators']
+        }
+
+        self.assertIn('worktree-environment-setup', generator_names)
+        self.assertIn('project-verification', generator_names)
+
+    def test_project_verification_is_generator_contract(self):
+        workflow = (
+            REPO_ROOT
+            / '.agents'
+            / 'skills'
+            / 'project-verification'
+            / 'SKILL.md'
+        )
+        content = workflow.read_text(encoding='utf-8')
+
+        self.assertTrue(
+            content.startswith(
+                '---\n'
+                'name: project-verification\n'
+                'description: Use when defining or generating a target repository'
+            )
+        )
+        self.assertIn('## Authoring Workflow', content)
+        self.assertIn('## Generated Skill Contract', content)
+        self.assertIn('## Conditional Safe Fixes', content)
+        self.assertIn('## Handoff', content)
+        self.assertIn('coherent completed change set', content)
+        self.assertIn('unrelated dirty files', content)
+        self.assertIn('minimum sufficient', content)
+        self.assertIn('once per completed checkpoint', content)
+        self.assertIn('broader or full verification', content)
+        self.assertIn('path-scoped formatter or safe fix', content)
+        self.assertIn('baseline full suite', content)
+        for status in ['passed', 'failed', 'inconclusive', 'not applicable']:
+            self.assertIn(f'`{status}`', content)
+        self.assertNotIn('## Acceptance', content)
+        self.assertNotIn('\nStrength:', content)
+
+    def test_project_tools_contract_records_tool_facts_not_verification_workflow(self):
+        content = (REPO_ROOT / '.agents' / 'rules' / '20-project-tools.md').read_text(
+            encoding='utf-8'
+        )
+        normalized_content = ' '.join(content.split())
+
+        self.assertIn('tool facts, capabilities, and invocation constraints', normalized_content)
+        self.assertIn('supported scope selection', normalized_content)
+        self.assertIn('mutation behavior', normalized_content)
+        self.assertIn('safe-fix capability', normalized_content)
+        self.assertIn('relative cost', normalized_content)
+        self.assertIn('`.agents/skills/project-verification/`', normalized_content)
+        self.assertIn('verification trigger timing', normalized_content)
+        self.assertIn('deduplication', normalized_content)
+        self.assertIn('risk-based broadening', normalized_content)
+
+    def test_global_rule_distinguishes_public_and_generated_skill_paths(self):
+        content = (REPO_ROOT / '.agents' / 'rules' / '00-global-rule-config.md').read_text(
+            encoding='utf-8'
+        )
+
+        self.assertIn('Public skills must stay portable', content)
+        self.assertIn('Project-generated skills may record', content)
+        self.assertIn('target-repository evidence', content)
+
     def test_setup_project_agents_requires_subagent_local_generation(self):
         content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
 
@@ -636,6 +707,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('.agents/rules/21-project-rules.md', content)
         self.assertIn('.agents/rules/22-project-structure.md', content)
         self.assertIn('.agents/skills/worktree-environment-setup/', content)
+        self.assertIn('.agents/skills/project-verification/', content)
         self.assertIn('blocker', content)
 
     def test_setup_project_agents_requires_english_for_generated_project_assets(self):
@@ -682,6 +754,31 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertNotIn('## Environment Skill Script Selection', content)
         self.assertNotIn('[CmdletBinding()]', content)
         self.assertNotIn('$LASTEXITCODE', content)
+
+    def test_setup_project_agents_reviews_and_accepts_project_verification(self):
+        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+
+        self.assertIn('the same subagent', content)
+        self.assertIn('verification matrix', content)
+        self.assertIn('unconditional full-suite', content)
+        self.assertIn('unrelated dirty files', content)
+        self.assertIn('path-scoped safe fixes', content)
+        self.assertIn('verification-skill acceptance', content)
+        environment_acceptance = content.index('environment-skill acceptance')
+        verification_acceptance = content.index('verification-skill acceptance')
+        self.assertLess(environment_acceptance, verification_acceptance)
+        self.assertIn('Do not run an expensive full suite only to accept the skill', content)
+
+    def test_setup_project_agents_requires_current_branch_repair_after_script_failure(self):
+        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+        normalized_content = ' '.join(content.split())
+
+        self.assertIn('generated script fails', normalized_content)
+        self.assertIn('current branch', normalized_content)
+        self.assertIn('Do not patch the temporary acceptance worktree', normalized_content)
+        self.assertIn('repeat the complete review', normalized_content)
+        self.assertIn('restart acceptance from its first step', normalized_content)
+        self.assertIn('unaccepted', normalized_content)
 
     def test_worktree_integrate_is_public_skill(self):
         skill_path = REPO_ROOT / '.agents' / 'skills' / 'worktree-integrate' / 'SKILL.md'
@@ -787,6 +884,98 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             )
             self.assertNotIn(
                 sync.Change('updated', '.agents/skills/worktree-environment-setup/SKILL.md'),
+                changes,
+            )
+
+    def test_sync_preserves_target_specific_project_verification(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
+            source_skill = source / '.agents' / 'skills' / 'project-verification'
+            target_skill = target / '.agents' / 'skills' / 'project-verification'
+            source_skill.mkdir(parents=True)
+            target_references = target_skill / 'references'
+            target_references.mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source_skill / 'SKILL.md').write_text(
+                '---\nname: project-verification\ndescription: Generator contract\n---\n',
+                encoding='utf-8',
+            )
+            existing = (
+                '---\n'
+                'name: project-verification\n'
+                'description: Target verification\n'
+                '---\n\n'
+                'Target-specific verification.\n'
+            )
+            (target_skill / 'SKILL.md').write_text(existing, encoding='utf-8')
+            matrix = '# Verification Matrix\n'
+            (target_references / 'verification-matrix.md').write_text(
+                matrix,
+                encoding='utf-8',
+            )
+            public_config = {
+                'mirror_delete': True,
+                'rules': [],
+                'skills': [],
+                'project_skill_generators': [
+                    {'name': 'worktree-environment-setup'},
+                    {'name': 'project-verification'},
+                ],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            changes = sync.sync_public_assets(
+                context,
+                public_config,
+                {'rules': [], 'agent_prompts': []},
+            )
+
+            self.assertEqual((target_skill / 'SKILL.md').read_text(encoding='utf-8'), existing)
+            self.assertEqual(
+                (target_references / 'verification-matrix.md').read_text(encoding='utf-8'),
+                matrix,
+            )
+            self.assertNotIn(
+                sync.Change('updated', '.agents/skills/project-verification/SKILL.md'),
+                changes,
+            )
+
+    def test_sync_does_not_copy_project_verification_generator_contract(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
+            source_skill = source / '.agents' / 'skills' / 'project-verification'
+            source_skill.mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            (source_skill / 'SKILL.md').write_text(
+                '---\nname: project-verification\ndescription: Generator contract\n---\n',
+                encoding='utf-8',
+            )
+            public_config = {
+                'mirror_delete': True,
+                'rules': [],
+                'skills': [],
+                'project_skill_generators': [{'name': 'project-verification'}],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            changes = sync.sync_public_assets(
+                context,
+                public_config,
+                {'rules': [], 'agent_prompts': []},
+            )
+
+            target_skill = target / '.agents' / 'skills' / 'project-verification'
+            self.assertFalse(target_skill.exists())
+            self.assertNotIn(
+                sync.Change('created', '.agents/skills/project-verification/SKILL.md'),
                 changes,
             )
 

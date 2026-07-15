@@ -35,6 +35,8 @@ current target repository evidence; do not copy a generic command list into the 
   is required for every worktree.
 - Stop when the environment is ready. Do not create or remove worktrees, run baseline tests,
   implement business changes, create commits, integrate branches, or sync agent configuration.
+- Hand completed-change verification to the target-owned `project-verification` skill. Do not embed
+  verification trigger timing, scope selection, or result policy in the environment skill.
 
 ## Handoff
 
