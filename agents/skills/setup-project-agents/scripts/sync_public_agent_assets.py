@@ -36,6 +36,7 @@ class SyncContext:
 
 _TEMPLATE_PATTERN = re.compile(r'{{\s*([a-zA-Z0-9_.]+)\s*}}')
 _DEFAULT_SOURCE_REF = 'master'
+_PUBLIC_SOURCE_DIRECTORY = 'agents'
 _ASSET_NAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+$')
 _RULE_FILENAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+\.md$')
 _RETIRED_ASSET_KINDS = ('rules', 'skills', 'agents')
@@ -333,14 +334,17 @@ def _source_archive_url(public_config: dict[str, Any]) -> str:
 
 def _find_archive_repo_root(extract_root: Path) -> Path:
     candidates = [path for path in extract_root.iterdir() if path.is_dir()]
-    if len(candidates) == 1 and (candidates[0] / '.agents').is_dir():
+    if len(candidates) == 1 and (candidates[0] / _PUBLIC_SOURCE_DIRECTORY).is_dir():
         return candidates[0]
-    if (extract_root / '.agents').is_dir():
+    if (extract_root / _PUBLIC_SOURCE_DIRECTORY).is_dir():
         return extract_root
     for candidate in candidates:
-        if (candidate / '.agents').is_dir():
+        if (candidate / _PUBLIC_SOURCE_DIRECTORY).is_dir():
             return candidate
-    raise SyncError(f'Downloaded source archive does not contain a .agents directory: {extract_root}')
+    raise SyncError(
+        f'Downloaded source archive does not contain an '
+        f'{_PUBLIC_SOURCE_DIRECTORY} directory: {extract_root}'
+    )
 
 
 def _fetch_archive_source(public_config: dict[str, Any]) -> Path:
@@ -361,9 +365,12 @@ def _fetch_archive_source(public_config: dict[str, Any]) -> Path:
     except zipfile.BadZipFile as error:
         shutil.rmtree(source_dir, ignore_errors=True)
         raise SyncError(f'Source archive is not a valid zip file: {archive_url}') from error
-    if not (source_root / '.agents').is_dir():
+    if not (source_root / _PUBLIC_SOURCE_DIRECTORY).is_dir():
         shutil.rmtree(source_dir, ignore_errors=True)
-        raise SyncError(f'Downloaded source archive is missing .agents: {archive_url}')
+        raise SyncError(
+            f'Downloaded source archive is missing '
+            f'{_PUBLIC_SOURCE_DIRECTORY}: {archive_url}'
+        )
     return source_root
 
 
@@ -379,6 +386,26 @@ def _require_items(config: dict[str, Any], key: str) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             raise SyncError(f'{key} entries must be objects')
     return value
+
+
+def _entry_file_specs(public_config: dict[str, Any]) -> list[tuple[str, str]]:
+    specs = []
+    for index, entry_file in enumerate(_require_items(public_config, 'entry_files')):
+        label = f'entry_files[{index}]'
+        template_name = entry_file.get('template')
+        if not isinstance(template_name, str) or not template_name:
+            raise SyncError(f'{label}.template must be a non-empty string')
+        template_relative = Path(template_name)
+        if template_relative.is_absolute() or '..' in template_relative.parts:
+            raise SyncError(f'{label}.template must stay inside assets/templates')
+        target_path = entry_file.get('path')
+        if not isinstance(target_path, str) or not target_path:
+            raise SyncError(f'{label}.path must be a non-empty string')
+        target_relative = Path(target_path)
+        if target_relative.is_absolute() or '..' in target_relative.parts:
+            raise SyncError(f'{label}.path must stay inside the target repository')
+        specs.append((template_name, target_path))
+    return specs
 
 
 def _ignore_patterns(config: dict[str, Any]) -> list[str]:
@@ -980,7 +1007,7 @@ def _read_frontmatter_value(path: Path, key: str) -> str:
 
 
 def _public_skill_source(context: SyncContext, name: str) -> Path:
-    source = context.source_root / '.agents' / 'skills' / name
+    source = context.source_root / _PUBLIC_SOURCE_DIRECTORY / 'skills' / name
     if source.is_dir():
         return source
     if context.skill_root.name == name and context.skill_root.is_dir():
@@ -1043,21 +1070,25 @@ def _local_agent_description(target_root: Path, agent_path: Path, name: str) -> 
     return f'Project-local agent: {name}'
 
 
-def _read_agents_rule_rows(target_root: Path) -> dict[str, dict[str, str]]:
-    agents_path = target_root / 'AGENTS.md'
-    if not agents_path.is_file():
-        return {}
+def _read_entry_rule_rows(
+    target_root: Path,
+    public_config: dict[str, Any],
+) -> dict[str, dict[str, str]]:
     rows: dict[str, dict[str, str]] = {}
     pattern = re.compile(
         r'^\|\s*(?P<read_when>.*?)\s*\|\s*`\.agents/rules/(?P<file>[^`]+)`\s*\|\s*`(?P<strength>[^`]+)`\s*\|$'
     )
-    for line in agents_path.read_text(encoding='utf-8').splitlines():
-        match = pattern.match(line)
-        if match:
-            rows[match.group('file')] = {
-                'read_when': match.group('read_when'),
-                'strength': match.group('strength'),
-            }
+    for _, target_path in _entry_file_specs(public_config):
+        entry_path = target_root / target_path
+        if not entry_path.is_file():
+            continue
+        for line in entry_path.read_text(encoding='utf-8').splitlines():
+            match = pattern.match(line)
+            if match:
+                rows[match.group('file')] = {
+                    'read_when': match.group('read_when'),
+                    'strength': match.group('strength'),
+                }
     return rows
 
 
@@ -1107,7 +1138,7 @@ def discover_local_assets(target_root: Path, public_config: dict[str, Any]) -> d
     }.union(retired['agents'])
     rules = []
     rules_root = target_root / '.agents' / 'rules'
-    agents_rows = _read_agents_rule_rows(target_root)
+    agents_rows = _read_entry_rule_rows(target_root, public_config)
     if rules_root.exists():
         for rule_path in sorted(rules_root.glob('*.md')):
             if rule_path.name in public_rule_files:
@@ -1318,26 +1349,24 @@ def _generate_wrappers(
         )
 
 
-def _generate_agents_entry(
+def _generate_entry_files(
     context: SyncContext,
     public_config: dict[str, Any],
     local_config: dict[str, Any],
 ) -> None:
-    template_path = context.skill_root / 'assets' / 'templates' / 'AGENTS.md'
-    if not template_path.is_file():
-        return
     all_rules = _require_items(public_config, 'rules') + _require_items(local_config, 'rules')
-    template = template_path.read_text(encoding='utf-8')
-    rendered = render_template(
-        template,
-        {
-            'global_rule_rows': _rows_for_section(all_rules, 'global'),
-            'base_rule_rows': _rows_for_section(all_rules, 'base'),
-            'project_rule_rows': _rows_for_section(all_rules, 'project'),
-        },
-        'AGENTS.md',
-    )
-    _write_bytes(context, context.target_root / 'AGENTS.md', rendered.encode('utf-8'))
+    template_data = {
+        'global_rule_rows': _rows_for_section(all_rules, 'global'),
+        'base_rule_rows': _rows_for_section(all_rules, 'base'),
+        'project_rule_rows': _rows_for_section(all_rules, 'project'),
+    }
+    for template_name, target_path in _entry_file_specs(public_config):
+        _render_to_target(
+            context,
+            template_name,
+            target_path,
+            template_data,
+        )
 
 
 def sync_public_assets(
@@ -1359,7 +1388,7 @@ def sync_public_assets(
             raise SyncError('Each public rule requires file')
         _copy_file(
             context,
-            context.source_root / '.agents' / 'rules' / filename,
+            context.source_root / _PUBLIC_SOURCE_DIRECTORY / 'rules' / filename,
             context.target_root / '.agents' / 'rules' / filename,
         )
     for skill in _require_items(public_config, 'skills'):
@@ -1379,7 +1408,7 @@ def sync_public_assets(
             raise SyncError('Each public agent prompt requires name')
         _copy_file(
             context,
-            context.source_root / '.agents' / 'agents' / f'{name}.md',
+            context.source_root / _PUBLIC_SOURCE_DIRECTORY / 'agents' / f'{name}.md',
             context.target_root / '.agents' / 'agents' / f'{name}.md',
         )
     merged_local_config = _merge_local_assets(
@@ -1394,7 +1423,7 @@ def sync_public_assets(
         require_agent_runtime,
     )
     _reconcile_root_configs(context, public_config)
-    _generate_agents_entry(context, public_config, merged_local_config)
+    _generate_entry_files(context, public_config, merged_local_config)
     return context.changes
 
 

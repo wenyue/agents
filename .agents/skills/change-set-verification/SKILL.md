@@ -1,91 +1,93 @@
 ---
 name: change-set-verification
-description: Use when creating or revising a target repository's skill for normalizing and verifying a coherent completed change set before handoff.
+description: Use after completing a coherent change set in this repository, before handoff, to run the declared public-agent contract tests and diff-integrity check while preserving unrelated work.
 ---
 
 # Change-Set Verification
 
-Generate a target-owned verification skill from current repository evidence. Keep it focused on one
-coherent completed change set and the minimum checks needed to hand that change off reliably.
+Verify one completed repository change set with the two declared non-fixing checks. Report
+diagnostics to the parent implementation agent; do not implement repairs or manage worktrees.
 
-## Evidence
+## Preconditions
 
-Read the target repository's agent rules, tool configuration, manifests, test layout, CI workflows,
-generated-file ownership, dependency boundaries, and repository-owned verification selectors.
-Establish:
+- Run only at a completed implementation checkpoint, not during active editing, debugging, or an
+  incomplete repair cycle.
+- Work from the repository root with Python 3.11 or newer.
+- Read the task context and inspect the current Git state before running checks. Distinguish the
+  intended change set from unrelated staged, unstaged, and untracked user work.
+- Preserve the existing `HEAD`, index, working tree, and unrelated files.
+- Do not run a formatter, automatic fixer, analyzer, linter, generator, build, service, dependency
+  installer, or sync command. This repository declares none as part of change-set verification.
 
-- supported formatter, fixer, analyzer, linter, and test scopes;
-- direct test ownership and change-to-check mappings;
-- mutating behavior, prerequisites, relative cost, and safe automatic repair paths;
-- risks that require subsystem or full verification.
+## Workflow
 
-Do not invent commands, ownership mappings, or scope support that the evidence does not prove.
+1. Record the initial Git status and the files belonging to the completed change set.
+2. Run the repository contract suite exactly once:
 
-## Authoring Workflow
+   ```bash
+   python -m unittest discover -s tests -p 'test_*.py'
+   ```
 
-1. Classify the change types the generated skill must handle.
-2. Select the narrowest repository-supported checks for each class and define evidence-backed
-   broadening conditions.
-3. Prefer an existing repository selector. Add a skill-owned script only when repeated
-   deterministic selection cannot be expressed reliably with repository-owned tools.
-4. Generate `SKILL.md`. Add `references/verification-matrix.md` only when multiple packages,
-   languages, or risk mappings would otherwise obscure the core workflow.
-5. Review the complete generated directory against the contract below.
+3. Run the diff-integrity check exactly once:
 
-## Generated Skill Contract
+   ```bash
+   git diff --check
+   ```
 
-### Trigger and Scope
+4. Inspect Git status again. Account for any difference from the initial state.
+5. Classify both verification surfaces and return all actionable diagnostics to the parent
+   implementation agent.
+6. If the parent agent changes files in response, treat the result as a new completed checkpoint and
+   restart this workflow.
 
-- Run at a completed implementation checkpoint, before handoff. Do not interrupt active editing,
-  debugging, or an incomplete fix cycle.
-- Resolve production code, tests, configuration, generated-output owners, and supporting files from
-  task context and repository state.
-- Start with the minimum sufficient scope. Broaden only when dependencies, shared contracts,
-  generated interfaces, fixer mutations, tool limitations, or unknown ownership make the narrower
-  result unreliable.
-- Treat missing test ownership as a gap to resolve or a reason to broaden, never as proof that tests
-  are unnecessary.
-- Preserve unrelated user work. Never edit generated output, third-party code, or files outside the
-  selected project-owned scope.
+The contract suite is repository-wide and has no declared narrower selector. Do not replace it with
+individual test methods or inferred file-to-test mappings.
 
-### Normalization and Repair
+## Stop Conditions
 
-1. Format the selected project-owned source scope when the project provides a formatter.
-2. Run each project-approved automatic fixer at most once on its minimum supported selected scope.
-   Do not duplicate analyzer and linter work when one tool owns both surfaces.
-   Accept mechanical repairs for diagnostics found inside that scope regardless of whether the
-   current change introduced them. Do not widen scope only to discover or repair older violations.
-3. Add formatter- and fixer-modified files to the change scope. Stop if a tool changes generated,
-   third-party, or otherwise non-owned files.
-4. Reformat fixer-modified source, then run the minimum supported non-mutating static checks.
-5. Return remaining semantic diagnostics to the parent implementation agent with exact locations
-   and messages. Do not author semantic fixes inside the verifier.
-6. After parent-agent edits, restart normalization at the next completed checkpoint.
+- If the repository root, Python 3.11 runtime, test script, or Git worktree is unavailable, stop and
+  classify the affected surface as `inconclusive`.
+- If a verification command unexpectedly changes repository state, stop, report every observed
+  change, and classify the overall result as `inconclusive`. Do not revert or clean the changes.
+- Do not edit code, Markdown, manifests, mirrors, scripts, generated assets, or unrelated dirty work
+  in response to a diagnostic.
+- Do not invoke the mutating public sync workflow to repair a verification failure.
+- When a failure may predate the selected change and no trustworthy comparison is already
+  available, report the attribution gap instead of manipulating Git state to create a baseline.
 
-### Verification and Results
+## Result Classification
 
-- Run directly owned tests after static checks pass. Include tests for components added to scope by
-  formatter, fixer, or parent-agent changes.
-- Run each unique verification surface once per completed checkpoint unless a mutation requires a
-  documented repeat.
-- Classify every selected surface as `passed`, `failed`, `inconclusive`, or `not applicable`.
-  Report the command, scope, selection reason, result, and remaining gap.
-- Report every modified file, formatter and fixer invocation, repeated check, remaining diagnostic,
-  and verification gap.
-- Return one overall result: `passed`, `semantic_fix_required`, `failed`, or `inconclusive`.
-- Do not report `passed` while any required surface failed or remains inconclusive.
-- When an out-of-scope failure may predate the change, compare only that failing surface with a
-  trustworthy baseline. Do not run a full baseline suite solely for classification.
+Classify each command as:
 
-## Optional Resources
+- `passed`: the command completed successfully.
+- `failed`: the command completed and reported a verification failure.
+- `inconclusive`: the command could not produce a trustworthy result because of a missing
+  prerequisite, interruption, unexpected mutation, or unresolved attribution.
+- `not applicable`: current evidence explicitly proves the surface does not apply. Both declared
+  commands normally apply to every completed repository change set.
 
-Include an executable script only when repository evidence proves it is necessary. A generated
-skill with scripts must include `## Failure Recovery`: stop on script failure, report the exact
-command and error, analyze the cause, and propose a candidate change before modifying or retrying
-the script.
+Return one overall result:
 
-## Review and Handoff
+- `passed`: both required commands passed and repository state remained accounted for.
+- `semantic_fix_required`: a completed check reported actionable implementation or contract
+  diagnostics that must return to the parent agent.
+- `failed`: a required check reported a non-semantic integrity failure, including
+  `git diff --check` diagnostics.
+- `inconclusive`: any required surface is inconclusive or repository-state preservation cannot be
+  confirmed.
 
-Confirm that the generated skill matches the target tool rule, owns no implementation or worktree
-lifecycle behavior, and contains no unsupported command or mapping. Give `setup-project-agents` the
-complete generated directory and its supporting evidence for candidate review and acceptance.
+Never report `passed` while a required surface failed, remains inconclusive, or was skipped.
+
+## Validation Report
+
+Report:
+
+- the completed change-set scope;
+- each exact command and why it was selected;
+- each command's classification and concise diagnostics;
+- initial and final Git-state comparison;
+- any remaining diagnostic, attribution gap, or prerequisite gap; and
+- the overall result.
+
+The verifier must finish without intentional file changes. Any semantic repair belongs to the
+parent implementation agent.

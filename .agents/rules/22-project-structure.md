@@ -2,37 +2,60 @@
 
 Strength: `Advisory`
 
-Scope: Generation contract for repository layout, module ownership, dependency direction, shared
-locations, and configuration ownership.
+Scope: Top-level catalog, mirror, local-runtime, documentation, and synchronization ownership
+boundaries.
 
-## Generation Contract
+## Repository Areas
 
-Author the target rule from observed repository structure and enforced dependency boundaries. Keep
-the map selective: record locations and relationships that guide placement or prevent invalid
-dependencies, not a directory-by-directory inventory.
+- `agents/` owns the complete English public catalog:
+  - `agents/rules/` contains shared rules and target-rule generation contracts.
+  - `agents/skills/` contains public operational skills, orchestration skills, and target-skill
+    generation contracts.
+  - `agents/agents/` contains public agent prompts.
+- `agents-zh/` mirrors only the human-readable Markdown structure of `agents/` for Simplified-Chinese
+  readers. It owns no runtime, generation, synchronization, or distribution behavior.
+- `.agents/` owns this repository's curated local runtime. Its rules, skills, and agent prompts are
+  selected for this repository and need not reproduce the public catalog.
+- `docs/` owns design and implementation plans; it is not an agent-runtime or public-distribution
+  source.
+- `AGENTS.md` is the repository entry point for discovering `.agents/rules/`.
+- `README.md` owns public catalog onboarding and the high-level boundary between `agents/` and
+  `.agents/`.
 
-## Evidence
+## Distribution Flow
 
-- Repository and workspace trees, package manifests, module declarations, and import graphs.
-- Feature directories, shared libraries, configuration owners, tests, assets, generated sources,
-  scripts, infrastructure, and documentation locations.
-- Dependency checks, lint rules, build targets, package boundaries, and representative imports.
-- Ownership files and repeated placement patterns that establish stable boundaries.
+- Public synchronization reads the manifest and English assets under `agents/`, then installs
+  manifest-selected assets into a target repository under `.agents/`.
+- Project-rule and project-skill generation contracts under `agents/` guide creation of complete
+  target-owned `.agents/` files; the contracts themselves are not installed as final generated
+  content.
+- Changes do not flow from `.agents/` back into `agents/`.
+- Changes do not flow from `agents-zh/` into `agents/`, `.agents/`, manifests, wrappers, or target
+  repositories.
 
-## Content
+## Script and Test Ownership
 
-- Record top-level areas and the responsibility each one owns.
-- Record feature and module layout, placement conventions, and shared locations.
-- Record allowed and forbidden dependency directions and the boundaries they protect.
-- Record ownership across UI, backend, domain, data, infrastructure, tests, assets, generated
-  sources, configuration, scripts, and documentation when those areas exist.
-- Record real enforcement mechanisms, but keep their exact invocation in `20-project-tools.md`.
+- Keep the public sync implementation under `agents/skills/setup-project-agents/scripts/` and
+  distribute it as part of the operational skill.
+- Keep public distribution data under
+  `agents/skills/setup-project-agents/references/`.
+- Keep repository maintenance and contract tests under `tests/`; do not distribute them as runtime
+  skill resources.
+- Repository tests may import support scripts from their owning public skill directories without
+  moving those scripts out of their runtime owners.
+
+## Local Runtime Dependencies
+
+- Keep `.agents/agents/change-set-verifier.md` dependent on
+  `.agents/skills/change-set-verification/SKILL.md`.
+- Keep the local verification skill self-contained because this repository declares no package,
+  module, service, formatter, linter, fixer, build, or environment-setup boundary.
+- Do not add `.agents/skills/worktree-environment-setup/` unless the repository later declares a
+  real preparation step.
 
 ## Boundaries
 
-- Keep tool, runtime, build, test, and verification commands in `20-project-tools.md`.
-- Keep API contracts, payloads, domain vocabulary, generated-file edit policy, and lint
-  interpretation in `21-project-rules.md`.
-- Exclude generic architecture advice, speculative future layout, and directories whose names are
-  self-explanatory and impose no placement or dependency constraint.
-- Do not duplicate an ownership statement across multiple sections or rules.
+- Keep runtime versions and executable commands in `20-project-tools.md`.
+- Keep public ownership, mirror maintenance, and installation policy in `21-project-rules.md`.
+- Do not infer application modules, package dependencies, or service layers from the catalog
+  directory structure.

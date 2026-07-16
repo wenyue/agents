@@ -2,7 +2,7 @@
 
 强度：`Mandatory`
 
-适用范围：规则强度、优先级、事实源归属、包装文件维护、编号和 MCP 配置。
+适用范围：规则强度、优先级、源文件归属、包装文件边界、编号和发现顺序。
 
 ## 强度等级
 
@@ -19,47 +19,13 @@
 3. 具体程度相同时，优先级依次为 `Mandatory`、`Default`、`Advisory`。
 4. 强制执行的约束（如必遵守的项目规则或 lint）优先于建议性指导。
 
-## 事实源
+## 规则归属
 
-每类资产只保留一个事实源。各平台专用文件应是引用该事实源的精简包装文件。
-
-| 资产 | 事实源 |
-| --- | --- |
-| 项目规则 | `.agents/rules/<nn>-<name>.md` |
-| Agent 提示词 | `.agents/agents/<name>.md` |
-| 项目 Skill | `.agents/skills/<skill>/SKILL.md` |
-| 第三方 Skill | `.skillshare/skills/<skill>/SKILL.md` |
-| Copilot 指引 | `.github/instructions/*.instructions.md` |
-
-- 受版本控制的配置应使用仓库根目录相对路径，不要使用绝对文件系统路径。
-- 同一内容出现在多个包装文件中时，应将内容移到事实源，并精简这些包装文件。
-- 精简包装文件只能包含平台元数据或运行时字段，以及一个事实源引用。
-
-## 包装文件维护
-
-规则包装文件位于：
-
-- Cursor：`.cursor/rules/<same-name>.mdc`
-- Copilot：`.github/instructions/<same-name>.instructions.md`
-
-两类规则包装文件都使用以下正文：
-
-```text
-Apply @.agents/rules/<nn>-<name>.md
-```
-
-新增规则时：
-
-1. 在 `.agents/rules/<nn>-<name>.md` 中编写源规则。
-2. 为每个会加载该规则的平台添加 Cursor 和 Copilot 包装文件。
-3. 如果规则改变了适用路径或工作流，更新 `AGENTS.md`。
-
-新增子 Agent 时：
-
-1. 在 `.agents/agents/<name>.md` 中编写共享提示词。
-2. 为公开该子 Agent 的平台添加精简的 Cursor、Codex 和 Copilot 包装文件。
-3. 仓库级 Copilot 指引应放在 `.github/instructions/*.instructions.md` 中，不要在子 Agent
-   提示词中重复。
+- 每份项目规则的政策在 `.agents/rules/` 下只保留一个源文件。
+- 各平台的规则包装文件必须保持精简：可以包含平台要求的元数据或运行时字段，
+  再加一个指向所属规则的引用，但不得重复规则政策。
+- 包装文件的路径、模板和生成方式由对应的平台配置或目录负责。不要把这些运行时事实
+  写入本规则。
 
 ## 编号
 
@@ -73,14 +39,3 @@ Apply @.agents/rules/<nn>-<name>.md
 | `50–59` | 插件、第三方插件和包的专用规则。 |
 
 必须先读完所有适用的 `00–09` 全局规则，再判断后续编号的规则是否适用。
-
-## MCP 配置
-
-各平台的服务器名称和用途应保持一致。项目专用的服务器名称、端口、二进制文件和服务依赖，
-应放入项目工具规则或其归属配置中。优先使用相对路径或基于命令的配置，避免使用机器专用路径。
-
-| 平台 | 文件 | 说明 |
-| --- | --- | --- |
-| Cursor | `.cursor/mcp.json` | 共享用途。 |
-| Codex | `.codex/config.toml` | 运行时 MCP 条目。 |
-| Copilot CLI | `.vscode/mcp.json` | 顶层键为 `servers`。 |

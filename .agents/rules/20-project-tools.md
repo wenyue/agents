@@ -2,42 +2,47 @@
 
 Strength: `Mandatory`
 
-Scope: Generation contract for repository-wide tool facts, capabilities, and invocation constraints,
-runtime services, and generated-asset tooling.
+Scope: Repository runtime requirements, supported verification commands, and public-agent sync
+tooling boundaries.
 
-## Generation Contract
+## Runtime
 
-Author the target rule from current repository evidence. Keep only stable facts that another agent
-needs to invoke, scope, or preserve project tooling correctly.
+- Run repository-owned scripts from the repository root with Python 3.11 or newer.
+- The Python scripts use the standard library, including `tomllib`; the repository declares no
+  dependency installation or environment preparation step.
+- The repository declares no package manager, formatter, automatic fixer, analyzer, linter, build
+  command, packaging command, runtime service, port, credential, or health check. Do not invent or
+  substitute any of them.
 
-## Evidence
+## Verification Commands
 
-- Package manifests, lock files, toolchain pins, workspace configuration, and package-manager files.
-- Repository scripts, task runners, CI workflows, tool configuration, and command help output.
-- Runtime entry points, service configuration, ports, environment templates, and health checks.
-- Code-generation configuration, generated outputs, and repository-owned orchestration selectors.
-- MCP and native agent-platform configuration that affects project tooling.
+Use these repository-supported checks:
 
-## Content
+| Purpose | Command | Behavior |
+| --- | --- | --- |
+| Public catalog, synchronization, ownership, mirror, wrapper, and timing contracts | `python -m unittest discover -s tests -p 'test_*.py'` | Repository-wide, non-fixing test suite with no declared narrower selector |
+| Diff whitespace and conflict-marker integrity | `git diff --check` | Non-mutating check of the current working-tree diff |
 
-- Record runtime versions, package managers, workspace layout, and required working directories.
-- Record development, setup, build, generation, formatting, analysis, lint, test, and packaging
-  commands. For each command, include prerequisites, inputs, outputs, supported scope selection,
-  mutation behavior, safe-fix capability, and relative cost.
-- Record runtime services, ports, environment variables, data directories, credential requirements,
-  startup dependencies, and health checks.
-- Record generation entry points and their inputs and outputs. Keep semantic ownership and the ban on
-  hand-editing generated files in `21-project-rules.md`.
-- Record repository-owned selectors that generated project skills can invoke without duplicating
-  their implementation.
+Run both commands for a completed change set. Do not treat one as a substitute for the other.
+
+## Public Sync Tooling
+
+- `agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py` is the English public
+  implementation installed into target repositories under
+  `.agents/skills/setup-project-agents/scripts/`.
+- The sync tool reads `agents/skills/setup-project-agents/references/public_assets.json` as its
+  public distribution manifest.
+- A normal sync invocation mutates the target repository; `--check` reports target drift without
+  writing target files. Neither invocation is a formatter, fixer, or replacement for this
+  repository's test command.
+- Do not run the sync tool merely to make this repository's `.agents/` directory match `agents/`.
+  The local runtime is intentionally curated and independently owned.
 
 ## Boundaries
 
-- Keep environment preparation order in `.agents/skills/worktree-environment-setup/` and completed
-  change verification in `.agents/skills/change-set-verification/`.
-- Exclude verification trigger timing, check ordering, deduplication, risk-based broadening,
-  baseline comparison, and result policy; the generated verification skill owns those decisions.
-- Keep API and domain conventions in `21-project-rules.md`, and module and dependency ownership in
-  `22-project-structure.md`.
-- Do not turn a command inventory into an instruction to run every command.
-- Do not infer tools, commands, supported scopes, or costs that current evidence does not prove.
+- Completed change verification belongs to
+  `.agents/skills/change-set-verification/SKILL.md`.
+- The repository has no setup procedure, so do not create or invoke a project-local
+  `worktree-environment-setup` skill without new repository evidence.
+- Keep public-source ownership and mirror policy in `21-project-rules.md`.
+- Keep directory responsibilities and dependency direction in `22-project-structure.md`.

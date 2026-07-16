@@ -11,7 +11,9 @@
     "**/*.pyc"
   ],
   "retired_assets": {
-    "rules": [],
+    "rules": [
+      "03-global-skill-config.md"
+    ],
     "skills": [
       "update-project-rules",
       "project-development-workflow",
@@ -42,7 +44,7 @@
       "strength": "Default",
       "section": "global",
       "cursor": {
-        "description": "[default] AI work philosophy and communication style",
+        "description": "[default] Agent reasoning, judgment, collaboration, and temperament",
         "alwaysApply": true
       },
       "github": {
@@ -63,7 +65,20 @@
       }
     },
     {
-      "file": "03-global-skill-config.md",
+      "file": "03-global-engineering-workflow.md",
+      "read_when": "Starting any repository task",
+      "strength": "Mandatory",
+      "section": "global",
+      "cursor": {
+        "description": "[mandatory] Engineering preparation, change discipline, and verification",
+        "alwaysApply": true
+      },
+      "github": {
+        "applyTo": "**"
+      }
+    },
+    {
+      "file": "04-global-skill-config.md",
       "read_when": "Starting any repository task",
       "strength": "Mandatory",
       "section": "global",
@@ -81,7 +96,7 @@
       "strength": "Default",
       "section": "base",
       "cursor": {
-        "description": "[default] Cross-language code taste for ownership, extraction, state, and flow",
+        "description": "[default] Cross-language code goals for ownership, clarity, state, and boundaries",
         "globs": "**/*.{dart,cpp,c,h,hpp,cc,py,js,jsx,ts,tsx,sh}",
         "alwaysApply": false
       },
@@ -193,6 +208,12 @@
       "cursor": {
         "readonly": false
       }
+    }
+  ],
+  "entry_files": [
+    {
+      "template": "AGENTS.md",
+      "path": "AGENTS.md"
     }
   ],
   "root_configs": [
