@@ -1,4 +1,5 @@
 import contextlib
+import importlib.util
 import io
 import os
 import json
@@ -7,6 +8,7 @@ import tempfile
 import tomllib
 import unittest
 import zipfile
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 from pathlib import Path
 
@@ -17,6 +19,17 @@ REPO_SKILL_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = REPO_SKILL_ROOT.parents[2]
 REPO_REFERENCES = REPO_SKILL_ROOT / 'references'
 REPO_TEMPLATES = REPO_SKILL_ROOT / 'assets' / 'templates'
+TRACK_WORKTREE_TIME_ROOT = REPO_ROOT / '.agents' / 'skills' / 'track-worktree-time'
+
+
+def load_track_worktree_time_module():
+    script = TRACK_WORKTREE_TIME_ROOT / 'scripts' / 'timing.py'
+    spec = importlib.util.spec_from_file_location('track_worktree_time', script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f'Unable to load timing script: {script}')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class SyncPublicAgentAssetsTest(unittest.TestCase):
@@ -808,6 +821,32 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         ):
             self.assertNotIn(detail, content)
 
+    def test_setup_skill_places_acceptance_worktree_in_system_temp(self):
+        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+        normalized = ' '.join(content.split())
+
+        self.assertIn(
+            "host operating system's resolved temporary directory",
+            normalized,
+        )
+        self.assertIn('unique directory', normalized)
+        self.assertIn('remove the linked worktree and its staging files', normalized)
+        self.assertIn(
+            'confirm that no worktree registration or temporary files remain',
+            normalized,
+        )
+
+    def test_setup_skill_chinese_mirror_preserves_acceptance_worktree_contract(self):
+        mirror = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        normalized = ' '.join(mirror.split())
+
+        self.assertIn('主机操作系统解析出的临时目录', normalized)
+        self.assertIn('唯一目录', normalized)
+        self.assertIn('删除链接 Worktree 及其暂存文件', normalized)
+        self.assertIn('Worktree 注册记录和临时文件均已清理', normalized)
+
     def test_public_manifest_declares_generic_root_config_locks(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
         root_configs = public_config['root_configs']
@@ -1466,6 +1505,53 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertIn({'name': 'worktree-integrate'}, public_config['skills'])
 
+    def test_public_config_lists_track_worktree_time_skill(self):
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+
+        self.assertIn({'name': 'track-worktree-time'}, public_config['skills'])
+
+    def test_global_worktree_rule_requires_complete_timing_report(self):
+        source = (REPO_ROOT / '.agents' / 'rules' / '03-global-skill-config.md').read_text(
+            encoding='utf-8'
+        )
+        mirror = (
+            REPO_ROOT / 'agents-zh' / 'rules' / '03-global-skill-config.md'
+        ).read_text(encoding='utf-8')
+        normalized_source = ' '.join(source.split())
+        normalized_mirror = ' '.join(mirror.split())
+
+        self.assertIn(
+            'Use `track-worktree-time` for every task that creates or reuses a linked Git '
+            'worktree for code changes.',
+            normalized_source,
+        )
+        self.assertIn('one cumulative ledger across repeated phases', normalized_source)
+        self.assertIn('reconciled timing report in the final handoff', normalized_source)
+        self.assertIn('代码修改', normalized_mirror)
+        self.assertIn('完整计时报告', normalized_mirror)
+
+    def test_track_worktree_time_skill_defines_complete_phase_contract(self):
+        source = (TRACK_WORKTREE_TIME_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+        mirror = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'track-worktree-time' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+
+        for phase in (
+            'environment',
+            'code-generation',
+            'review',
+            'verification',
+            'testing',
+            'integration',
+            'waiting',
+            'other',
+        ):
+            self.assertIn(f'`{phase}`', source)
+        self.assertIn('wall-clock', source)
+        self.assertIn('not applicable', source)
+        self.assertIn('scripts/timing.py', source)
+        self.assertIn('完整任务耗时', mirror)
+
     def test_public_config_lists_write_skill(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
 
@@ -2001,6 +2087,98 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 }
             ],
         )
+
+
+class TrackWorktreeTimeTest(unittest.TestCase):
+    def setUp(self):
+        self.timing = load_track_worktree_time_module()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.state_dir = Path(self.temp_dir.name)
+        self.started_at = datetime(2026, 7, 16, 2, 0, tzinfo=timezone.utc)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def at(self, seconds):
+        return self.started_at + timedelta(seconds=seconds)
+
+    def test_repeated_phases_accumulate_and_reconcile_with_total(self):
+        state = self.timing.start_task(
+            task='timed change',
+            repository='D:/repo',
+            phase='environment',
+            state_dir=self.state_dir,
+            now=self.at(0),
+        )
+        task_id = state['task_id']
+        self.timing.transition_task(
+            task_id, 'code-generation', self.state_dir, now=self.at(10)
+        )
+        self.timing.transition_task(task_id, 'review', self.state_dir, now=self.at(30))
+        self.timing.transition_task(
+            task_id, 'code-generation', self.state_dir, now=self.at(40)
+        )
+        self.timing.transition_task(task_id, 'testing', self.state_dir, now=self.at(60))
+
+        completed = self.timing.finish_task(task_id, self.state_dir, now=self.at(70))
+        report = self.timing.build_report(completed)
+
+        self.assertEqual(report['phases']['environment'], 10_000_000)
+        self.assertEqual(report['phases']['code-generation'], 40_000_000)
+        self.assertEqual(report['phases']['review'], 10_000_000)
+        self.assertEqual(report['phases']['testing'], 10_000_000)
+        self.assertEqual(report['total'], 70_000_000)
+        self.assertEqual(
+            sum(value for value in report['phases'].values() if value is not None),
+            report['total'],
+        )
+
+    def test_pause_resume_and_unused_phases_are_reported(self):
+        state = self.timing.start_task(
+            task='paused change',
+            repository='D:/repo',
+            phase='environment',
+            state_dir=self.state_dir,
+            now=self.at(0),
+        )
+        task_id = state['task_id']
+        self.timing.pause_task(task_id, self.state_dir, now=self.at(5))
+        self.timing.resume_task(
+            task_id, 'code-generation', self.state_dir, now=self.at(15)
+        )
+
+        completed = self.timing.finish_task(task_id, self.state_dir, now=self.at(25))
+        report = self.timing.build_report(completed)
+        markdown = self.timing.render_markdown(report)
+
+        self.assertEqual(report['phases']['waiting'], 10_000_000)
+        self.assertIsNone(report['phases']['integration'])
+        self.assertIn('| integration | not applicable |', markdown)
+        self.assertIn('| total | 00:00:25.000 |', markdown)
+
+    def test_state_uses_system_temp_by_default_and_isolates_tasks(self):
+        self.assertEqual(
+            self.timing.default_state_dir(),
+            Path(tempfile.gettempdir()) / 'codex-worktree-time',
+        )
+        first = self.timing.start_task(
+            task='first',
+            repository='D:/repo',
+            phase='environment',
+            state_dir=self.state_dir,
+            now=self.at(0),
+        )
+        second = self.timing.start_task(
+            task='second',
+            repository='D:/repo',
+            phase='environment',
+            state_dir=self.state_dir,
+            now=self.at(0),
+        )
+
+        self.assertNotEqual(first['task_id'], second['task_id'])
+        self.assertTrue((self.state_dir / f"{first['task_id']}.json").is_file())
+        self.assertTrue((self.state_dir / f"{second['task_id']}.json").is_file())
 
 
 if __name__ == '__main__':

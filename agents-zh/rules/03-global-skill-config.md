@@ -2,7 +2,7 @@
 
 强度：`Mandatory`
 
-适用范围：子 Agent 委派、Superpowers 启用条件、工作树工作流归属、Git 安全和文字语言。
+适用范围：子 Agent 委派、Superpowers 启用条件、工作树工作流归属与计时、Git 安全和文字语言。
 
 ## 委派
 
@@ -20,6 +20,8 @@
 
 ## 工作树工作流
 
+- 每个创建或复用链接 Git Worktree 进行代码修改的任务都使用 `track-worktree-time`。在创建 Worktree
+  或准备环境之前开始计时，跨重复阶段维护一份累计账本，并在最终交接中包含已对账的完整计时报告。
 - 在遵守上述 Superpowers 策略的前提下，工作树的创建时机、检测、授权、位置选择和创建过程，
   均由 `superpowers:using-git-worktrees` 负责。
 - 创建工作树后，如果目标仓库提供 `worktree-environment-setup` Skill，应先使用它，再执行

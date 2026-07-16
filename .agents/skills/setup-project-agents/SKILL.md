@@ -159,8 +159,9 @@ Run only after the review gate passes.
 
 ### Generated Skills
 
-When both generated skills change, reuse one real temporary linked worktree. Accept the environment
-skill before the verification skill.
+When both generated skills change, reuse one real temporary linked worktree. Create each disposable
+acceptance worktree in a unique directory under the host operating system's resolved temporary
+directory. Accept the environment skill before the verification skill.
 
 1. Validate the complete skill and parse only the host-native setup entry point: Bash on Linux and
    macOS, and PowerShell on Windows.
@@ -174,8 +175,9 @@ skill before the verification skill.
    avoids unconditional whole-project checks and acceptance-only expensive full suites.
 7. Confirm scope selection, stop behavior, result classification, and that semantic diagnostics
    return to the parent implementation agent.
-8. Inspect repository and worktree state for unrelated mutations or leaked files, then remove the
-   temporary worktree safely.
+8. Inspect repository and worktree state, account for every mutation and staged file, remove the
+   linked worktree and its staging files after acceptance, then confirm that no worktree
+   registration or temporary files remain.
 
 On failure, keep the candidate unaccepted, report exact evidence, return the complete candidate to
 its generator, repeat review, and restart the affected acceptance phase.

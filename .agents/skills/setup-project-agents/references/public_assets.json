@@ -160,6 +160,9 @@
       "name": "setup-project-agents"
     },
     {
+      "name": "track-worktree-time"
+    },
+    {
       "name": "worktree-integrate"
     },
     {

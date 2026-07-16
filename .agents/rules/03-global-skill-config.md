@@ -2,8 +2,8 @@
 
 Strength: `Mandatory`
 
-Scope: Subagent delegation, Superpowers activation, worktree workflow ownership, Git safety, and
-prose language.
+Scope: Subagent delegation, Superpowers activation, worktree workflow ownership and timing, Git
+safety, and prose language.
 
 ## Delegation
 
@@ -23,8 +23,12 @@ prose language.
 
 ## Worktree Workflow
 
-- Subject to the Superpowers policy above, let `superpowers:using-git-worktrees` own worktree timing,
-  detection, consent, location, and creation.
+- Use `track-worktree-time` for every task that creates or reuses a linked Git worktree for code
+  changes. Start timing before worktree creation or environment preparation, maintain one
+  cumulative ledger across repeated phases, and include its reconciled timing report in the final
+  handoff.
+- Subject to the Superpowers policy above, let `superpowers:using-git-worktrees` own worktree
+  creation timing, detection, consent, location, and creation.
 - After creating a worktree, use the target repository's `worktree-environment-setup` skill when it
   exists, then run the baseline verification required by `superpowers:using-git-worktrees`.
 - When implementation is complete, use `worktree-integrate`. Its default review mode returns changes
