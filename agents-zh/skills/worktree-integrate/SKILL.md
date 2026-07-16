@@ -1,43 +1,65 @@
 ---
 name: worktree-integrate
-description: 当命名 Git worktree 中的实现已经完成并验证，需要把变更送回当前检出目录供人工审查，或在用户明确要求下创建本地提交时使用。
+description: named linked Git worktree 中已验证的实现需要返回当前 checkout 供人工审查，或用户明确要求本地提交时使用。
 ---
 
 # Worktree 集成
 
-在不丢失本地工作的前提下返回已验证的任务变更。默认使用审查模式。只有用户明确要求时才可使用提交模式。
+在不丢失本地变更的情况下返回已验证任务工作。默认使用 review mode；只有用户明确要求已提交的本地集成时才使用 commit mode。
 
-## 共享预检
+## 模式选择
 
-1. 要求任务分支有名称且已关联；处于 detached HEAD 时停止。
-2. 确认任务验证已通过。对工作树变更分类，把所有确认归任务所有的未提交变更纳入业务结果；遇到歧义或无关变更时停止并询问，不要提交、移动或丢弃它们。
-3. 同时使用 `git worktree list --porcelain` 和 Git 公共目录发现当前或基础检出目录及分支。不要假设是 `master` 或 `main`；预期基础分支有歧义时询问用户。
-4. 记录基础 HEAD、索引树、暂存变更、未暂存变更和未跟踪文件。
-5. 在任务分支上，把相对于 merge base 的任务工作整合成恰好一个业务提交，然后把它 rebase 到当前基础 HEAD。此步骤前允许存在中间任务提交。只有冲突结果无歧义、限于任务范围且可验证时，才自动解决 rebase 冲突；否则中止 rebase 并询问用户。之后要求任务 worktree 干净；整合或 rebase 改变内容时，重新运行受影响的任务检查。
-6. 重新计算最终提交影响的路径。将这些路径连同清单备份到仓库之外；清单记录文件类型和原先不存在的路径。不要 stash。
-7. 接触基础检出目录前，立即将其分支和 HEAD 与记录值比较。如果基础 HEAD 已变化，回到任务 worktree，再次 rebase 后才传输，然后刷新基础快照、受影响路径和备份。重复直到预检状态为当前状态。
+- **Review mode：** 将任务结果具体化为 unstaged 或 untracked 工作，同时保留 base HEAD、index 和无关本地变更。
+- **Commit mode：** 只有明确请求且任务路径不与 base 本地变更重叠时，才 fast-forward base 分支。
 
-## 审查模式（默认）
+绝不把含糊请求解释为 commit mode。
 
-除非用户明确要求提交模式，否则使用此模式。
+## 任务分支准备
 
-1. 保持基础 HEAD 和索引不变。
-2. 对基础检出目录中没有本地变更的任务路径，在不暂存的情况下把任务结果写入基础工作树。先检查传输，再只使用工作树操作；绝不使用会更新索引的 checkout、apply 或 restore 模式。
-3. 对重叠的文本路径，使用任务提交父项、当前基础工作文件和临时文件中的任务结果执行三方合并，然后再替换工作文件。仅共享路径名不构成冲突。置信度高且验证能够确认结果时，自主解决。
-4. 对 delete/modify 冲突、复杂重命名、二进制冲突、互斥行为、有歧义的生成输出或任何无法验证的结果，停止并询问。项目提供确定性生成器时，从源重新生成文件。
-5. 只运行已知不会修改文件的验证命令；绝不在基础检出目录中运行格式化器、生成器或 fix 模式。如果缺少充分的非修改性验证，报告这一限制，不要冒险改动额外路径。然后证明记录的基础 HEAD 和索引树未变、原始暂存状态得到保留、最终工作文件同时包含原本本地工作和任务工作，而且返回的任务变更处于未暂存或未跟踪状态。
-6. 如果传输或自动合并在完整结果形成前失败，只从外部备份恢复接触过的路径。传输后的验证失败时，保留返回的工作树结果、任务分支、worktree 和备份；报告准确的失败命令供人工审查。
+1. 要求 linked、named 任务分支和非 detached HEAD。
+2. 确认任务验证已通过。分类任务 worktree 中 staged、unstaged 和 untracked 变更；包含确认属于任务的工作，并在所有权含糊时停止。
+3. 使用 `git worktree list --porcelain` 和 Git common directory 发现 base checkout 和分支。不要假设 `main` 或 `master`；预期 base 含糊时停止。
+4. 将任务相对 merge base 的工作整理为恰好一个 business commit。
+5. 将该 commit rebase 到当前 base HEAD。只自动解决任务范围内、无歧义且可验证的冲突；否则 abort rebase 并请求方向。
+6. 要求任务 worktree 干净，并在整理或 rebase 改变内容时重新运行受影响检查。
 
-审查模式传输后保留任务分支和 worktree，使用户可以独立检查或恢复源。用户接受审查结果前，保留并报告外部备份。后续清理必须遵守创建所有权：由平台或主机创建的 worktree 交回其原生清理机制；此 skill 只能移除通过其 Git fallback 创建的 worktree。
+## Base Snapshot 和恢复数据
 
-## 提交模式（仅限明确要求）
+1. 记录 base 分支、HEAD、index tree、staged 变更、unstaged 变更和 untracked 文件。
+2. 计算最终任务路径并在仓库外备份。在 manifest 中记录文件类型和原本不存在的路径。不要 stash。
+3. 传输前立即将 base 分支和 HEAD 与 snapshot 比较。任一移动时，再次 rebase 任务 commit，并刷新 snapshot、受影响路径和备份。
 
-只有明确要求已提交集成时才使用。
+## Review Mode
 
-1. 如果基础检出目录在任何任务路径上存在已暂存、未暂存或未跟踪变更，告知用户并降级到审查模式。
-2. 否则保留无关的基础本地变更，并确认已 rebase 的任务分支只包含一个业务提交。集成前立即重新检查基础分支和 HEAD；如果 HEAD 已移动，返回共享预检，再次 rebase 后才传输。
-3. 从基础分支运行 `git merge --ff-only`。
-4. 如果无法 fast-forward 集成，停止并保持基础检出目录及其本地变更不动；不要为了让命令成功而移动、提交或隐藏这些变更。
-5. 重新运行相关验证，并与预检快照比较，证明无关的已暂存、未暂存和未跟踪状态保持不变。验证通过后，依据创建所有权清理：将平台或主机 worktree 委托给其原生机制；从基础检出目录移除 Git fallback worktree，然后安全删除已集成的任务分支。验证失败时保留所有恢复状态。
+1. 保持 base HEAD 和 index 不变。
+2. 对没有 base 本地变更的任务路径，先检查传输，再只更新 working tree。不要使用会写 index 的 checkout、apply 或 restore 模式。
+3. 对重叠文本路径，在临时文件中三方合并任务 commit parent、当前 base working file 和任务结果。共享 pathname 本身不是冲突。
+4. 只有结果无歧义、限于任务范围且可验证时才自主解决。
+5. 遇到 delete/modify 冲突、复杂 rename、二进制冲突、互斥行为、含糊生成输出或任何无法验证的合并时停止。项目提供确定性 generator 时，从事实源重新生成文件。
+6. 在 base checkout 中只运行已知非修改型检查。没有充分检查时报告限制，不要运行 formatter、generator 或 fixer。
+7. 证明记录的 HEAD 和 index tree 未改变、原 staged 状态已保留、合并文件同时包含本地与任务工作，并且返回的任务变更保持 unstaged 或 untracked。
 
-作为此 skill 的一部分，绝不创建 merge commit，不执行 push、pull、force-update、stash、reset 或 clean。对于 PR、保留分支或丢弃结果，交给 `superpowers:finishing-a-development-branch`。
+成功完成 review-mode 传输后保留任务分支、worktree 和外部备份。报告其位置，便于用户独立检查和恢复来源。
+
+## Commit Mode
+
+1. 任何任务路径存在 staged、unstaged 或 untracked base 本地工作时，报告重叠并改用 review mode；已请求 commit mode 时明确降级到 review mode。
+2. 再次确认任务分支包含一个已 rebase 的 business commit，并在集成前立即复查 base 分支和 HEAD。
+3. 从 base 分支运行 `git merge --ff-only`。
+4. fast-forward 被拒绝时停止，并保持 base 及其本地变更不动。
+5. 重新运行相关验证，并证明无关 base 本地状态未改变。
+6. 验证通过后按创建所有权清理：将平台创建的 worktree 委托给该平台；只从 base checkout 删除 Git fallback worktree，然后安全删除已集成任务分支。
+
+## 验证和恢复
+
+- 完整结果形成前传输或自动合并失败时，只从外部备份恢复触碰路径。
+- 传输后验证失败时，保留返回的 working-tree 结果、任务分支、worktree 和备份。报告准确失败命令供人工审查。
+- 在用户接受 review 结果前保留恢复数据。
+
+## 禁止操作
+
+此 skill 绝不执行 push、pull、force-update、stash、reset、clean 或创建 merge commit。对于 PR、保留分支或丢弃结果，交给 `superpowers:finishing-a-development-branch`。
+
+## 结果
+
+报告所选模式、任务 commit、传输或集成路径、重叠决策、验证、保留的 base 状态、恢复数据以及任何保留的 worktree 或分支。

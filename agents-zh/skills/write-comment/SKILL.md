@@ -1,81 +1,71 @@
 ---
 name: write-comment
-description: >-
-  编写满足项目格式规则并补充非显而易见信息的注释。添加或编辑注释时使用。
+description: 添加、编辑或审查代码注释或文档注释时使用，使其遵循目标项目约定，并解释非显而易见的意图、约束或行为。
 ---
 
 # 编写注释
 
-注释必须满足目标项目的格式和 lint 规则。此 skill 还要求每条注释都通过承载代码本身无法表达的信息来证明其存在价值。
+只有注释承载代码、名称、签名、类型或紧邻控制流尚未表达的信息时才编写它。
 
-## 格式规则
+## 读取项目约定
 
-1. 第一个单词大写，以 `.`、`?` 或 `!` 结尾。
-2. 只使用英文。
-3. `//` 或 `///` 后留一个空格。
-4. 声明（类、方法、字段、函数）使用 `///`；行内或函数体使用 `//`。
+编写前读取适用仓库和语言规则、附近注释、formatter 或 linter 配置以及生成文件所有权。让目标项目决定：
 
-## 信息密度
+- 注释语言和术语；
+- 行、块和文档注释语法；
+- 标点、大写、换行和 tag 约定；
+- 声明应使用 doc comment、docstring、annotation 还是不加注释；
+- `TODO`、抑制指令或 API 文档 tag 等必需 marker。
 
-注释必须添加读者无法从名称、签名、类型或下一行显而易见的代码中获得的信息。如果只是重述这些内容，就删除它。
+项目约定覆盖下述默认值。
 
-- 好：行为、约束、边界情况、失败模式、不变量、意图、理由。
-- 差：改述符号名称，或听起来正式但没有信息的装饰性标签。
-- 测试：“没有这条注释，读者会遗漏什么？”如果答案是“什么也不会”，就不要写。
+## 决策工作流
 
-## 语气
+1. 识别没有这条注释时，未来读者会误解、违反或不得不重新发现什么。
+2. 如果答案是什么也没有，就不要添加注释；真正的问题是名称或结构时改善它们。
+3. 选择注释角色：API 契约、不变量、生命周期、边界情况、失败行为、理由、外部要求或局部意图。
+4. 编写能提供缺失信息的最短陈述。
+5. 应用目标语言的语法以及项目的语气和格式规则。
+6. 一起阅读代码和注释。删除仅仅叙述下一行的内容。
+7. 运行项目相关 formatter、文档检查、analyzer 或 linter。
 
-- 方法文档注释使用**祈使语气**：`Return the cached item for [id], or null if it expired.`
-- getter、字段和行为说明使用**第三人称一般现在时**：`Returns null when the cache is stale.` 或 `Cache for the last page fetched from disk.`
-- **主动语态优先于被动语态**：使用 `Skips empty segments.`，不要使用 `Empty segments are skipped.`
-- 每条注释只表达一个观点。
+## 高价值内容
 
-## 各上下文示例
+- 调用方无法从签名推断的行为；
+- 不变量和顺序约束；
+- 生命周期、所有权、取消或并发要求；
+- 边界情况、fallback 行为和预期失败模式；
+- 非显而易见选择的理由，或拒绝明显替代方案的原因；
+- 外部协议、兼容、安全或产品要求。
 
-| 上下文 | 风格 | 示例 |
-| --- | --- | --- |
-| 文件头 | `///` 说明此文件做什么。 | `/// Widgets that align settings rows.` |
-| 类或枚举 | `///` 职责。 | `/// Controller that serializes refresh requests to avoid duplicate fetches.` |
-| 构造函数 | `///` 做什么或何时使用。 | `/// Creates a tile that reserves space for the progress label.` |
-| 方法 | `///` 祈使语气。 | `/// Return the cached item for [id], or null if it expired.` |
-| Getter | `/// "Returns X."` / `"True if X."` | `/// True if the queue still has retryable jobs.` |
-| 字段 | `///` 保存什么。 | `/// Cache for the last page fetched from disk.` |
-| 行内 | `//` 说明原因而非行为。 | `// Avoid rebuilding when key is unchanged.` |
+## 项目没有规定时的默认值
 
-## 豁免（句子形态规则不适用）
+- 匹配附近维护中文档的语言和术语。
+- 对公共声明使用语言原生文档形式，对局部理由使用普通行注释或块注释。
+- 优先使用主动、直接的表达，并让每条注释只包含一个观点。
+- 对说明性注释使用完整句子；marker、指令、代码片段和 URL 保持其所需原生形式。
+- 使用目标语言支持的文档语法引用参数、异常和符号。
 
-- **标记**：`TODO`、`FIXME`、`NOTE`、`WARNING`、`DEPRECATED`、`HACK`、`XXX`、`BUG`、`NOCOMMIT`、`TEMP`、`TEMPORY`、`ignore:`、`ignore_for_file:`、`cspell:`。
-- **URL**：注释包含 `http://`、`https://`、`www.` 或 `ftp://`。
-- **类代码内容**：注释读起来像代码，例如 `foo()`、`bar =`、`CONST_NAME`。
-- **文档或 API 指令**：注释以 `@` 或 `\` 开头。
-- **短行内注释**：注释与代码在同一行，且不超过 16 个字符和 3 个单词。
+## 示例
 
-## 多行注释
+好的注释添加缺失的约束或理由：
 
-- 第一行：独立的摘要句。
-- 后续行：详细信息；段落最后一行以 `.`、`?` 或 `!` 结尾。
-- 段落之间空一行。参数引用使用 `[paramName]`。
+```text
+// Keep the old token until persistence succeeds so a failed write can be retried.
+# The service reports healthy before the index is ready; poll the readiness endpoint instead.
+```
 
-## 句型
+差的注释重述可见代码：
 
-- `Returns … when ….` / `Returns … or null if ….`
-- `True if ….` / `Checks whether ….`
-- `Loads … from ….` / `Parses … while ….`
-- `Throws [Exception] if ….`（仅限多行）
+```text
+// Increment the retry count.
+# Return the cached value.
+```
 
-避免片段：把 `The user id.` 改为 `The id of the user.`。
+## 保留特殊形式
 
-只有在这些句型确实添加信息时才使用。位于 `loadConfig()` 上方的 `/// Loads the config.` 仍然是差注释。
+不要仅为让有效 marker、抑制指令、文档 tag、URL、代码片段或生成注释成为句子而重写它。只有目标项目规则或用户请求要求改变时才修改。
 
-## 不应添加注释的情况
+## 结果
 
-- 显而易见的代码，例如在 `i++` 上方写 `// Increment i.`。
-- 与名称、完整声明、签名或类型重复。
-- 不增加行为、约束、理由或其他非显而易见信息的空洞注释。
-
-## 工作流
-
-1. 声明使用 `///`，行内或函数体使用 `//`。
-2. 是否属于豁免？是则保持原样。
-3. 否则：写完整句子，首词大写，以 `.`、`?` 或 `!` 结尾。
-4. 运行目标项目的 lint 或格式化命令，并修复注释格式报告。
+报告添加、修改或有意省略注释的位置，它们保留的非显而易见信息，以及验证它们的项目检查。

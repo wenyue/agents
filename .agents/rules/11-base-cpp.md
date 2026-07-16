@@ -2,24 +2,31 @@
 
 Strength: `Default`
 
-Scope: C++ code style, docs, naming, and safety defaults.
+Scope: C++ language, naming, function shape, data ownership, errors, testing, standard-library use,
+and concurrency defaults.
 
-## Core Defaults
+## Language And Documentation
 
-English for code and docs. Explicit types. Doxygen for public APIs. Follow ODR.
+- Write code and documentation in English.
+- Use explicit types and follow the One Definition Rule.
+- Use Doxygen documentation for public APIs.
 
 ## Naming
 
-PascalCase (classes) · camelCase (variables/functions) · ALL_CAPS (constants/macros) · snake_case (files)
-
-No magic numbers. Functions start with verbs. Booleans: `isX`/`hasX`/`canX`.
+- Use `PascalCase` for classes, `camelCase` for variables and functions, `ALL_CAPS` for constants
+  and macros, and `snake_case` for files.
+- Start function names with verbs.
+- Name booleans as predicates such as `isX`, `hasX`, or `canX`.
+- Use named constants instead of magic numbers.
 
 ## Functions
 
-- Single purpose, typically under 20 lines. Use early returns to flatten nesting.
+- Keep each function focused on one purpose and typically under 20 lines.
+- Use early returns to keep the main path flat.
+- Replace clusters of flag or mode parameters with a structured options type.
 
 ```cpp
-// ❌ BAD: deep nesting, many params
+// BAD: Deep nesting and several flag parameters obscure the operation.
 void process(int x, bool flag, bool verbose, int mode) {
   if (flag) {
     if (verbose) {
@@ -28,33 +35,52 @@ void process(int x, bool flag, bool verbose, int mode) {
   }
 }
 
-// ✅ GOOD: flat, structured params
-struct ProcessOpts { bool flag; bool verbose; int mode; };
+// GOOD: Structured options and early returns keep the main path visible.
+struct ProcessOpts {
+  bool flag;
+  bool verbose;
+  int mode;
+};
 
 void process(int x, const ProcessOpts& opts) {
-  if (!opts.flag) { return; }
-  if (!opts.verbose) { return; }
+  if (!opts.flag) {
+    return;
+  }
+  if (!opts.verbose) {
+    return;
+  }
   /* ... */
 }
 ```
 
-## Data and Classes
+## Data And Classes
 
-- `const` for values that never change, `constexpr` for compile-time constants, `std::optional` for nullable values.
-- SOLID. Composition over inheritance. Keep classes under ~200 lines.
-- Rule of Five / Rule of Zero. Smart pointers over raw owning pointers. RAII for every resource.
+- Use `const` for values that do not change and `constexpr` for compile-time constants.
+- Use `std::optional` for nullable values.
+- Follow SOLID principles and prefer composition over inheritance.
+- Keep classes under roughly 200 lines.
+
+## Resource Safety
+
+- Follow the Rule of Zero or Rule of Five as ownership requires.
+- Prefer smart pointers over raw owning pointers.
+- Use RAII for every resource.
 
 ## Errors
 
-- Exceptions for truly unexpected errors. `std::optional` / `std::expected` / error codes for expected failure modes.
+- Use exceptions for truly unexpected failures.
+- Use `std::optional`, `std::expected`, or error codes for expected failure modes.
 
 ## Testing
 
-Arrange-Act-Assert. One unit test per public function. Integration tests per module boundary.
+- Structure tests as Arrange, Act, Assert.
+- Add one unit test for each public function.
+- Add integration tests at module boundaries.
 
-## STL and Concurrency
+## Standard Library And Concurrency
 
-- Prefer standard containers and types: `std::string`, `std::vector`, `std::map`,
-  `std::optional`, `std::variant`, `std::filesystem`, `std::chrono`. Always prefer
-  `std::vector` over C-style arrays.
-- Concurrency: `std::thread`, `std::mutex`, `std::lock_guard`. Use `std::atomic` for lock-free shared state.
+- Prefer standard types and containers, including `std::string`, `std::vector`, `std::map`,
+  `std::optional`, `std::variant`, `std::filesystem`, and `std::chrono`.
+- Prefer `std::vector` over C-style arrays.
+- Use `std::thread`, `std::mutex`, and `std::lock_guard` for concurrency.
+- Use `std::atomic` for lock-free shared state.

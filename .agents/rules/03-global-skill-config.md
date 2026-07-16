@@ -1,48 +1,49 @@
-# Skill Config
+# Workflow Configuration
 
 Strength: `Mandatory`
 
-Scope: Project overrides for workflow tools, worktrees, git, and prose outputs.
+Scope: Subagent delegation, Superpowers activation, worktree workflow ownership, Git safety, and
+prose language.
 
-## Subagent Delegation
+## Delegation
 
-- The user authorizes Codex to spawn subagents when a task clearly benefits from bounded parallel
-  delegation. This does not require repeating the authorization for each individual task.
-- Keep delegated work concrete and self-contained. Assign disjoint ownership for code-editing
-  subtasks so parallel agents do not overlap write scopes.
-- Do not delegate the immediate blocking task when the main agent should handle it directly to keep
-  the critical path moving.
-- Report subagent usage in the final response, including the delegated purpose and whether any
-  delegated changes were integrated.
+- The user authorizes bounded subagent delegation when a task clearly benefits from parallel work.
+  Do not require repeated authorization for each subtask.
+- Keep delegated work concrete and self-contained. Give code-editing subtasks disjoint ownership so
+  agents do not overlap write scopes.
+- Keep an immediate blocking task with the main agent when delegation would slow the critical path.
+- In the final response, state what was delegated and whether delegated changes were integrated.
 
 ## Superpowers
 
-- Never invoke `superpowers:brainstorming` proactively.
-- Use `superpowers:brainstorming` only when the user explicitly requests it.
-- Other `superpowers:*` skills follow their own trigger conditions and applicable higher-priority
-  rules.
-- References to Superpowers elsewhere do not authorize automatic activation of
-  `superpowers:brainstorming`.
+- Do not invoke `superpowers:brainstorming` proactively.
+- Invoke `superpowers:brainstorming` only when the user explicitly requests it.
+- Apply other `superpowers:*` skills according to their own triggers and higher-priority rules.
+- A reference to Superpowers does not by itself authorize `superpowers:brainstorming`.
 
-## Git And Worktree
+## Worktree Workflow
 
-- Subject to the Superpowers policy above, delegate worktree timing, detection, consent, location,
-  and creation to `superpowers:using-git-worktrees`.
+- Subject to the Superpowers policy above, let `superpowers:using-git-worktrees` own worktree timing,
+  detection, consent, location, and creation.
 - After creating a worktree, use the target repository's `worktree-environment-setup` skill when it
   exists, then run the baseline verification required by `superpowers:using-git-worktrees`.
-- When worktree implementation is complete, use `worktree-integrate`. Its default review mode
-  returns changes to the current checkout as unstaged or untracked work while preserving the
-  current HEAD, index, and unrelated local changes.
+- When implementation is complete, use `worktree-integrate`. Its default review mode returns changes
+  to the current checkout as unstaged or untracked work while preserving the current `HEAD`, index,
+  and unrelated local changes.
 - Use `worktree-integrate` commit mode only when the user explicitly requests committed local
-  integration. The task's business changes must form one commit; a separate infrastructure commit
-  that adds a missing worktree directory to `.gitignore` is allowed on the current branch.
-- Use `superpowers:finishing-a-development-branch` for PR, keep-branch, or discard outcomes.
-- Never overwrite, stash, reset, clean, or silently discard pre-existing local changes. A same-file
-  overlap is not automatically a blocker: merge it when confidence is high and the result can be
-  verified; otherwise stop and ask.
-- Do not push or create a PR unless the user explicitly requests that remote action.
+  integration. Keep business changes in one commit; a separate infrastructure commit may add a
+  missing worktree directory to `.gitignore`.
+- Use `superpowers:finishing-a-development-branch` for pull-request, keep-branch, or discard
+  outcomes.
 
-## Prose Output
+## Git Safety
+
+- Do not overwrite, stash, reset, clean, or silently discard pre-existing local changes.
+- A same-file overlap is not automatically a blocker. Merge it when confidence is high and the
+  result can be verified; otherwise stop and ask.
+- Do not push or create a pull request unless the user explicitly requests that remote action.
+
+## Prose Language
 
 - Use Simplified Chinese for normal user-facing prose, design documents, and other non-code prose
   files.

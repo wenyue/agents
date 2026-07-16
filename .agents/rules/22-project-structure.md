@@ -8,7 +8,7 @@ locations, and configuration ownership.
 ## Generation Contract
 
 Author the target rule from observed repository structure and enforced dependency boundaries. Keep
-the map selective: include locations and relationships that guide placement or prevent invalid
+the map selective: record locations and relationships that guide placement or prevent invalid
 dependencies, not a directory-by-directory inventory.
 
 ## Evidence
@@ -17,16 +17,16 @@ dependencies, not a directory-by-directory inventory.
 - Feature directories, shared libraries, configuration owners, tests, assets, generated sources,
   scripts, infrastructure, and documentation locations.
 - Dependency checks, lint rules, build targets, package boundaries, and representative imports.
-- Ownership files or repeated placement patterns that establish a stable boundary.
+- Ownership files and repeated placement patterns that establish stable boundaries.
 
 ## Content
 
 - Record top-level areas and the responsibility each one owns.
-- Record feature or module layout, placement conventions, and shared locations.
-- Record allowed and forbidden dependency directions and the boundary they protect.
-- Record ownership boundaries across UI, backend, domain, data, infrastructure, tests, assets,
-  generated sources, configuration, scripts, and documentation when those areas exist.
-- Name real enforcement mechanisms, but leave their exact invocation in `20-project-tools.md`.
+- Record feature and module layout, placement conventions, and shared locations.
+- Record allowed and forbidden dependency directions and the boundaries they protect.
+- Record ownership across UI, backend, domain, data, infrastructure, tests, assets, generated
+  sources, configuration, scripts, and documentation when those areas exist.
+- Record real enforcement mechanisms, but keep their exact invocation in `20-project-tools.md`.
 
 ## Boundaries
 
@@ -35,4 +35,4 @@ dependencies, not a directory-by-directory inventory.
   interpretation in `21-project-rules.md`.
 - Exclude generic architecture advice, speculative future layout, and directories whose names are
   self-explanatory and impose no placement or dependency constraint.
-- Do not duplicate the same ownership statement across multiple sections or rules.
+- Do not duplicate an ownership statement across multiple sections or rules.

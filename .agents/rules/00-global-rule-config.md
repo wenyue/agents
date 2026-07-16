@@ -1,53 +1,50 @@
-# Rule Config
+# Rule Configuration
 
 Strength: `Mandatory`
 
-Scope: Rule strength, precedence, source-of-truth, wrapper hygiene, and rule-source hygiene.
+Scope: Rule strength, precedence, source-of-truth ownership, wrapper maintenance, numbering, MCP
+configuration, and skill-authoring ownership.
 
 ## Strength Levels
 
 - `Mandatory`: Follow unless a higher-priority instruction overrides it.
 - `Default`: Follow unless the task or a more specific rule gives good reason to differ.
-- `Advisory`: Guidance only — adapt to the task context when needed.
+- `Advisory`: Adapt to the task context when useful.
 
 ## Precedence
 
-Resolve conflicts in order:
+Resolve conflicts in this order:
 
 1. Direct system, developer, and user instructions override repository rules.
-2. More specific rules (narrower `globs` or scope) override more general rules.
-3. Among rules of equal specificity: `Mandatory` > `Default` > `Advisory`.
-4. When an advisory guideline (e.g. structure layout) conflicts with a `Mandatory` project rule
-   or an enforced lint, follow the enforced constraint.
+2. More specific rules, including narrower globs or scopes, override more general rules.
+3. Among rules with equal specificity, `Mandatory` overrides `Default`, which overrides `Advisory`.
+4. Enforced constraints, such as mandatory project rules or lints, override advisory guidance.
 
-## Source of Truth
+## Sources Of Truth
 
-Keep one source of truth per asset. Every platform-specific file is a thin wrapper that references
+Keep one source of truth for each asset. Platform-specific files are thin wrappers that reference
 the source.
 
-| Asset              | Source of truth                          |
-| ------------------ | ---------------------------------------- |
-| Project rules      | `.agents/rules/<nn>-<name>.md`           |
-| Agent prompts      | `.agents/agents/<name>.md`               |
-| Project skills     | `.agents/skills/<skill>/SKILL.md`        |
-| Third-party skills | `.skillshare/skills/<skill>/SKILL.md`    |
-| Copilot guidance   | `.github/instructions/*.instructions.md` |
+| Asset | Source of truth |
+| --- | --- |
+| Project rules | `.agents/rules/<nn>-<name>.md` |
+| Agent prompts | `.agents/agents/<name>.md` |
+| Project skills | `.agents/skills/<skill>/SKILL.md` |
+| Third-party skills | `.skillshare/skills/<skill>/SKILL.md` |
+| Copilot guidance | `.github/instructions/*.instructions.md` |
 
-Core requirements:
+- Use repository-root-relative paths in tracked configuration; do not use absolute filesystem paths.
+- When content appears in more than one wrapper, move it to the source and reduce the wrappers.
+- A thin wrapper contains only platform metadata or runtime fields plus one source reference.
 
-- Use repository-root-relative paths. No absolute filesystem paths in tracked config.
-- If the same content appears in two wrappers, move it back into the source and shrink the wrappers.
-- A wrapper is thin when it carries only platform-specific metadata or runtime fields plus a
-  one-line reference to the source.
+## Wrapper Maintenance
 
-## Wrapper Style
-
-For rule sources, keep platform wrappers as references:
+Rule wrappers use these locations:
 
 - Cursor: `.cursor/rules/<same-name>.mdc`
 - Copilot: `.github/instructions/<same-name>.instructions.md`
 
-Wrapper bodies should use this form:
+Use this body for both rule wrapper types:
 
 ```text
 Apply @.agents/rules/<nn>-<name>.md
@@ -55,51 +52,38 @@ Apply @.agents/rules/<nn>-<name>.md
 
 When adding a rule:
 
-1. Author the source at `.agents/rules/<nn>-<name>.md`.
-2. Add platform wrappers for Cursor and Copilot when that platform should load the rule.
-3. Update `AGENTS.md` when the rule changes which paths or workflows it applies to.
+1. Author the source in `.agents/rules/<nn>-<name>.md`.
+2. Add Cursor and Copilot wrappers for each platform that loads it.
+3. Update `AGENTS.md` when the rule changes applicable paths or workflows.
 
 When adding a subagent:
 
-1. Author the shared prompt at `.agents/agents/<name>.md`.
-2. Add thin wrappers for Cursor, Codex, and Copilot when those platforms should expose it.
-3. Keep repository-wide Copilot guidance in `.github/instructions/*.instructions.md`; subagent
-   prompts do not duplicate it.
+1. Author the shared prompt in `.agents/agents/<name>.md`.
+2. Add thin Cursor, Codex, and Copilot wrappers for platforms that expose it.
+3. Keep repository-wide Copilot guidance in `.github/instructions/*.instructions.md`; do not
+   duplicate it in subagent prompts.
 
-## Numbering Convention
+## Numbering
 
-| Range   | Scope                                                         |
-| ------- | ------------------------------------------------------------- |
-| `00–09` | Global rules: strength, personality, response format, skills. |
-| `10–19` | Base rules: language conventions and other shared defaults.   |
-| `20–29` | Project rules: tooling, conventions, structure, utilities.    |
-| `30–39` | Module rules: features, screens, or bounded subsystems.       |
-| `40–49` | Domain rules: testing and other cross-cutting concerns.       |
-| `50–59` | Plugin, third-party plugin, or package-specific rules.        |
+| Range | Scope |
+| --- | --- |
+| `00–09` | Global rules: strength, personality, response format, and skills. |
+| `10–19` | Base rules: languages and shared defaults. |
+| `20–29` | Project rules: tooling, conventions, structure, and utilities. |
+| `30–39` | Module rules: features, screens, and bounded subsystems. |
+| `40–49` | Domain rules: testing and other cross-cutting concerns. |
+| `50–59` | Plugin, third-party plugin, and package-specific rules. |
 
-Finish reading the applicable `00–09` global rules before deciding whether any later numbered
-rule applies.
+Finish reading all applicable `00–09` global rules before deciding which later rules apply.
 
-## MCP Config
+## MCP Configuration
 
-Server naming and intent must stay consistent across platforms. Keep concrete project server
-names, ports, binaries, and service dependencies in the project tooling rule or config owner
-docs, not in this global rule. Prefer relative or command-based config over machine-specific
-paths.
+Keep server names and intent consistent across platforms. Put project-specific server names, ports,
+binaries, and service dependencies in the project tooling rule or the owning configuration. Prefer
+relative or command-based configuration over machine-specific paths.
 
-| Platform    | File                 | Notes                                    |
-| ----------- | -------------------- | ---------------------------------------- |
-| Cursor      | `.cursor/mcp.json`   | Shared intent.                           |
-| Codex       | `.codex/config.toml` | Runtime MCP entries.                     |
-| Copilot CLI | `.vscode/mcp.json`   | Top-level key is `servers`.              |
-
-## Skill Layout
-
-- Skills are portable units. Do not hardcode repository-specific paths into `SKILL.md`.
-- Inside `SKILL.md`, reference skill-owned files relative to the skill directory.
-- `.agents/skills/` is the runtime skill location. It can contain project-owned skills, public
-  skills sourced from `wenyue/agents`, and third-party skills managed separately through
-  `.skillshare/skills/`.
-- Describe project targets semantically; let the agent resolve concrete paths at runtime.
-- Repository-specific policy belongs in `.agents/rules/`. Reusable workflow that would apply in
-  another repo belongs in a skill.
+| Platform | File | Notes |
+| --- | --- | --- |
+| Cursor | `.cursor/mcp.json` | Shared intent. |
+| Codex | `.codex/config.toml` | Runtime MCP entries. |
+| Copilot CLI | `.vscode/mcp.json` | Top-level key is `servers`. |

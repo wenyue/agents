@@ -1,87 +1,82 @@
 ---
 name: write-comment
-description: >-
-  Writes comments that satisfy project formatting rules and add non-obvious information. Use when
-  adding or editing comments.
+description: Use when adding, editing, or reviewing code comments or documentation comments so they follow the target project's conventions and explain non-obvious intent, constraints, or behavior.
 ---
 
 # Write Comment
 
-Comments must satisfy the target project's formatting and lint rules. This skill additionally
-enforces that every comment earns its place by carrying information the code alone does not convey.
+Write a comment only when it carries information that the code, name, signature, type, or immediate
+control flow does not already express.
 
-## Format Rules
+## Read Project Conventions
 
-1. Uppercase first word, end with `.` `?` or `!`.
-2. English only.
-3. One space after `//` or `///`.
-4. `///` for declarations (class, method, field, function). `//` for inline/body.
+Before writing, read the applicable repository and language rules, nearby comments, formatter or
+linter configuration, and generated-file ownership. Let the target project decide:
 
-## Information Density
+- comment language and terminology;
+- line, block, and documentation-comment syntax;
+- punctuation, capitalization, wrapping, and tag conventions;
+- whether a declaration should use a doc comment, docstring, annotation, or no comment;
+- required markers such as `TODO`, suppression directives, or API documentation tags.
 
-A comment must add something the reader cannot get from the name, signature, type, or the next
-obvious line of code. If it only restates them, delete it.
+Project conventions override the defaults below.
 
-- Good: behavior, constraints, edge cases, failure modes, invariants, intent, rationale.
-- Bad: rephrasing the symbol name, or decorative labels that sound formal but say nothing.
-- Test: "What would the reader miss without this comment?" If "nothing", do not write it.
+## Decision Workflow
 
-## Tone
+1. Identify what a future reader would misunderstand, violate, or have to rediscover without the
+   comment.
+2. If the answer is nothing, do not add a comment; improve the name or structure when that is the
+   real problem.
+3. Choose the comment role: API contract, invariant, lifecycle, edge case, failure behavior,
+   rationale, external requirement, or local intent.
+4. Write the smallest statement that supplies the missing information.
+5. Apply the target language's syntax and the project's tone and formatting rules.
+6. Read the code and comment together. Remove any phrase that merely narrates the next line.
+7. Run the project's relevant formatter, documentation check, analyzer, or linter.
 
-- **Imperative** for method doc comments: "Return the cached item for [id], or null if it expired."
-- **Third person, present tense** for getters, fields, and behavior descriptions: "Returns null
-  when the cache is stale." or "Cache for the last page fetched from disk."
-- **Active voice over passive**: "Skips empty segments." not "Empty segments are skipped."
-- One idea per comment.
+## High-Value Content
 
-## Per-Context Examples
+- behavior that callers cannot infer from the signature;
+- invariants and ordering constraints;
+- lifecycle, ownership, cancellation, or concurrency requirements;
+- edge cases, fallback behavior, and expected failure modes;
+- rationale for a non-obvious choice or for rejecting an obvious alternative;
+- external protocol, compatibility, security, or product requirements.
 
-| Context     | Style                             | Example                                                                       |
-| ----------- | --------------------------------- | ----------------------------------------------------------------------------- |
-| File header | `///` What this file does.        | `/// Widgets that align settings rows.`                                       |
-| Class/enum  | `///` Responsibility.             | `/// Controller that serializes refresh requests to avoid duplicate fetches.` |
-| Constructor | `///` What/when.                  | `/// Creates a tile that reserves space for the progress label.`              |
-| Method      | `///` Imperative.                 | `/// Return the cached item for [id], or null if it expired.`                 |
-| Getter      | `///` "Returns X." / "True if X." | `/// True if the queue still has retryable jobs.`                             |
-| Field       | `///` What it holds.              | `/// Cache for the last page fetched from disk.`                              |
-| Inline      | `//` Why, not what.               | `// Avoid rebuilding when key is unchanged.`                                  |
+## Defaults When the Project Is Silent
 
-## Exempt (sentence-shape rules do not apply)
+- Match the language and terminology of nearby maintained documentation.
+- Use the language-native documentation form for public declarations and a normal line or block
+  comment for local reasoning.
+- Prefer active, direct prose and one idea per comment.
+- Use a complete sentence for prose comments; keep markers, directives, code fragments, and URLs in
+  their required native form.
+- Refer to parameters, exceptions, and symbols with the documentation syntax supported by the
+  target language.
 
-- **Markers**: `TODO`, `FIXME`, `NOTE`, `WARNING`, `DEPRECATED`, `HACK`, `XXX`, `BUG`,
-  `NOCOMMIT`, `TEMP`, `TEMPORY`, `ignore:`, `ignore_for_file:`, `cspell:`.
-- **URLs**: the comment contains `http://`, `https://`, `www.`, or `ftp://`.
-- **Code-like**: the comment reads as code, e.g. `foo()`, `bar =`, `CONST_NAME`.
-- **Doc/API directive**: the comment starts with `@` or `\`.
-- **Short inline**: the comment sits on the same line as code and is at most 16 characters and 3 words.
+## Examples
 
-## Multi-Line
+Good comments add a missing constraint or reason:
 
-- First line: standalone summary sentence.
-- Following lines: detail; last line of paragraph ends with `.` `?` `!`.
-- Blank line between paragraphs. Use `[paramName]` for parameter references.
+```text
+// Keep the old token until persistence succeeds so a failed write can be retried.
+# The service reports healthy before the index is ready; poll the readiness endpoint instead.
+```
 
-## Sentence Patterns
+Bad comments restate visible code:
 
-- "Returns … when …." / "Returns … or null if …."
-- "True if …." / "Checks whether …."
-- "Loads … from …." / "Parses … while …."
-- "Throws [Exception] if …." (multi-line only)
+```text
+// Increment the retry count.
+# Return the cached value.
+```
 
-Avoid fragments: "The user id." → "The id of the user."
+## Preserve Special Forms
 
-Use these patterns only when they add real information. `/// Loads the config.` above
-`loadConfig()` is still a bad comment.
+Do not rewrite a valid marker, suppression directive, documentation tag, URL, code fragment, or
+generated comment merely to make it sentence-shaped. Change it only when the target project's rule
+or the user's request requires the change.
 
-## When Not to Comment
+## Result
 
-- Obvious code (e.g. `// Increment i.` above `i++`).
-- Redundant with name, full declaration, signature, or type.
-- Hollow comments that add no behavior, constraints, rationale, or other non-obvious information.
-
-## Workflow
-
-1. `///` for declarations, `//` for inline/body.
-2. Exempt? Leave as-is.
-3. Otherwise: full sentence, uppercase start, end `.` `?` `!`.
-4. Run the target project's lint or format command and fix comment-format reports.
+Report where comments were added, changed, or deliberately omitted, what non-obvious information
+they preserve, and which project check validated them.

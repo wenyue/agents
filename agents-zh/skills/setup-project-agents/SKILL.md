@@ -1,24 +1,21 @@
 ---
 name: setup-project-agents
-description: >-
-  从 wenyue/agents 公共目录设置或更新仓库 agent 资产。当 Codex 必须协调公共规则、skill、subagent、退役资产、包装器、生成的项目规则和 skill，或目标自有 agent 运行时配置时使用。
+description: 从 wenyue/agents 公共目录设置或更新仓库 agent 资产时使用，包括公共同步、生成的项目规则和 skill、wrapper、退役资产以及目标自有运行时配置。
 ---
 
-# 设置项目 Agents
+# 设置项目 Agent
 
-初次设置和后续更新运行同一套完整协调流程：同步公共资产，根据当前证据重新生成受管项目资产，审查完整候选项，并在目标仓库中验收结果。
+对初始 setup 和后续 update 运行相同的完整协调。通过一个幂等工作流协调公共、生成、退役和目标自有 agent 资产。使用目标仓库的当前证据，审查完整候选，并在声明 setup 为最新之前验收实质变更。
 
 ## 所有权
 
-- 将设置和更新视为同一个幂等工作流。
-- 始终获取配置的公共 GitHub 归档。不要使用本地源检出、缓存或陈旧快照。
-- 精确镜像公共目录清单列出的资产，并且只删除目录声明为退役的资产。
-- 保留公共集、生成集和退役集之外的项目本地资产。报告所有权冲突，不要静默解决。
-- 每次运行都把受管项目资产重新生成为完整候选项。只把先前版本当作遗漏检查清单；它们不是权威生成输入。
-- 根据目标仓库当前证据重新验证保留的每条命令、路径、服务、约定和所有权声明。
-- 使用一个 subagent，基于同一证据集生成所有项目自有候选项。如果 subagent 不可用，报告阻塞，不要由主 agent 生成这些文件。
+- 始终获取配置的公共 GitHub archive。不要使用本地源 checkout、cache 或陈旧 snapshot。
+- 精确镜像 catalog 列出的公共资产，并且只删除 catalog 声明的退役资产。
+- 保留公共、生成和退役集合之外的项目本地资产。报告所有权冲突，不要静默解决。
+- 将托管项目资产重新生成为完整候选。只把旧版本用作遗漏清单，并重新验证每个保留事实。
+- 将目标自有 model、reasoning、permission、MCP、hook 和平台设置排除在公共 catalog 之外。根据当前平台和项目证据协调它们。
 
-## 受管项目资产
+## 托管项目资产
 
 - `.agents/rules/20-project-tools.md`
 - `.agents/rules/21-project-rules.md`
@@ -26,121 +23,107 @@ description: >-
 - `.agents/skills/worktree-environment-setup/`
 - `.agents/skills/change-set-verification/`
 
-验收后的候选项成为目标仓库的运行时事实源。
+验收后的候选成为目标仓库的运行时事实源。
 
 ## 共享生成要求
 
-这里只应用每个生成资产都共享的要求。目标规则或生成器 skill 的内容、组织、可选资源和工作流特定约束，以其自身规定为准。
+- 使用英文编写每个生成或刷新的项目自有规则和 skill。
+- 使用当前证据。省略陈旧、推测、不受支持和重复的指引。
+- 生成完整文件和目录，而不是 patch 片段。
+- 使每条规则符合 `.agents/rules/00-global-rule-config.md`，包括标题、`Strength:`、`Scope:`、编号、事实源所有权和薄 wrapper 要求。
+- 每个生成 skill 的 frontmatter 只包含 `name` 和 `description`。使用祈使指令、skill 自有相对引用和语义化目标描述。
+- 对特定资产内容，遵循目标 generator contract 和每个目标规则的 generation contract，不要在此重复其 policy。
+- 只有所有者契约和仓库证据证明需要时才包含 reference 或 script。
 
-- 每个生成或刷新的项目自有规则和 skill 都使用英文编写。
-- 使用当前仓库证据。省略无依据、陈旧、推测性和重复的指导。
-- 生成完整文件和目录，而不是补丁片段。在保留每项必要约束和所有权边界的同时保持精简。
-- 使每个生成规则符合 `.agents/rules/00-global-rule-config.md`。包括标题、`Strength:`、`Scope:` 和规则特定正文；按照该文件的事实源契约使用编号位置和轻量包装器。
-- 为每个生成 skill 提供只包含 `name` 和 `description` 的 YAML frontmatter。使用祈使式指令；skill 自有资源使用相对引用；目标使用语义描述而非机器特定路径。
-- 规则或 skill 特定的编写决定，遵循目标生成器 skill 本身或目标规则的生成契约，不要在这里重述。
-- 应用或调用候选项前，审查其完整内容，包括引用和脚本。
+## 协调工作流
 
-## 工作流
-
-1. 阅读 `AGENTS.md` 和所有适用的 `00-*` 至 `09-*` 规则。
+1. 读取 `AGENTS.md` 和所有适用的 `00-*` 到 `09-*` 规则。
 2. 运行 `python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py`。
-3. 审查报告的每个创建、更新和删除。确认公共所有权、已声明退役项、包装器协调，以及无关本地资产得到保留。
-4. 收集工具、运行时、服务、生成文件、API、约定、模块、依赖、包装器和平台配置的当前证据。
-5. 仅把先前受管资产盘点为遗漏检查清单，然后重新验证每条保留事实。
-6. 使用下文章节审查 agent 运行时和平台配置。
-7. 派发一个 subagent，依据生成器契约和共享证据，为所有受管项目资产生成完整候选项。
-8. 审查完整候选项。在替换任何受管资产前，解决所有发现并重复审查。
-9. 运行公共同步，使包装器和入口文件反映已审查候选项。
-10. 对每个新建或实质变更的规则执行生成规则验收。然后在 `worktree-environment-setup` 发生变化时执行环境 skill 验收；在环境就绪后，对发生变化的 `change-set-verification` 执行验证 skill 验收。字节等价的重新生成规则或 skill 跳过验收。
-11. 若存在安全的代表性调用，则对改变的平台运行时字段执行冒烟测试。
-12. 再次运行公共同步，然后执行最终验证，包括 `sync_public_agent_assets.py --check`。
+3. 审查每项报告的创建、更新、删除、退役和 wrapper 变更。确认公共所有权和无关本地资产得到保留。
+4. 收集工具、runtime、服务、生成文件、API、约定、模块、依赖、agent wrapper 和平台配置的当前证据。
+5. 将旧托管资产盘点为遗漏清单，然后重新验证每项保留声明。
+6. 使用下述边界审查目标自有 agent runtime 和平台配置。
+7. 使用共享证据集派发一个 subagent，为所有托管项目资产生成完整候选。如果 subagent 不可用，报告阻塞；不要在不一致证据集之间拆分生成。
+8. 审查每个完整候选和支持资源。在替换对应托管资产前解决所有发现。
+9. 应用审查通过的候选，然后运行公共同步，使 wrapper 和入口文件收敛到验收后的事实源。
+10. 按依赖顺序验收每个创建或实质变更的规则和 skill：规则、环境 setup、change-set verification。跳过字节等价候选。
+11. 当已安装平台提供安全代表性调用时，smoke test 变更的 runtime 字段；否则将结果报告为 inconclusive。
+12. 再运行一次公共同步，然后以 `python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py --check` 完成最终检查。
 
-## Agent 运行时审查
+## Agent Runtime 审查
 
-每次设置或更新时，针对每个已安装或目标平台审查公共目录列出的每个 agent。
-
-- 不要在公共目录中存储模型或推理强度选择。现有包装器值是目标先前的决定，不是公共默认值。
-- 仅在确认当前目标值仍受支持且合适后保留它。使用明确受支持的模型初始化缺失值；不要依赖继承。
-- 只有支持情况、职责、权限、观察到的质量、项目复杂度或明确的成本、延迟、质量策略能够证明合理时，才更改值。
-- Codex 包装器要求 `model` 和 `model_reasoning_effort` 非空；Cursor `model` 和 GitHub Copilot `model` 也必须非空。绝不能省略这些目标自有的必填字段。
-- 保留稳定的公共角色权限，例如可写的 Codex `sandbox_mode`；只有当前平台和角色证据支持时，才保留目标权限覆盖。
-- 最终公共同步必须保留已审查的目标自有运行时字段。严格最终门禁应把必填字段缺失或为空视为阻塞。
-- 运行时字段发生变化时，如果已安装平台有安全调用面，运行一次代表性冒烟调用；否则将冒烟结果报告为 `inconclusive`。
+- 在每次 setup 或 update 中，为每个已安装或目标平台审查 catalog 中每个 agent。
+- 不要在公共 catalog 中存储 model 或 reasoning-effort 选择。
+- 将现有 wrapper 值视为旧的目标决定，而不是公共默认值。只有确认仍受支持且适合时才保留。
+- 使用明确受支持的 model 初始化缺失目标值；不要依赖继承。
+- Codex wrapper 要求非空 `model` 和 `model_reasoning_effort`，Cursor 和 GitHub Copilot wrapper 要求非空 `model`。
+- 保留有证据支持的 `sandbox_mode` 和其他角色 permission 字段。
+- 保留有证据支持的角色 permission 和目标 override。将缺失的必需 runtime 字段视为最终门禁阻塞。
+- 最终公共同步必须保留审查后的目标自有 runtime 字段。
+- 审查后的 runtime 字段发生变化且已安装平台提供安全 surface 时，运行代表性 smoke invocation；否则将检查报告为 inconclusive。
 
 ## 平台配置审查
 
-- 将单个 agent 的运行时字段放在原生包装器中，将项目级 MCP、hook、并发或权限策略放在原生根配置中。
-- 不要仅为注册这些 agent 而创建 `.codex/config.toml`；Codex 会直接发现独立的 agent TOML 文件。
-- 不要只按字段名跨平台转换。模型选择、沙箱、只读状态、工具访问和调用策略是不同的控制项。
-- 只合并有证据支持的项目自有键。保留无关键，绝不写入秘密或用户全局设置。
-- 报告不确定的平台 schema，不要输出猜测字段。
+- 将逐 agent runtime 字段保留在原生 wrapper，将项目级 MCP、hook、concurrency 或 permission policy 保留在原生根配置。
+- 不要仅为注册 agent 创建 `.codex/config.toml`，不要仅按名称跨平台翻译字段，不要写入 secret 或修改用户全局设置。
+- 报告不确定的平台 schema，不要发出猜测字段。
 
-## 审查
+## 审查门禁
 
-验收前审查完整候选文件。确认：
+验收前审查完整候选文件。
 
-- 每项声明都有当前证据，保留的每条先前事实都已重新验证；
-- 所有共享生成要求和各文件自身的生成契约都得到满足；
-- 没有候选项吸收 worktree 生命周期、业务实现、Git 集成、公共同步或其他工作流的策略。
+### 生成规则
 
-### 生成的规则
+- 确认正确标题、`Strength:`、`Scope:`、编号、所有权和证据。
+- 确认 `20-project-tools.md`、`21-project-rules.md` 和 `22-project-structure.md` 分别保持工具、约定和结构所有权。
+- 确认 wrapper 保持精简、指向单一事实源，并且可从 `AGENTS.md` 发现。
 
-- 确认每个规则具有 `.agents/rules/00-global-rule-config.md` 要求的正确标题、`Strength:`、`Scope:`、编号和规则特定正文。
-- 确认三个规则所有权各不相同、不含占位语言，也没有重复其他规则或 skill 已负责的策略。
-- 确认每个规则都保持精简、可执行，并可追溯到当前仓库证据。
+### 生成 Skill
 
-### 生成的 Skills
+- 确认每项声明都有当前证据，且旧内容只作为遗漏清单。
+- 确认共享要求和资产自身 generation contract 已满足。
+- 确认 skill reference 和 script 确有必要、可访问且内部一致。
+- 确认 `worktree-environment-setup` 包含两个主机入口。
+- 确认 `change-set-verification` 只有在其 generator contract 和仓库证据证明需要时才包含 verification matrix 或可执行脚本。
+- 确认没有候选吸收 worktree 生命周期、业务实现、Git 集成、公共同步或其他 workflow 的 policy。
 
-- 确认 skill 自有引用和脚本确有必要、内部一致，并且可从 `SKILL.md` 到达。
-- 确认 `worktree-environment-setup` 包含 `scripts/setup.sh` 和 `scripts/setup.ps1`，且两个入口都满足其生成契约。
-- 确认 `change-set-verification` 仅在其生成契约和仓库证据足以证明时，才使用验证矩阵或可执行脚本。
+仍有任何审查发现时不要开始验收。
 
-存在任何未解决的审查发现时，不要开始验收。以完整候选项解决发现，然后重复完整审查。
+## 验收门禁
 
-## 验收
+只在候选审查通过后运行。
 
-仅在候选项审查通过后运行。验收每个新建或实质变更的受管规则或 skill；跳过字节等价的重新生成资产。
+### 生成规则
 
-### 生成的规则
+1. 按 `.agents/rules/00-global-rule-config.md` 验证完整规则，并将保留声明追溯到当前证据。
+2. 确认正确所有权、编号、从 `AGENTS.md` 的可发现性和已同步薄 wrapper。
+3. 拒绝占位语言、重复所有权、不受支持声明和陈旧路径。
+4. 在静态和集成检查通过前，使受影响规则保持未验收状态。
 
-1. 根据 `.agents/rules/00-global-rule-config.md` 验证每个完整规则源，包括强度、作用域、编号、事实源位置和相对于仓库根目录的引用。
-2. 将每条保留声明追溯到当前证据，并确认先前生成规则只被用作遗漏检查清单。
-3. 确认不存在占位语言，工具、约定和结构分别仍由 `20-project-tools.md`、`21-project-rules.md` 和 `22-project-structure.md` 负责。
-4. 检查 `AGENTS.md` 以及同步后的 Cursor 和 Copilot 规则包装器。确认适用规则可发现、包装器保持轻量，且每个包装器指向规则的单一事实源。
-5. 在所有静态和集成检查通过前，不验收任何受影响规则。
+### 生成 Skill
 
-### 生成的 Skills
+两个生成 skill 都发生变化时，复用一个真实临时 linked worktree。先验收环境 skill，再验收 verification skill。
 
-仅对新建或实质变更的生成 skill 运行。当两个 skill 都发生变化时，复用同一个真实临时关联 worktree，并先验收环境 skill，再验收验证 skill。
+1. 验证完整 skill，并使用原生 shell 工具只解析主机原生 setup 入口：Linux 和 macOS 使用 Bash，Windows 使用 PowerShell。不要解析或调用其他平台的 setup script。
+2. 需要时将未提交候选复制到临时 worktree，并验证字节相等。
+3. 调用环境入口，并从真实项目配置证明 readiness。
+4. 使用窄代表性变更执行 verification skill，同时让无关 dirty 文件保持在范围之外。
+5. 存在批准的自动 fixer 时，执行该路径并确认它修改的文件加入验证范围。
+6. 执行一个前置条件失败和一个有证据支持的高风险变更。确认它避免无条件 whole-project 检查，并且不会仅为验收运行昂贵完整 suite。
+7. 确认范围选择、停止行为、结果分类，以及语义诊断返回父实现 agent。
+8. 检查仓库和 worktree 状态是否有无关修改或泄漏文件，然后安全删除临时 worktree。
 
-#### 环境 Skill
-
-1. 验证完整 skill，并且只用主机原生 shell 工具解析主机入口：Linux 和 macOS 使用 Bash 解析 `scripts/setup.sh`，Windows 使用 PowerShell 解析 `scripts/setup.ps1`。不要解析或调用另一平台的设置脚本。
-2. 需要时把未提交候选项复制进临时 worktree，并验证字节相等。
-3. 调用主机入口，并使用真实项目配置而非仅版本探针来验证所需环境结果。
-4. 检查仓库和 worktree 状态，确认没有修改主检出目录、无关改动、泄漏文件或超出 skill 契约的生命周期操作。
-
-#### 验证 Skill
-
-1. 使用已验收的环境 skill 准备临时 worktree，并验证完整验证 skill 及其可能存在的验证矩阵。
-2. 演练一个窄范围代表性变更集。确认支持的最小检查只运行一次，无关脏文件保持在选定范围之外。
-3. 如果存在获准的自动修复器，演练其文档规定的规范化路径，并确认它修改的文件加入验证范围。
-4. 演练一个前置条件失败和一个文档规定的高风险变更。确认前置条件失败后依赖检查停止，且仅针对所述风险选择更广验证。
-5. 确认必要验证面报告 `passed`、`failed`、`inconclusive` 或 `not applicable`，并且语义诊断返回父 agent。
-6. 除非当前仓库证据要求每个内聚变更集都执行这些验证面，否则不要仅为验收 skill 而运行无条件全项目检查或昂贵的完整测试套件。
-7. 检查仓库和 worktree 状态，然后安全移除临时 worktree。
-
-任何验收失败时，保持候选项未验收，报告准确证据，将完整候选项返回其生成器进行修订，重复审查，并重新开始受影响的验收阶段。
+任何失败都使候选保持未验收状态；报告准确证据，将完整候选返回其生成器，重复审查，并重新开始受影响验收阶段。
 
 ## 验证
 
-在 `wenyue/agents` 中编辑公共源后运行：
+对 `wenyue/agents` 的公共源编辑运行：
 
 ```bash
 python .agents/skills/setup-project-agents/scripts/test_sync_public_agent_assets.py
 ```
 
-最终同步后，在目标仓库更新中运行：
+对最终同步后的目标仓库运行：
 
 ```bash
 python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py --check
@@ -148,6 +131,4 @@ python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py -
 
 ## 输出
 
-- 列出新建、更新、删除和未改变的受管文件。
-- 分别报告公共同步、退役项、项目重新生成、遗漏审查、运行时审查、平台配置、候选项审查、验收、冒烟检查和验证。
-- 包含准确命令和阻塞。绝不要把跳过或结论不确定的检查描述为已通过。
+列出已创建、更新、删除和未改变的托管文件。分别报告公共同步、退役、项目生成、遗漏审查、runtime 审查、候选审查、验收、smoke check 和验证。包含准确命令和阻塞；绝不把跳过或 inconclusive 的检查描述为通过。

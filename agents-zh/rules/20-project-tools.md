@@ -2,7 +2,7 @@
 
 强度：`Mandatory`
 
-适用范围：仓库级工具事实、能力、调用约束、运行时服务和生成资产工具的生成契约。
+适用范围：仓库级工具事实、能力与调用约束、运行时服务和生成资产工具的生成契约。
 
 ## 生成契约
 
@@ -19,15 +19,21 @@
 ## 内容
 
 - 记录 runtime 版本、package manager、workspace 布局和必需 working directory。
-- 记录开发、setup、build、generation、format、analysis、lint、test 和 packaging 命令，以及其前置条件、输入、输出、支持的 scope selection、mutation behavior、safe-fix capability 和相对成本。
+- 记录开发、setup、build、generation、format、analysis、lint、test 和 packaging 命令。对每条命令，
+  包含前置条件、输入、输出、支持的 scope selection、mutation behavior、safe-fix capability 和
+  相对成本。
 - 记录运行时服务、端口、环境变量、数据目录、credential 要求、启动依赖和 health check。
-- 记录生成入口及其输入输出。生成文件的语义所有权和禁止手改规则放入 `21-project-rules.md`。
-- 记录生成式项目 skill 可以调用且无需复制实现的仓库自有 selector。
+- 记录生成入口及其输入输出。生成文件的语义所有权和禁止手改规则保留在
+  `21-project-rules.md`。
+- 记录生成式项目 Skill 可以调用且无需复制实现的仓库自有 selector。
 
 ## 边界
 
-- 环境准备顺序由 `.agents/skills/worktree-environment-setup/` 负责；完成变更后的验证由 `.agents/skills/change-set-verification/` 负责。
-- 排除验证触发时机、检查顺序、去重、按风险扩展、baseline 对比和结果政策；这些决定由生成后的验证 skill 负责。
-- 排除 `21-project-rules.md` 所有的 API/领域约定，以及 `22-project-structure.md` 所有的 module/dependency 所有权。
-- 不要把命令清单变成运行所有命令的指令。
-- 不要推断当前证据无法证明的工具、命令、scope 支持或成本。
+- 环境准备顺序保留在 `.agents/skills/worktree-environment-setup/`；完成变更后的验证保留在
+  `.agents/skills/change-set-verification/`。
+- 排除验证触发时机、检查顺序、去重、按风险扩大、baseline 对比和结果政策；这些决定由生成后的
+  verification Skill 负责。
+- API 和领域约定保留在 `21-project-rules.md`，module 和依赖所有权保留在
+  `22-project-structure.md`。
+- 不要把命令清单变成运行每条命令的指令。
+- 不要推断当前证据无法证明的工具、命令、支持范围或成本。

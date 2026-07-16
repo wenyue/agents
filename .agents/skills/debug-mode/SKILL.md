@@ -1,135 +1,90 @@
 ---
 name: debug-mode
-description: >-
-  Use when the user explicitly asks to enter debug mode or is stuck on a hard-to-diagnose bug that
-  resists ordinary fixes. Runs a hypothesis-driven workflow with file-based debug logs and
-  human-in-the-loop reproduction. Never auto-activate; only remind the user this skill exists.
+description: Use only when the user explicitly asks to enter debug mode or an ordinary diagnosis has stalled on a hard-to-reproduce bug; never auto-activate it for routine debugging.
 ---
 
 # Debug Mode
 
-You are in **Debug Mode** — a hypothesis-driven debugging workflow. Do NOT jump to fixes. Follow
-each phase in order.
+Use testable hypotheses, targeted file-based instrumentation, and human reproduction to diagnose a
+bug before fixing it. Follow the phases in order and stop at each reproduction gate.
 
----
+## Preconditions
 
-## Phase 1: Understand the Bug
+- Confirm that the user explicitly requested Debug Mode. Otherwise only mention that the workflow
+  is available.
+- Read the target repository's rules and the relevant source, call chain, and data flow.
+- Collect expected and actual behavior, reproduction steps, errors, and any existing traces or
+  failing tests. Use conclusive existing evidence; instrument only what remains unresolved.
 
-Ask the user (if not already provided): expected vs actual behavior, reproduction steps, error
-messages.
+## Instrumentation Contract
 
-Read the relevant source code. Understand the call chain and data flow before forming any
-hypothesis.
+- Write debug output to a file, never to `print`, `debugPrint`, `console.log`, stdout, or stderr.
+- Prefer `{project_root}/.agents/debug.log`. Before clearing or deleting it, confirm that this debug
+  session owns the file; otherwise choose a task-specific file under `.agents/` and report its path.
+- Resolve the absolute log path once before instrumentation. Do not derive it at runtime from the
+  process working directory.
+- For browser code, use an existing local debug endpoint when available. If a temporary endpoint is
+  necessary, keep it local-only and remove it during cleanup; do not expose debug logging in a
+  production build.
+- Prefix each entry with its hypothesis number, such as `[DEBUG H2]`, and log only the state,
+  timing, branch, or lifecycle event needed to evaluate that hypothesis.
+- Wrap every temporary change in a language-appropriate region:
 
-## Phase 2: Generate Hypotheses
-
-Generate **testable hypotheses** as a numbered list:
-
-```
-Based on my analysis, here are my hypotheses:
-
-1. **[Title]** — [What might be wrong and why]
-2. **[Title]** — [Explanation]
-3. **[Title]** — [Explanation]
-```
-
-Include both obvious and non-obvious causes: race conditions, off-by-one behavior, stale closures,
-null or late initialization, type coercion, stream/listener leaks, and build-order issues.
-
-## Phase 3: Instrument the Code
-
-### Log file
-
-Write to **`{project_root}/.agents/debug.log`** using an **absolute path**.
-
-**`project_root` = hardcoded constant string** inferred from context, such as file paths in the
-conversation. PROHIBITED: `Directory.current`, `Platform.script`, `__dirname`, `process.cwd()`,
-`path.resolve()` or any runtime detection. Exception: remote/CI environments or non-writable local
-filesystem — use `/tmp/agents-debug.log` instead.
-
-Before each reproduction: create `.agents/` if needed, then **clear** the log.
-
-- Dart/Flutter and server-side: use a file-append API such as
-  `File(path).writeAsStringSync(msg, mode: FileMode.append)`, `fs.appendFileSync`, or `open("a")`.
-- Browser / Flutter Web: `fetch`/`http.post` to a debug API route that appends to the file.
-- **Must work in all build modes** (debug/profile/release).
-
-### Region markers
-
-ALL instrumentation MUST be wrapped in region blocks for clean removal:
-
-```
-// #region DEBUG       (Dart/JS/TS/Java/C#/Go/Rust/C/C++)
-# #region DEBUG        (Python/Ruby/Shell/YAML)
-<!-- #region DEBUG --> (HTML/Vue/Svelte)
--- #region DEBUG       (Lua/SQL)
-
-...instrumentation...
-
-// #endregion DEBUG    (matching closer)
+```text
+// #region DEBUG       Dart, JavaScript, TypeScript, Java, C#, Go, Rust, C, C++
+# #region DEBUG        Python, Ruby, Shell, YAML
+<!-- #region DEBUG --> HTML, Vue, Svelte
+-- #region DEBUG       Lua, SQL
 ```
 
-### Logging rules
+Use the matching `#endregion DEBUG` form for the language.
 
-- **NEVER use `print`, `debugPrint`, `console.log`, or any stdout/stderr output.** All debug
-  output MUST go to `debug.log` — server-side via file-append, browser-side via HTTP POST to a
-  debug endpoint.
-- Log messages include hypothesis number: `[DEBUG H1]`, `[DEBUG H2]`, etc.
-- Log variable states, execution paths, timing, and decision points.
-- Be minimal — only what is needed to confirm or rule out each hypothesis.
+## Phase 1: Define the Problem
 
-After instrumenting, tell the user to reproduce the bug, then **STOP and wait**.
+State the expected behavior, actual behavior, shortest known reproduction, and relevant execution
+path. Ask only for missing information that prevents a testable hypothesis.
 
-## Phase 4: Analyze Logs & Diagnose
+## Phase 2: Form Hypotheses
 
-When the user has reproduced:
+List a small numbered set of plausible, distinguishable hypotheses. Include non-obvious timing,
+state, ownership, initialization, and lifecycle causes when the evidence supports them. For each
+hypothesis, state what observation would confirm or rule it out.
 
-1. **Check log size first** (`wc -l` or `ls -lh`). If the log is large, use `tail` or
-   `grep '\[DEBUG H'` to extract only relevant lines instead of reading the entire file.
-2. Map logs to hypotheses — determine which are **confirmed** vs **ruled out**.
-3. Present the diagnosis with evidence:
+## Phase 3: Instrument and Wait
 
-```
-## Diagnosis
+1. Confirm ownership of the log file and clear it before reproduction.
+2. Add the minimum region-wrapped instrumentation needed for the active hypotheses.
+3. Tell the user exactly how to reproduce and which log file will be populated.
+4. Stop and wait for the user to reproduce the bug.
 
-**Root cause**: [Explanation backed by log evidence]
+## Phase 4: Diagnose
 
-Evidence:
-- [H1] Ruled out — [why]
-- [H2] Confirmed — [log evidence]
-```
+1. Inspect log size before reading content. Use platform-native filtering to extract hypothesis
+   entries when the file is large.
+2. Mark each hypothesis `confirmed`, `ruled out`, or `unresolved`, citing log evidence.
+3. State the root cause only when evidence distinguishes it from the alternatives.
+4. If unresolved, revise the hypotheses, clear the owned log, adjust instrumentation, and return to
+   the reproduction gate.
 
-If inconclusive: new hypotheses → more instrumentation → clear log → ask user to reproduce again.
+## Phase 5: Fix and Wait
 
-## Phase 5: Generate a Fix
+Implement the narrow root-cause fix while keeping instrumentation in place. Clear the owned log,
+ask the user to verify the original reproduction, then stop and wait.
 
-Write a fix. **Keep debug instrumentation in place.**
+## Phase 6: Clean Up
 
-Clear `.agents/debug.log`, ask the user to verify the fix works, then **STOP and wait**.
+After the user confirms the fix:
 
-## Phase 6: Verify & Clean Up
+1. Remove every `DEBUG` region and any temporary endpoint.
+2. Delete only the log file owned by this debug session.
+3. Run the relevant project checks and summarize the root cause, evidence, fix, and verification.
 
-**If fixed:** Remove all `#region DEBUG` blocks and their contents, delete `.agents/debug.log`,
-and summarize the root cause and fix.
+If the fix fails, keep the instrumentation and recovery evidence, read the new log, and return to
+Phase 2.
 
-**If NOT fixed:** Read the new logs, ask what the user observed, return to **Phase 2**, iterate.
+## Stop Conditions
 
----
-
-## Rules
-
-- **Never skip phases.** Instrument and verify even if you think you already know the answer.
-- **Never remove instrumentation before the user confirms the fix.**
-- **Never use `print`/`debugPrint`/`console.log`.** All debug output goes to `.agents/debug.log`
-  via file-append only.
-- **Always clear the log before each reproduction.**
-- **Always wrap instrumentation in `#region DEBUG` blocks.**
-- **Always wait for the user** after asking them to reproduce.
-
-## Red Flags — STOP
-
-- "I'll just patch it; I already see the bug." → Still instrument and verify first.
-- About to call `print`/`debugPrint`/`console.log`. → Use file-append to `debug.log`.
-- About to read the whole `debug.log`. → `grep '\[DEBUG H'` or `tail` instead.
-- About to remove `#region DEBUG` before the user confirms the fix. → Keep it until Phase 6.
-- About to compute `project_root` at runtime. → Hardcode it as a constant string.
+- Do not patch a suspected cause before the evidence distinguishes it.
+- Do not continue past either reproduction request without the user's result.
+- Do not clear or delete a pre-existing file that this session does not own.
+- Do not remove instrumentation before the user verifies the fix.

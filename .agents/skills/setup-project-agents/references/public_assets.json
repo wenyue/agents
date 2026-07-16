@@ -164,6 +164,12 @@
     },
     {
       "name": "write-comment"
+    },
+    {
+      "name": "write-rule"
+    },
+    {
+      "name": "write-skill"
     }
   ],
   "project_skill_generators": [

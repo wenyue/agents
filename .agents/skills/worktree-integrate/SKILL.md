@@ -1,79 +1,90 @@
 ---
 name: worktree-integrate
-description: Use when implementation in a named Git worktree is complete and its verified changes need to return to the current checkout for manual review or an explicitly requested local commit.
+description: Use when verified implementation in a named linked Git worktree must return to the current checkout for manual review or an explicitly requested local commit.
 ---
 
 # Worktree Integrate
 
-Return verified task changes without losing local work. Review mode is the default. Commit mode is
-available only when the user explicitly requests it.
+Return verified task work without losing local changes. Use review mode by default; use commit mode
+only when the user explicitly requests a committed local integration.
 
-## Shared Preflight
+## Mode Selection
 
-1. Require a linked, named task branch; stop on detached HEAD.
-2. Confirm task verification passed. Classify working-tree changes and include all confirmed
-   task-owned uncommitted changes in the business result; stop and ask about ambiguous or unrelated
-   changes instead of committing, moving, or discarding them.
-3. Discover the current/base checkout and branch using both `git worktree list --porcelain` and the
-   Git common directory. Do not assume `master` or `main`; ask when the intended base is ambiguous.
-4. Record the base HEAD, index tree, staged changes, unstaged changes, and untracked files.
-5. On the task branch, consolidate task work relative to its merge base into exactly one business
-   commit, then rebase it onto the current base HEAD. Intermediate task commits are allowed before
-   this step. Auto-resolve a rebase conflict only when the result is unambiguous, limited to task
-   scope, and verifiable; otherwise abort the rebase and ask the user. Require a clean task worktree
-   afterward and rerun affected task checks when consolidation or rebase changed content.
-6. Recompute the final commit's affected paths. Back them up outside the repository with a manifest
-   that records file type and paths that were originally absent. Do not stash.
-7. Immediately before touching the base, compare its branch and HEAD with the recorded values. If
-   the base HEAD changed, return to the task worktree, rebase again before transfer, then refresh
-   the base snapshot, affected paths, and backup. Repeat until the preflight state is current.
+- **Review mode:** Materialize the task result as unstaged or untracked work while preserving the
+  base HEAD, index, and unrelated local changes.
+- **Commit mode:** Fast-forward the base branch only after an explicit request and only when task
+  paths do not overlap base-local changes.
 
-## Review Mode (Default)
+Never turn an ambiguous request into commit mode.
 
-Use this mode unless the user explicitly requests commit mode.
+## Task Branch Preparation
+
+1. Require a linked, named task branch and a non-detached HEAD.
+2. Confirm task verification passed. Classify staged, unstaged, and untracked task-worktree changes;
+   include confirmed task-owned work and stop on ambiguous ownership.
+3. Discover the base checkout and branch with `git worktree list --porcelain` and the Git common
+   directory. Do not assume `main` or `master`; stop when the intended base is ambiguous.
+4. Consolidate task work relative to its merge base into exactly one business commit.
+5. Rebase that commit onto the current base HEAD. Auto-resolve only task-scoped, unambiguous,
+   verifiable conflicts; otherwise abort the rebase and ask for direction.
+6. Require a clean task worktree and rerun affected checks when consolidation or rebase changed
+   content.
+
+## Base Snapshot and Recovery Data
+
+1. Record the base branch, HEAD, index tree, staged changes, unstaged changes, and untracked files.
+2. Compute the final task paths and back them up outside the repository. Record file types and paths
+   that were originally absent in a manifest. Do not stash.
+3. Immediately before transfer, compare the base branch and HEAD with the snapshot. If either moved,
+   rebase the task commit again and refresh the snapshot, affected paths, and backup.
+
+## Review Mode
 
 1. Keep the base HEAD and index unchanged.
-2. For task paths without base-local changes, materialize the task result in the base working tree
-   without staging it. Check the transfer first, then use only working-tree operations; never use a
-   checkout, apply, or restore mode that updates the index.
-3. For overlapping text paths, perform a three-way merge using the task commit parent, the current
-   base working file, and the task result in temporary files before replacing the working file. A
-   shared pathname alone is not a conflict. Resolve autonomously when confidence is high and
-   verification can confirm the result.
-4. Stop and ask for delete/modify conflicts, complex renames, binary conflicts, mutually exclusive
-   behavior, ambiguous generated output, or any result that cannot be verified. Regenerate generated
-   files from their source when the project provides a deterministic generator.
-5. Run only verification commands known to be non-mutating; never run a formatter, generator, or
-   fix mode in the base checkout. If adequate non-mutating verification is unavailable, report that
-   limitation instead of risking extra paths. Then prove the recorded base HEAD and index tree are
-   unchanged, the original staged state is preserved, the final working files contain both original
-   local work and task work, and returned task changes are unstaged or untracked.
-6. If transfer or automatic merge fails before a complete result exists, restore only touched paths
-   from the external backup. On post-transfer verification failure, keep the returned working-tree
-   result, task branch, worktree, and backup; report the exact failed command for manual review.
+2. For task paths without base-local changes, check the transfer first, then update only the working
+   tree. Do not use a checkout, apply, or restore mode that writes the index.
+3. For overlapping text paths, three-way merge the task commit parent, current base working file,
+   and task result in temporary files. A shared pathname alone is not a conflict.
+4. Resolve autonomously only when the result is unambiguous, task-scoped, and verifiable.
+5. Stop for delete/modify conflicts, complex renames, binary conflicts, mutually exclusive behavior,
+   ambiguous generated output, or any merge that cannot be verified. Regenerate generated files
+   from their source when the project provides a deterministic generator.
+6. Run only known non-mutating checks in the base checkout. If adequate checks are unavailable,
+   report the limitation instead of running a formatter, generator, or fixer.
+7. Prove the recorded HEAD and index tree are unchanged, original staged state is preserved, merged
+   files contain both local and task work, and returned task changes remain unstaged or untracked.
 
-Keep the task branch and worktree after review-mode transfer so the user can inspect or recover the
-source independently. Retain and report the external backup until the user accepts the review
-result. Later cleanup must respect creation ownership: a platform or host worktree returns to its
-native cleanup mechanism; this skill may remove only a worktree created through its Git fallback.
+Keep the task branch, worktree, and external backup after a successful review-mode transfer. Report
+their locations so the user can inspect and recover the source independently.
 
-## Commit Mode (Explicit Only)
+## Commit Mode
 
-Use only after an explicit request for a committed integration.
-
-1. If the base has staged, unstaged, or untracked changes on any task path, tell the user and
-   downgrade to review mode.
-2. Otherwise, preserve unrelated base-local changes and confirm the rebased task branch contains one
-   business commit. Recheck the base branch and HEAD immediately before integration; if HEAD moved,
-   return to Shared Preflight and rebase again before transfer.
+1. If any task path has staged, unstaged, or untracked base-local work, report the overlap and use
+   review mode instead; explicitly downgrade to review mode when commit mode was requested.
+2. Reconfirm the task branch contains one rebased business commit and recheck the base branch and
+   HEAD immediately before integration.
 3. Run `git merge --ff-only` from the base branch.
-4. If fast-forward integration is refused, stop with the base and its local changes untouched; do
-   not move, commit, or hide those changes to make the command succeed.
-5. Re-run relevant verification and compare the preflight snapshot to prove unrelated staged,
-   unstaged, and untracked state is unchanged. After verification passes, clean up according to
-   creation ownership: delegate a platform or host worktree to its native mechanism; remove a Git
-   fallback worktree from the base checkout, then safely delete its integrated task branch. Keep all
-   recovery state when verification fails.
+4. If fast-forward is refused, stop with the base and its local changes untouched.
+5. Re-run relevant verification and prove unrelated base-local state is unchanged.
+6. After verification passes, clean up according to creation ownership: delegate platform-created
+   worktrees to that platform; remove only a Git-fallback worktree from the base checkout, then
+   delete its integrated task branch safely.
 
-Never create a merge commit, push, pull, force-update, stash, reset, or clean as part of this skill.
-For PR, keep-branch, or discard outcomes, hand off to `superpowers:finishing-a-development-branch`.
+## Verification and Recovery
+
+- If transfer or automatic merge fails before a complete result exists, restore only touched paths
+  from the external backup.
+- If post-transfer verification fails, keep the returned working-tree result, task branch,
+  worktree, and backup. Report the exact failed command for manual review.
+- Retain recovery data until the user accepts the review result.
+
+## Prohibited Operations
+
+Never push, pull, force-update, stash, reset, clean, or create a merge commit as part of this skill.
+For PR, keep-branch, or discard outcomes, hand off to
+`superpowers:finishing-a-development-branch`.
+
+## Result
+
+Report the selected mode, task commit, transferred or integrated paths, overlap decisions,
+verification, preserved base state, recovery data, and any retained worktree or branch.
