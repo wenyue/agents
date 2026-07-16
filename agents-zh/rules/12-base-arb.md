@@ -1,19 +1,19 @@
-# ARB 指南
+# ARB 指引
 
 强度：`Mandatory`
 
-适用范围：ARB 事实源所有权、本地化 key grammar、metadata、排序和生成规则。
+适用范围：ARB 源文件归属、本地化键语法、元数据、排序和生成规则。
 
 ## 源文件
 
-- 使用 `zh.arb` 作为 Flutter `gen-l10n` template 和 key、metadata 的事实源。
-- 翻译缺失时，使用 `en.arb` 作为运行时 fallback。
-- 为 `zh.arb` 中每个 key 添加对应的 `@key` metadata 条目。
-- 每个 ARB 文件内的所有 key 按字母顺序排序。
+- 将 `zh.arb` 用作 Flutter `gen-l10n` 模板，以及键和元数据的事实源。
+- 缺少翻译时，运行时回退到 `en.arb`。
+- `zh.arb` 中的每个键都必须有对应的 `@key` 元数据条目。
+- 每个 ARB 文件内的所有键都按字母顺序排列。
 
-## Key Grammar
+## 键语法
 
-使用以下 key 形状：
+键采用以下形式：
 
 ```text
 ${module}_${filename?}_${name}{index?}
@@ -24,20 +24,17 @@ GOOD: album_title, album_detailBase_button, global_cancelButton, album_tip2
 BAD:  title, Album_Title, _album_title, album_detail_base_button
 ```
 
-## Key 组成部分
+## 键的组成部分
 
-- `module` 为必需项，使用 lower camel case。Dart 文件使用的 key 从 `lib/` 下第一层目录派生，
-  并将 snake case 转换为 lower camel case。在目标项目的 analyzer、lint 或 localization 配置中
-  声明跨 module 共享 key 使用的 module。
-- `filename` 为可选项。将 Dart 文件名 stem 转换为 camel case，例如 `detail_base` 转换为
-  `detailBase`。
-- `name` 为必需项，使用 camel case 说明用途，例如 `title`、`button`、`tip`、`error`
-  或 `success`。
-- `index` 为可选项。对于用途相同且位置邻近的重复字符串，在 `name` 后附加数字。
+- `module` 为必填项，使用小驼峰命名。对于 Dart 文件使用的键，从 `lib/` 下的第一级目录推导，
+  并将 snake case 转换为小驼峰。跨模块共享键的 module 应在目标项目的 analyzer、lint 或本地化配置中设置。
+- `filename` 为可选项。将 Dart 文件名主体转换为驼峰形式，例如将 `detail_base` 转为 `detailBase`。
+- `name` 为必填项，使用驼峰形式说明用途，例如 `title`、`button`、`tip`、`error` 或 `success`。
+- `index` 为可选项。同一位置附近有多个用途相同的重复字符串时，在 `name` 后追加数字。
 
-## Metadata 契约
+## 元数据契约
 
-使用以下 metadata 形状：
+元数据采用以下形式：
 
 ```json
 "album_title": "专辑标题",
@@ -47,18 +44,18 @@ BAD:  title, Album_Title, _album_title, album_detail_base_button
 }
 ```
 
-- Metadata 使用英文。只有翻译值使用目标 locale 语言。
+- 元数据使用英语。只有翻译值使用目标区域设置的语言。
 - 方括号中的 module 首字母大写，例如 `[Album]` 或 `[Filter]`。
-- Location 使用一层可读文件名，例如 `albumDetailBase` 转换为 `Album Detail Page`。
-- Purpose 使用 button、label、tooltip、error、success、title 或 description。
-- 根据调用点的 widget 布局推断 `~min–max chars.` 边界，不根据当前字符串长度推断。Latin 字符计
-  1，CJK 字符计 2。
-- 记录每个 placeholder。
+- 位置只保留一个易读的文件名层级，例如将 `albumDetailBase` 写成 `Album Detail Page`。
+- 用 button、label、tooltip、error、success、title 或 description 表明用途。
+- `~min–max chars.` 的范围应根据调用点的组件布局推断，不要根据当前字符串长度估算。
+  拉丁字符按 1 计数，CJK 字符按 2 计数。
+- 记录每一个 placeholder。
 
 ## 禁止形式
 
-- 不得缺少对应的 `@key` metadata。
-- 不得使用不符合 `[Module] > ...` 形状的 metadata description。
-- 不得根据当前字符串长度估算字符边界。
-- 不得使用缺少 module 前缀或大小写不一致的 key。
-- Metadata 不得使用英文以外的语言。
+- 不要遗漏对应的 `@key` 元数据。
+- 元数据 description 必须遵守 `[Module] > ...` 形式。
+- 不要根据当前字符串长度估算字符数范围。
+- 键不得缺少 module 前缀，也不得使用不一致的大小写。
+- 元数据不得使用英语以外的语言。

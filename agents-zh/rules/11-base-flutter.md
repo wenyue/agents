@@ -1,27 +1,25 @@
-# Dart 与 Flutter 指南
+# Dart 与 Flutter 指引
 
 强度：`Default`
 
-适用范围：Dart 语言形状，以及 Flutter 应用架构、状态、生命周期、UI、路由、model、import 和
-analysis 默认值。
+适用范围：Dart 语言形态，以及 Flutter 应用的架构、状态、生命周期、UI、路由、模型、导入和分析默认约定。
 
 ## 适用性
 
-- 保持本规则可复用于不同 Dart 和 Flutter 应用。
-- 不要在本规则中加入应用名称、项目 module、自定义 lint package、生成项目路径或项目专用 API。
-- 仓库 API、module 边界、自定义 lint、build watcher 和应用专用 helper 放入项目规则。
+- 本规则应能在不同 Dart 和 Flutter 应用中复用。
+- 本规则中不要写入应用名称、项目模块、自定义 lint 包、项目生成路径或项目专用 API。
+- 仓库 API、模块边界、自定义 lint、构建 watcher 和应用专用辅助函数应放在项目规则中。
 
-## 公共表面与所有权
+## 公共接口与归属
 
-- 显式声明公共 API 类型；当 initializer 清楚时，让局部变量推断类型。
-- 公共边界应窄且由产品需求驱动。不要为测试或便利公开 helper。
-- 必需领域输入放在前面；可选执行 context（例如 `BuildContext?`、`WidgetRef?` 或 provider
-  reader）放在最后。
-- 面向框架的 helper，以及具有多个可选输入的函数，优先使用命名参数。
-- Owner-local 行为默认使用 instance member。
-- Static member 只用于类型级行为、static state、实例创建前的工作或 private construction support。
-- 顶层函数只用于框架入口、文件级声明、共享算法或没有明确所有者的逻辑。
-- 保持不变量的创建或规范化逻辑放在拥有该不变量的 value type 上。
+- 公共 API 使用显式类型。局部变量的初始化器足够清楚时，让其类型自行推断。
+- 公共边界应保持精简并由产品需求决定。不要为测试或便利而公开辅助函数。
+- 必需的领域输入放在前面；`BuildContext?`、`WidgetRef?` 或 provider reader 等可选执行上下文放在最后。
+- 面向框架的辅助函数，以及具有多个可选输入的函数，优先使用命名参数。
+- 默认将所有者内部的行为保留为实例成员。
+- 只有类型级行为、静态状态、实例创建前的工作或私有构造支持才使用静态成员。
+- 顶层函数只用于框架入口点、文件级声明、共享算法或没有明确所有者的逻辑。
+- 用于维护不变量的创建或规范化逻辑，应放在拥有该不变量的值类型上。
 
 ```dart
 // BAD: `_isValid` exists only for `Parser` but is declared at file scope.
@@ -33,12 +31,12 @@ class Parser {
 }
 ```
 
-## 数据形状
+## 数据形态
 
-- Generic 使用具体类型。除非边界要求，否则不要使用 raw generic type 或 `dynamic`。
-- 优先不可变值。默认使用 `final`；编译期值使用 `const`。
-- Record 只用于局部小型 tuple return，且命名类型不会增加清晰度的情况。
-- Record 解构时不要重复 Dart 可以推断的 field type。
+- 泛型应保持具体。除非边界确有需要，否则不要使用原始泛型类型或 `dynamic`。
+- 优先使用不可变值。默认使用 `final`，编译期值使用 `const`。
+- record 只用于小型局部元组返回，并且命名类型不能提升清晰度的情况。
+- Dart 能够推断时，不要在解构中重复 record 字段类型。
 
 ```dart
 // BAD: Destructuring repeats the record field types.
@@ -50,21 +48,20 @@ final (title, count) = readSummary();
 
 ## 命名
 
-- Type 使用 `PascalCase`，member 使用 `camelCase`，private 声明使用 `_privateName`，文件使用
+- 类型使用 `PascalCase`，成员使用 `camelCase`，私有声明使用 `_privateName`，文件使用
   `snake_case.dart`，常量使用 `kName`。
-- Boolean 名称描述条件，例如 `isReady`、`hasFocus`、`canSubmit` 或 `shouldRetry`。
-- 操作按效果命名：`load`、`save`、`update`、`delete`、`remove` 或 `clear`。
-- 销毁自有持久数据使用 `delete`。
-- 从 collection、relationship、selection、cache 或 view 中移除项目使用 `remove`。
+- 布尔值按条件命名，例如 `isReady`、`hasFocus`、`canSubmit` 或 `shouldRetry`。
+- 操作按其效果命名：`load`、`save`、`update`、`delete`、`remove` 或 `clear`。
+- 销毁归属的持久化数据使用 `delete`。
+- 从集合、关系、选择、缓存或视图中取出项目使用 `remove`。
 - 清空容器但保留容器本身使用 `clear`。
 
 ## 声明顺序
 
-- 每个 section comment 都开始一个新的 member 排序组。
-- 每组内部顺序为 constructor、public static field、private static field、public instance
-  field、private instance field、getter、setter、public static method、private static method、
-  public instance method 和 private instance method。
-- Public 声明 modifier 顺序为 `protected`、`override`、无 annotation、`visibleForTesting`。
+- 每个分区注释都视为一个新的成员排序组。
+- 每组内部依次排列：构造函数、公共静态字段、私有静态字段、公共实例字段、私有实例字段、getter、
+  setter、公共静态方法、私有静态方法、公共实例方法、私有实例方法。
+- 公共声明的修饰符顺序为 `protected`、`override`、无注解、`visibleForTesting`。
 
 ```dart
 class SearchController {
@@ -86,12 +83,12 @@ class SearchController {
 }
 ```
 
-## Section Comment
+## 分区注释
 
-- Section comment 只用于顶层文件区域或 class/member 分组。
-- 不要把 section comment 当作声明文档。
-- 每条边界线必须正好包含 20 个 `/`：`////////////////////`。
-- Section comment 与该 section 的第一个声明之间保留一个空行。
+- 分区注释只用于文件的顶层区域，或类与成员的分组。
+- 不要把分区注释用作声明文档。
+- 每条边框必须正好使用 20 个 `/` 字符：`////////////////////`。
+- 分区注释与该分区的第一个声明之间留一个空行。
 
 ```dart
 ////////////////////
@@ -105,14 +102,14 @@ Future<void> refresh() async {
 
 ## 文档与注释
 
-- 注释用于意图、不变量、生命周期、约束和不直观的失败处理。
+- 注释用于说明意图、不变量、生命周期、约束和不直观的失败处理。
 - 不要复述代码。
 - 声明文档和文件头使用 `///`。
-- 函数体内注释、inline note、TODO、FIXME 和 ignore comment 使用 `//`。
-- Prose comment 以大写字母开头，并以 `.`、`?` 或 `!` 结尾。
-- 不超过 16 个字符且不超过 3 个词的短 inline comment 可不使用标点。
-- 使用带有具体动作或问题的 `TODO(name): ...` 和 `FIXME(name): ...`。
-- Phase comment 只用于长多步骤函数。
+- 函数体内，以及行内说明、TODO、FIXME 和 ignore 注释使用 `//`。
+- 文字注释以大写字母开头，并以 `.`、`?` 或 `!` 结尾。
+- 不超过 16 个字符且不超过三个单词的短行内注释，可以不加结尾标点。
+- `TODO(name): ...` 和 `FIXME(name): ...` 必须包含具体动作或问题。
+- 阶段注释只用于较长的多步骤函数内部。
 
 ```dart
 /// Loads the first page and preserves existing content while refreshing.
@@ -127,14 +124,14 @@ Future<void> refresh() async {
 
 ## 状态管理
 
-- 共享、跨 widget 和 feature 级状态使用 Riverpod。
-- 当应用已经使用生成 provider 时，使用带 `@riverpod` 的生成 provider。
-- Provider 名称使用 `Provider` 后缀。
-- Build method 使用 `ref.watch`，event handler 使用 `ref.read`，副作用使用 `ref.listen`。
+- 共享状态、跨组件状态和功能级状态使用 Riverpod。
+- 如果应用已经使用代码生成，provider 使用 `@riverpod` 和生成代码。
+- provider 名称带 `Provider` 后缀。
+- build 方法中使用 `ref.watch`，事件处理程序中使用 `ref.read`，副作用使用 `ref.listen`。
 - 只关心状态对象的一部分时，将 `select` 与 `ref.watch` 或 `ref.listen` 配合使用。
-- 不要将 `ref.read` 与 `select` 组合。
-- 生命周期不应依赖单个 screen 的 service 和 repository 使用 `keepAlive: true`。
-- 不需要 provider identity 的简单局部关注点优先使用 widget-local state。
+- 不要将 `ref.read` 与 `select` 组合使用。
+- 生命周期不应依赖单个页面的服务和仓库使用 `keepAlive: true`。
+- 不需要 provider 身份的简单局部事项，优先使用组件局部状态。
 
 ```dart
 final title = ref.watch(articleProvider.select((article) => article.title));
@@ -146,11 +143,11 @@ button.onPressed = () {
 
 ## Provider 生命周期
 
-- 将 provider `build()` 视为 reactive；依赖变化时它可能重新运行。
-- 创建 disposable resource 后立即注册每个 `onDispose` callback。
-- 在任何 `await` 之前注册 dispose。
-- 预期 `onDispose` 在 rebuild 前运行，并在 provider 完全销毁时再次运行。
-- 不要在 `onDispose` 中赋值 `state`、读取 provider 或访问 `Ref`。
+- provider 的 `build()` 是响应式的；依赖发生变化时，它可能再次运行。
+- 创建可释放资源后，立即注册其 `onDispose` 回调。
+- 必须在任何 `await` 之前注册释放逻辑。
+- `onDispose` 会在重新构建前运行，并在 provider 完全释放时再次运行。
+- 不要在 `onDispose` 中给 `state` 赋值、读取 provider 或访问 `Ref`。
 
 ```dart
 @riverpod
@@ -167,12 +164,12 @@ class FeedSubscription extends _$FeedSubscription {
 
 ## 异步边界
 
-- 只有在 `await` 后使用生命周期绑定对象时才添加 mounted check。
-- Widget 中，一个 mounted check 可以覆盖绑定到同一 widget 生命周期的对象。
-- Notifier 和 provider 中，在 `await` 后赋值 `state`、再次读取 provider 或按 provider
-  自有状态分支前检查 `ref.mounted`。
-- 如果异步间隔后仍需要稳定依赖，在间隔前解析它们。
-- 变化的 provider state 在异步间隔后和 mounted check 之后读取。
+- 只有在 `await` 之后继续使用受生命周期约束的对象时，才添加 mounted 检查。
+- 在组件中，一次 mounted 检查即可覆盖绑定到同一组件生命周期的对象。
+- 在 notifier 和 provider 中，`await` 之后给 `state` 赋值、再次读取 provider，或按 provider
+  自有状态分支前，应检查 `ref.mounted`。
+- 如果异步间隔后仍需使用稳定依赖，应在间隔前解析它们。
+- 会变化的 provider 状态应在异步间隔和 mounted 检查之后读取。
 
 ```dart
 Future<void> save() async {
@@ -188,48 +185,48 @@ Future<void> save() async {
 }
 ```
 
-## Widget
+## 组件
 
-- 简单展示 UI 优先使用 `StatelessWidget` 或小函数。
-- 需要局部 controller 生命周期时优先使用 `HookWidget` 和 `HookConsumerWidget`。
-- 只有需要 `initState`、`dispose` 或 inherited-widget 集成时才使用 `StatefulHookWidget` 或
-  `StatefulHookConsumerWidget`。
-- 优先使用 `const` constructor 和稳定 child widget。
-- 引入应用专用 theme extension 前先使用 `Theme.of(context)`。
-- 可复用 widget 不要硬编码颜色。
+- 简单的展示型 UI 优先使用 `StatelessWidget` 或小型函数。
+- 需要管理局部 controller 生命周期时，优先使用 `HookWidget` 和 `HookConsumerWidget`。
+- 只有需要 `initState`、`dispose` 或 inherited-widget 集成时，才使用 `StatefulHookWidget`
+  或 `StatefulHookConsumerWidget`。
+- 优先使用 `const` 构造函数和稳定的子组件。
+- 引入应用专用主题扩展前，先使用 `Theme.of(context)`。
+- 可复用组件中不要硬编码颜色。
 
 ## 路由
 
 - Flutter 导航使用 `go_router`。
-- 应用已经使用生成 route 时，优先使用生成式 typed route。
-- Page 使用 router API。
-- 由 Navigator 拥有的 dialog、sheet 和 overlay 使用 `Navigator.of(context).pop(result)`。
+- 如果应用已经采用生成路由，优先使用生成的类型化路由。
+- 页面使用路由 API。
+- 由 Navigator 管理的对话框、底部面板和浮层，使用 `Navigator.of(context).pop(result)`。
 
 ## 数据模型
 
 - JSON 边界使用 `json_serializable` 和 `json_annotation`。
-- 需要 equality、union 或 `copyWith` 的不可变数据模型使用 Freezed。
-- 当存储细节与应用逻辑不同时，将 persistence model 与 domain model 分离。
+- 需要相等性、联合类型或 `copyWith` 的不可变数据模型使用 Freezed。
+- 如果存储细节与应用逻辑不同，应将持久化模型与领域模型分开。
 
-## Import
+## 导入
 
-- Import 顺序为 `dart:`、`package:`、relative import。
-- 跨 package 或 feature 边界优先使用 package import。
-- 同一 package 或紧密 feature 边界内优先使用 relative import。
+- 导入顺序为 `dart:`、`package:`、相对导入。
+- 跨包或功能边界时，优先使用包导入。
+- 在同一包或边界紧密的功能内部，优先使用相对导入。
 
-## Analysis
+## 分析
 
-- 代码、标识符和注释使用英文。
-- 行宽不超过 100 字符。
-- 优先清晰名称和直接控制流，不使用花哨缩写。
-- 当精确类型或 early return 可行时，避免 `dynamic`、cast 和 nullable escape hatch。
+- 代码、标识符和注释使用英语。
+- 每行不超过 100 个字符。
+- 优先使用清晰命名和直接控制流，不要使用炫技式简写。
+- 精确类型或提前返回能够解决问题时，避免使用 `dynamic`、类型转换和可空逃生口。
 - 默认使用单引号。
-- Multiline literal、parameter list 和 argument list 使用 trailing comma。
-- 每个 control-flow body 都使用大括号；不要将 body 与条件放在同一行。
-- 文档注释中的代码式 placeholder 使用反引号包裹。
-- 不使用 `print`；使用应用日志机制。
-- 不使用 deprecated API。
-- 当当前时间影响行为时，使用可注入或可测试的时间源。
+- 多行字面量、参数列表和实参列表使用尾随逗号。
+- 所有控制流主体都使用花括号；不要把主体与条件写在同一行。
+- 文档注释中类似代码的 placeholder 使用反引号包裹。
+- 不要使用 `print`；使用应用的日志机制。
+- 不要使用已弃用的 API。
+- 当前时间会影响行为时，使用可注入或可测试的时间源。
 
 ```dart
 // BAD: The branch body is hidden on the same line.

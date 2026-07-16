@@ -70,6 +70,8 @@ Do not invent commands, ownership mappings, or scope support that the evidence d
   documented repeat.
 - Classify every selected surface as `passed`, `failed`, `inconclusive`, or `not applicable`.
   Report the command, scope, selection reason, result, and remaining gap.
+- Report every modified file, formatter and fixer invocation, repeated check, remaining diagnostic,
+  and verification gap.
 - Return one overall result: `passed`, `semantic_fix_required`, `failed`, or `inconclusive`.
 - Do not report `passed` while any required surface failed or remains inconclusive.
 - When an out-of-scope failure may predate the change, compare only that failing surface with a

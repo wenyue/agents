@@ -2,8 +2,8 @@
 
 Strength: `Mandatory`
 
-Scope: Rule strength, precedence, source-of-truth ownership, wrapper maintenance, numbering, MCP
-configuration, and skill-authoring ownership.
+Scope: Rule strength, precedence, source-of-truth ownership, wrapper maintenance, numbering, and
+MCP configuration.
 
 ## Strength Levels
 

@@ -192,6 +192,49 @@
       }
     }
   ],
+  "root_configs": [
+    {
+      "path": ".cursor/mcp.json",
+      "format": "json",
+      "required_objects": [
+        "mcpServers"
+      ]
+    },
+    {
+      "path": ".codex/config.toml",
+      "format": "toml",
+      "locked_values": [
+        {
+          "path": "features.multi_agent",
+          "value": true,
+          "when": {
+            "path_glob_exists": ".codex/agents/*.toml"
+          }
+        }
+      ]
+    },
+    {
+      "path": ".mcp.json",
+      "format": "json",
+      "required_objects": [
+        "mcpServers"
+      ]
+    },
+    {
+      "path": ".github/mcp.json",
+      "format": "json",
+      "required_objects": [
+        "mcpServers"
+      ]
+    },
+    {
+      "path": ".vscode/mcp.json",
+      "format": "json",
+      "required_objects": [
+        "servers"
+      ]
+    }
+  ],
   "platforms": {
     "rule_wrappers": [
       {

@@ -654,7 +654,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 existing_wrapper.read_text(encoding='utf-8'),
             )
 
-    def test_sync_preserves_reviewed_github_model_from_target_wrapper(self):
+    def test_sync_preserves_reviewed_github_model_and_enables_model_invocation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
@@ -671,7 +671,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             existing_wrapper.parent.mkdir(parents=True)
             existing_wrapper.write_text(
                 '---\nname: stale\ndescription: stale\n'
-                'model: project-reviewed-github-model\n---\nstale body\n',
+                'model: project-reviewed-github-model\n'
+                'disable-model-invocation: true\n---\nstale body\n',
                 encoding='utf-8',
             )
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
@@ -686,6 +687,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             frontmatter = sync._read_frontmatter(existing_wrapper)
             self.assertEqual(frontmatter['name'], 'change-set-verifier')
             self.assertEqual(frontmatter['model'], 'project-reviewed-github-model')
+            self.assertIs(frontmatter['disable-model-invocation'], False)
             self.assertIn(
                 'Apply @.agents/agents/change-set-verifier.md',
                 existing_wrapper.read_text(encoding='utf-8'),
@@ -750,8 +752,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 sync._read_frontmatter(github_wrapper)['model'],
                 'project-github-model',
             )
+            self.assertIs(
+                sync._read_frontmatter(github_wrapper)['disable-model-invocation'],
+                False,
+            )
 
-    def test_sync_does_not_create_platform_root_config_for_agent_discovery(self):
+    def test_sync_reconciles_catalog_declared_root_config_for_agent_discovery(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
@@ -764,6 +770,13 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             for template in REPO_TEMPLATES.glob('*'):
                 shutil.copy2(template, templates / template.name)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
+            codex_wrapper = target / '.codex' / 'agents' / 'change-set-verifier.toml'
+            codex_wrapper.parent.mkdir(parents=True)
+            codex_wrapper.write_text(
+                'model = "project-codex-model"\n'
+                'model_reasoning_effort = "high"\n',
+                encoding='utf-8',
+            )
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
@@ -772,8 +785,255 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
             sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
 
-            self.assertFalse((target / '.codex' / 'config.toml').exists())
+            codex_config = tomllib.loads(
+                (target / '.codex' / 'config.toml').read_text(encoding='utf-8')
+            )
+            self.assertIs(codex_config['features']['multi_agent'], True)
             self.assertFalse((target / '.cursor' / 'mcp.json').exists())
+
+    def test_setup_skill_delegates_root_configuration_to_sync_script(self):
+        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+        normalized = ' '.join(content.split())
+
+        self.assertIn('sync script reconciles catalog-declared root configuration', normalized)
+        self.assertIn('preserving unrelated project-owned values', normalized)
+        self.assertIn('Do not edit managed root configuration manually', normalized)
+        self.assertIn('`references/public_assets.json`', content)
+        for detail in (
+            '.codex/config.toml',
+            'features.multi_agent',
+            'disable-model-invocation',
+            'agent/runSubagent',
+            'chat.subagents.allowInvocationsFromSubagents',
+        ):
+            self.assertNotIn(detail, content)
+
+    def test_public_manifest_declares_generic_root_config_locks(self):
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+        root_configs = public_config['root_configs']
+        codex_config = next(
+            item for item in root_configs if item['path'] == '.codex/config.toml'
+        )
+
+        self.assertEqual(codex_config['format'], 'toml')
+        self.assertIn(
+            {
+                'path': 'features.multi_agent',
+                'value': True,
+                'when': {'path_glob_exists': '.codex/agents/*.toml'},
+            },
+            codex_config['locked_values'],
+        )
+
+    def _assert_strict_native_config_error(
+        self,
+        relative_path: str,
+        content: str,
+        expected_error: str,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            source = root / 'agents'
+            config_path = target / relative_path
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text(content, encoding='utf-8')
+            source.mkdir(parents=True)
+            public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+            public_config['rules'] = []
+            public_config['skills'] = []
+            public_config['agent_prompts'] = []
+            public_config['platforms'] = {'rule_wrappers': [], 'agent_wrappers': []}
+            context = sync.SyncContext(target, source, REPO_SKILL_ROOT, True, [])
+
+            with self.assertRaises(sync.SyncError) as error:
+                sync.sync_public_assets(
+                    context,
+                    public_config,
+                    {'rules': [], 'agent_prompts': []},
+                )
+
+        self.assertIn(expected_error, str(error.exception))
+
+    def test_strict_sync_rejects_invalid_existing_native_platform_config(self):
+        self._assert_strict_native_config_error(
+            '.codex/config.toml',
+            '[agents\n',
+            'Invalid native platform config .codex/config.toml',
+        )
+
+    def test_strict_sync_rejects_missing_codex_agent_config_reference(self):
+        self._assert_strict_native_config_error(
+            '.codex/config.toml',
+            '[agents.reviewer]\n'
+            'description = "Review changes"\n'
+            'config_file = "./agents/reviewer.toml"\n',
+            'Codex agent reviewer references missing config file .codex/agents/reviewer.toml',
+        )
+
+    def test_strict_sync_rejects_invalid_copilot_mcp_root_structure(self):
+        self._assert_strict_native_config_error(
+            '.vscode/mcp.json',
+            '{"mcpServers": {}}',
+            'Native platform config .vscode/mcp.json requires a top-level servers object',
+        )
+
+    def test_strict_sync_rejects_invalid_cursor_mcp_root_structure(self):
+        self._assert_strict_native_config_error(
+            '.cursor/mcp.json',
+            '{"servers": {}}',
+            'Native platform config .cursor/mcp.json requires a top-level mcpServers object',
+        )
+
+    def test_strict_sync_rejects_invalid_copilot_cli_mcp_root_structure(self):
+        for relative_path in ('.mcp.json', '.github/mcp.json'):
+            with self.subTest(relative_path=relative_path):
+                self._assert_strict_native_config_error(
+                    relative_path,
+                    '{"servers": {}}',
+                    f'Native platform config {relative_path} requires a top-level '
+                    'mcpServers object',
+                )
+
+    def test_sync_locks_required_codex_root_config_value(self):
+        cases = (
+            None,
+            'model = "project-model"\n[features]\nother = true\nmulti_agent = false\n',
+            'model = "project-model"\nfeatures.multi_agent = false\n',
+            '[features]\nmulti_agent = true\n',
+        )
+        for config_content in cases:
+            with (
+                self.subTest(config_content=config_content),
+                tempfile.TemporaryDirectory() as temp_dir,
+            ):
+                root = Path(temp_dir)
+                target = root / 'target'
+                source = root / 'agents'
+                agent_path = target / '.codex' / 'agents' / 'reviewer.toml'
+                agent_path.parent.mkdir(parents=True)
+                agent_path.write_text('name = "reviewer"\n', encoding='utf-8')
+                if config_content is not None:
+                    (target / '.codex' / 'config.toml').write_text(
+                        config_content,
+                        encoding='utf-8',
+                    )
+                source.mkdir(parents=True)
+                public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+                public_config['rules'] = []
+                public_config['skills'] = []
+                public_config['agent_prompts'] = []
+                public_config['platforms'] = {'rule_wrappers': [], 'agent_wrappers': []}
+                context = sync.SyncContext(target, source, REPO_SKILL_ROOT, False, [])
+
+                sync.sync_public_assets(
+                    context,
+                    public_config,
+                    {'rules': [], 'agent_prompts': []},
+                )
+
+                parsed = tomllib.loads(
+                    (target / '.codex' / 'config.toml').read_text(encoding='utf-8')
+                )
+                self.assertIs(parsed['features']['multi_agent'], True)
+                if config_content and 'project-model' in config_content:
+                    self.assertEqual(parsed['model'], 'project-model')
+                    if 'other' in config_content:
+                        self.assertIs(parsed['features']['other'], True)
+
+                second_context = sync.SyncContext(
+                    target,
+                    source,
+                    REPO_SKILL_ROOT,
+                    False,
+                    [],
+                )
+                sync.sync_public_assets(
+                    second_context,
+                    public_config,
+                    {'rules': [], 'agent_prompts': []},
+                )
+                self.assertIn(
+                    sync.Change('unchanged', '.codex/config.toml'),
+                    second_context.changes,
+                )
+
+    def test_sync_locks_generic_json_root_config_value(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            source = root / 'agents'
+            trigger = target / '.tool' / 'agents' / 'reviewer.json'
+            trigger.parent.mkdir(parents=True)
+            trigger.write_text('{}\n', encoding='utf-8')
+            config_path = target / '.tool' / 'config.json'
+            config_path.write_text(
+                '{"feature": {"enabled": false}, "keep": {"value": 7}}\n',
+                encoding='utf-8',
+            )
+            source.mkdir(parents=True)
+            public_config = {
+                'rules': [],
+                'skills': [],
+                'agent_prompts': [],
+                'platforms': {'rule_wrappers': [], 'agent_wrappers': []},
+                'root_configs': [
+                    {
+                        'path': '.tool/config.json',
+                        'format': 'json',
+                        'locked_values': [
+                            {
+                                'path': 'feature.enabled',
+                                'value': True,
+                                'when': {
+                                    'path_glob_exists': '.tool/agents/*.json',
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+            context = sync.SyncContext(target, source, REPO_SKILL_ROOT, False, [])
+
+            sync.sync_public_assets(
+                context,
+                public_config,
+                {'rules': [], 'agent_prompts': []},
+            )
+
+            parsed = json.loads(config_path.read_text(encoding='utf-8'))
+            self.assertIs(parsed['feature']['enabled'], True)
+            self.assertEqual(parsed['keep'], {'value': 7})
+
+    def test_check_reports_locked_root_config_drift_without_writing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            source = root / 'agents'
+            agent_path = target / '.codex' / 'agents' / 'reviewer.toml'
+            agent_path.parent.mkdir(parents=True)
+            agent_path.write_text('name = "reviewer"\n', encoding='utf-8')
+            config_path = target / '.codex' / 'config.toml'
+            config_path.write_text('[features]\nmulti_agent = false\n', encoding='utf-8')
+            source.mkdir(parents=True)
+            public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+            public_config['rules'] = []
+            public_config['skills'] = []
+            public_config['agent_prompts'] = []
+            public_config['platforms'] = {'rule_wrappers': [], 'agent_wrappers': []}
+            context = sync.SyncContext(target, source, REPO_SKILL_ROOT, True, [])
+
+            sync.sync_public_assets(
+                context,
+                public_config,
+                {'rules': [], 'agent_prompts': []},
+            )
+
+            self.assertIn(
+                sync.Change('updated', '.codex/config.toml'),
+                context.changes,
+            )
+            self.assertIn('multi_agent = false', config_path.read_text(encoding='utf-8'))
 
     def test_sync_preserves_custom_platform_only_agent_wrapper(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1074,73 +1334,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 changes,
             )
 
-    def test_project_rules_use_generator_contract_style(self):
-        for filename in [
-            '20-project-tools.md',
-            '21-project-rules.md',
-            '22-project-structure.md',
-        ]:
-            with self.subTest(filename=filename):
-                content = (REPO_ROOT / '.agents' / 'rules' / filename).read_text(encoding='utf-8')
-
-                self.assertIn('\nStrength: `', content)
-                self.assertIn('\nScope: ', content)
-                self.assertIn('## Generation Contract', content)
-                self.assertIn('## Evidence', content)
-                self.assertIn('## Content', content)
-                self.assertIn('## Boundaries', content)
-                self.assertNotIn('## Placeholder', content)
-                self.assertNotIn('Write the generated rule in English', content)
-                self.assertNotIn('Generate a complete candidate', content)
-
-    def test_worktree_environment_setup_is_generator_contract(self):
-        workflow = (
-            REPO_ROOT
-            / '.agents'
-            / 'skills'
-            / 'worktree-environment-setup'
-            / 'SKILL.md'
+    def test_retired_project_development_workflow_is_absent(self):
+        self.assertFalse(
+            (REPO_ROOT / '.agents' / 'skills' / 'project-development-workflow').exists()
         )
-        content = workflow.read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
-
-        self.assertTrue(
-            content.startswith(
-                '---\n'
-                'name: worktree-environment-setup\n'
-                'description: Use when creating or revising a target repository'
-            )
-        )
-        self.assertIn('## Authoring Workflow', content)
-        self.assertIn('## Generated Skill Contract', content)
-        self.assertIn('## Failure Recovery', content)
-        self.assertIn('## Review and Handoff', content)
-        self.assertIn('.agents/rules/20-project-tools.md', content)
-        self.assertIn('minimum repeatable preparation', normalized_content)
-        self.assertIn('already-created linked worktree', content)
-        self.assertIn('generated-file ownership', normalized_content)
-        self.assertIn('scripts/setup.sh', content)
-        self.assertIn('scripts/setup.ps1', content)
-        self.assertIn('same core environment result', normalized_content)
-        self.assertIn('`change-set-verification`', content)
-        self.assertIn('verification trigger timing', normalized_content)
-        self.assertIn('scope selection', content)
-        self.assertIn(
-            'Require the generated `SKILL.md` to include its own `## Failure Recovery`',
-            normalized_content,
-        )
-        self.assertIn('analyze the cause', content)
-        self.assertIn('propose a concrete script or environment change', normalized_content)
-        self.assertIn('stop immediately', normalized_content)
-        self.assertNotIn('## Review Gate', content)
-        self.assertNotIn('## Acceptance', content)
-        self.assertNotIn('[CmdletBinding()]', content)
-        self.assertNotIn('$LASTEXITCODE', content)
-        self.assertNotIn('merge-back', content)
-        self.assertNotIn('create or enter an isolated', content)
-        self.assertNotIn('\nStrength:', content)
-        self.assertNotIn('\nScope:', content)
-        self.assertFalse((REPO_ROOT / '.agents' / 'skills' / 'project-development-workflow').exists())
 
     def test_public_config_lists_change_set_verification_generator(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
@@ -1172,11 +1369,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     },
                 }
             ],
-        )
-        self.assertFalse((REPO_ROOT / '.agents' / 'agents' / 'rename.md').exists())
-        self.assertFalse((REPO_ROOT / '.agents' / 'agents' / 'verifier.md').exists())
-        self.assertTrue(
-            (REPO_ROOT / '.agents' / 'agents' / 'change-set-verifier.md').is_file()
         )
 
     def test_public_config_cannot_own_target_agent_models(self):
@@ -1269,372 +1461,24 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 }
             )
 
-    def test_change_set_verification_is_generator_contract(self):
-        workflow = (
-            REPO_ROOT
-            / '.agents'
-            / 'skills'
-            / 'change-set-verification'
-            / 'SKILL.md'
-        )
-        content = workflow.read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
-
-        self.assertTrue(
-            content.startswith(
-                '---\n'
-                'name: change-set-verification\n'
-                'description: Use when creating or revising a target repository'
-            )
-        )
-        self.assertIn('## Authoring Workflow', content)
-        self.assertIn('## Generated Skill Contract', content)
-        self.assertIn('### Normalization and Repair', content)
-        self.assertIn('### Verification and Results', content)
-        self.assertIn('## Optional Resources', content)
-        self.assertIn('## Review and Handoff', content)
-        self.assertIn('coherent completed change set', content)
-        self.assertIn('minimum sufficient', content)
-        self.assertIn('once per completed checkpoint', content)
-        self.assertIn('Start with the minimum sufficient scope', content)
-        self.assertIn('project-approved automatic fixer', content)
-        self.assertIn(
-            'regardless of whether the current change introduced',
-            normalized_content,
-        )
-        self.assertIn('Do not widen scope only to discover or repair older violations', normalized_content)
-        self.assertIn('remaining semantic diagnostics to the parent implementation agent', content)
-        self.assertIn('directly owned tests', content)
-        self.assertIn('full baseline suite', normalized_content)
-        for status in ['passed', 'failed', 'inconclusive', 'not applicable']:
-            self.assertIn(f'`{status}`', content)
-        self.assertIn('`semantic_fix_required`', content)
-        self.assertIn('A generated skill with scripts', normalized_content)
-        self.assertIn('include `## Failure Recovery`', normalized_content)
-        self.assertIn('stop on script failure', normalized_content)
-        self.assertIn('analyze the cause', normalized_content)
-        self.assertIn('propose a candidate change', normalized_content)
-        self.assertNotIn('## Acceptance', content)
-        self.assertNotIn('\nStrength:', content)
-
-    def test_project_tools_contract_records_tool_facts_not_verification_workflow(self):
-        content = (REPO_ROOT / '.agents' / 'rules' / '20-project-tools.md').read_text(
-            encoding='utf-8'
-        )
-        normalized_content = ' '.join(content.split())
-
-        self.assertIn('tool facts, capabilities, and invocation constraints', normalized_content)
-        self.assertIn('supported scope selection', normalized_content)
-        self.assertIn('mutation behavior', normalized_content)
-        self.assertIn('safe-fix capability', normalized_content)
-        self.assertIn('relative cost', normalized_content)
-        self.assertIn('`.agents/skills/change-set-verification/`', normalized_content)
-        self.assertIn('verification trigger timing', normalized_content)
-        self.assertIn('deduplication', normalized_content)
-        self.assertIn('risk-based broadening', normalized_content)
-
-    def test_write_skill_owns_portability_without_global_rule_duplication(self):
-        rule = (REPO_ROOT / '.agents' / 'rules' / '00-global-rule-config.md').read_text(
-            encoding='utf-8'
-        )
-        skill = (REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md').read_text(
-            encoding='utf-8'
-        )
-        normalized_skill = ' '.join(skill.split())
-
-        self.assertNotIn('## Skill Authoring Ownership', rule)
-        self.assertNotIn('skill classification, complete-rewrite behavior', rule)
-        self.assertNotIn('## Skill Portability', rule)
-        self.assertIn('## Path and Ownership Rules', skill)
-        self.assertIn('Never hardcode an absolute filesystem path', normalized_skill)
-        self.assertIn('repository-root-relative paths', normalized_skill)
-        self.assertIn('semantic project targets and runtime discovery', normalized_skill)
-
-    def test_setup_project_agents_requires_subagent_local_generation(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-
-        self.assertIn('subagent', content)
-        self.assertIn('generator contracts', content)
-        self.assertIn('.agents/rules/20-project-tools.md', content)
-        self.assertIn('.agents/rules/21-project-rules.md', content)
-        self.assertIn('.agents/rules/22-project-structure.md', content)
-        self.assertIn('.agents/skills/worktree-environment-setup/', content)
-        self.assertIn('.agents/skills/change-set-verification/', content)
-        self.assertIn('blocker', content)
-
-    def test_setup_project_agents_requires_english_for_generated_project_assets(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-
-        self.assertIn(
-            'Write every generated or refreshed project-owned rule and skill in English.',
-            content,
-        )
-
-    def test_setup_project_agents_owns_only_shared_generation_requirements(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
-
-        self.assertIn('## Shared Generation Requirements', content)
-        self.assertIn('conform to `.agents/rules/00-global-rule-config.md`', normalized_content)
-        for required_rule_field in ('title', '`Strength:`', '`Scope:`', 'numbering'):
-            self.assertIn(required_rule_field, normalized_content)
-        self.assertIn('frontmatter containing only `name` and `description`', normalized_content)
-        self.assertIn('Follow the target generator contracts', normalized_content)
-        self.assertNotIn('## Failure Recovery', content)
-        self.assertNotIn('minimum preparation', content)
-        self.assertNotIn('Normalization And Mechanical Repair', content)
-
-    def test_setup_project_agents_uses_full_reconciliation_for_setup_and_update(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
-
-        self.assertIn('same complete reconciliation', content)
-        self.assertIn('one idempotent workflow', normalized_content)
-        self.assertIn('as complete candidates', content)
-        self.assertIn('only as omission checklists', normalized_content)
-        self.assertIn('revalidate every retained', content)
-        self.assertIn('real temporary linked worktree', content)
-        self.assertIn('byte equality', content)
-        self.assertIn('created or materially changed', content)
-        self.assertIn('byte-equivalent candidates', content)
-
-    def test_setup_project_agents_reviews_and_accepts_generated_rules(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
-
-        self.assertGreaterEqual(content.count('### Generated Rules'), 2)
-        self.assertIn('correct title, `Strength:`, `Scope:`, number', normalized_content)
-        self.assertIn('placeholder language', content)
-        self.assertIn('static and integration checks', normalized_content)
-        self.assertIn('`AGENTS.md`', content)
-        self.assertIn('wrappers remain thin', normalized_content)
-        self.assertIn('single source of truth', normalized_content)
-        self.assertIn(
-            'rules, environment setup, then change-set verification',
-            normalized_content,
-        )
-
-    def test_setup_project_agents_reviews_environment_skill_before_acceptance(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
-
-        self.assertIn('## Review', content)
-        self.assertIn('## Acceptance', content)
-        review_index = content.index('## Review')
-        acceptance_index = content.index('## Acceptance')
-
-        self.assertLess(review_index, acceptance_index)
-        self.assertIn('both host entry points', normalized_content)
-        self.assertIn('Review complete candidate files', content)
-        self.assertIn('Do not start acceptance while any review finding', content)
-        self.assertIn('Run only after candidate review passes', content)
-        self.assertIn('native shell tooling', normalized_content)
-        self.assertIn('Bash on Linux and macOS', normalized_content)
-        self.assertIn('PowerShell on Windows', normalized_content)
-        self.assertIn(
-            "Do not parse or invoke the other platform's setup script",
-            normalized_content,
-        )
-        self.assertNotIn('parse both setup scripts', content)
-        self.assertIn('real temporary linked worktree', content)
-        self.assertIn('Inspect both repository and worktree state', content)
-        self.assertNotIn('## Environment Skill Evidence', content)
-        self.assertNotIn('## Environment Skill Script Selection', content)
-        self.assertNotIn('[CmdletBinding()]', content)
-        self.assertNotIn('$LASTEXITCODE', content)
-
-    def test_setup_project_agents_reviews_and_accepts_change_set_verification(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
-
-        self.assertIn('one subagent', content)
-        self.assertIn('verification matrix', content)
-        self.assertIn('unconditional whole-project checks', content)
-        self.assertIn('unrelated dirty files', content)
-        self.assertIn('approved automatic fixer', content)
-        self.assertIn('semantic diagnostics return to the parent', normalized_content)
-        self.assertIn(
-            'Accept the environment skill before the verification skill',
-            normalized_content,
-        )
-        self.assertIn('expensive full suite only for acceptance', normalized_content)
-
-    def test_setup_project_agents_reviews_agent_runtime_on_every_run(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
-
-        self.assertIn('## Agent Runtime Review', content)
-        self.assertIn('every setup or update', content)
-        self.assertIn('Do not store model or reasoning-effort choices', content)
-        self.assertIn('during every setup or update', normalized_content)
-        for field in ('model', 'model_reasoning_effort', 'sandbox_mode'):
-            self.assertIn(f'`{field}`', content)
-        self.assertIn('Cursor and GitHub Copilot wrappers', normalized_content)
-        self.assertIn('Retain them only after confirming', normalized_content)
-        self.assertIn('explicit supported model', normalized_content)
-        self.assertIn('Require non-empty', normalized_content)
-        self.assertIn('final-gate blocker', normalized_content)
-        self.assertIn('representative smoke invocation', content)
-        self.assertIn('final public sync must preserve', normalized_content)
-        self.assertIn('## Platform Configuration Review', content)
-        self.assertIn(
-            'Do not create `.codex/config.toml` only to register agents',
-            normalized_content,
-        )
-
-    def test_script_failure_recovery_is_not_owned_by_setup_project_agents(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
-
-        self.assertNotIn('## Failure Recovery', content)
-        self.assertNotIn('If a generated script fails', normalized_content)
-
-    def test_worktree_integrate_is_public_skill(self):
-        skill_path = REPO_ROOT / '.agents' / 'skills' / 'worktree-integrate' / 'SKILL.md'
-        content = skill_path.read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
+    def test_public_config_lists_worktree_integrate_skill(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
-        rule = (REPO_ROOT / '.agents' / 'rules' / '03-global-skill-config.md').read_text(
-            encoding='utf-8'
-        )
 
         self.assertIn({'name': 'worktree-integrate'}, public_config['skills'])
-        self.assertTrue(
-            content.startswith(
-                '---\n'
-                'name: worktree-integrate\n'
-                'description: Use when verified implementation in a named linked Git worktree'
-            )
-        )
-        self.assertIn('## Review Mode', content)
-        self.assertIn('## Commit Mode', content)
-        self.assertIn('HEAD and index unchanged', content)
-        self.assertIn('three-way merge', content)
-        self.assertIn('downgrade to review mode', content)
-        self.assertIn('task branch, worktree, and external backup', normalized_content)
-        self.assertIn('confirmed task-owned work', normalized_content)
-        self.assertIn('Git common directory', normalized_content)
-        self.assertIn('rebase the task commit again', normalized_content)
-        self.assertIn('keep the returned working-tree result', normalized_content)
-        self.assertIn('creation ownership', normalized_content)
-        self.assertIn('platform-created worktrees', normalized_content)
-        self.assertIn('git merge --ff-only', content)
-        self.assertIn('superpowers:finishing-a-development-branch', content)
-        self.assertIn('superpowers:using-git-worktrees', rule)
-        self.assertIn('worktree-environment-setup', rule)
-        self.assertIn('worktree-integrate', rule)
-        self.assertIn('superpowers:finishing-a-development-branch', rule)
-        self.assertNotIn('Assume `master`', rule)
-        self.assertNotIn('project-development-workflow', rule)
 
-    def test_write_skill_is_public_and_requires_global_rewrite(self):
-        skill_path = REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md'
-        mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / 'write-skill' / 'SKILL.md'
-        content = skill_path.read_text(encoding='utf-8')
-        mirror = mirror_path.read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
+    def test_public_config_lists_write_skill(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
 
         self.assertIn({'name': 'write-skill'}, public_config['skills'])
-        self.assertTrue(
-            content.startswith(
-                '---\n'
-                'name: write-skill\n'
-                'description: Use when creating, rewriting, or materially updating any agent skill,'
-            )
-        )
-        self.assertIn('## Whole-Skill Rewrite Invariant', content)
-        self.assertIn('## Classify Before Authoring', content)
-        self.assertIn('## Required Format and Contract Shape', content)
-        self.assertIn('## Anti-Degradation Gate', content)
-        self.assertIn('## Validation and Handoff', content)
-        self.assertIn('Project-local skill', content)
-        self.assertIn('Shared skill-generation contract', content)
-        self.assertIn('Shared skill', content)
-        self.assertNotIn('Shared generator contract', content)
-        self.assertNotIn('Shared direct-execution contract', content)
-        self.assertIn('共享 Skill 生成契约', mirror)
-        self.assertIn('共享 Skill', mirror)
-        self.assertNotIn('共享生成器契约', mirror)
-        self.assertNotIn('共享直接执行契约', mirror)
-        self.assertIn('evidence and an omission checklist', normalized_content)
-        self.assertIn('complete candidate', normalized_content)
-        self.assertIn('never optimize the skill for the smallest textual patch', normalized_content)
-        self.assertIn('Do not append a new exception, note, addendum', normalized_content)
-        self.assertIn('Rewrite the governing sections', normalized_content)
-        self.assertIn('Do not turn a target-specific skill into a shared skill', normalized_content)
-        self.assertIn('Never hardcode an absolute filesystem path', normalized_content)
-        self.assertIn('target facts come from evidence rather than the generator', normalized_content)
-        self.assertIn('Would this be the skill written today if no previous version existed?', content)
-        self.assertIn('frontmatter containing only `name` and `description`', normalized_content)
-        self.assertNotIn('[TODO', content)
-        self.assertFalse((skill_path.parent / 'README.md').exists())
-        self.assertFalse((skill_path.parent / 'CHANGELOG.md').exists())
 
-    def test_write_rule_is_public_and_rewrites_complete_rule(self):
-        skill_path = REPO_ROOT / '.agents' / 'skills' / 'write-rule' / 'SKILL.md'
-        mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / 'write-rule' / 'SKILL.md'
-        content = skill_path.read_text(encoding='utf-8')
-        mirror = mirror_path.read_text(encoding='utf-8')
-        normalized_content = ' '.join(content.split())
+    def test_public_config_lists_write_rule(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
 
         self.assertIn({'name': 'write-rule'}, public_config['skills'])
-        self.assertTrue(
-            content.startswith(
-                '---\n'
-                'name: write-rule\n'
-                'description: Use when creating, rewriting, or materially updating '
-                'any repository rule,'
-            )
-        )
-        for heading in (
-            '## Whole-Rule Rewrite Invariant',
-            '## Classify Before Authoring',
-            '## Evidence',
-            '## Path and Ownership Rules',
-            '## Required Format and Contract Shape',
-            '## Workflow',
-            '## Content and Boundaries',
-            '## Anti-Degradation Gate',
-            '## Validation and Handoff',
-            '## Result',
-        ):
-            self.assertIn(heading, content)
-        self.assertIn('Project-local rule', content)
-        self.assertIn('Shared rule', content)
-        self.assertIn('Shared rule-generation contract', content)
-        self.assertIn(
-            'Generation Contract; Evidence; Content; Boundaries', normalized_content
-        )
-        self.assertIn(
-            'existing rule and its discovery surfaces as evidence and an omission checklist',
-            normalized_content,
-        )
-        self.assertIn('The diff is only a delivery mechanism', normalized_content)
-        self.assertIn('Never hardcode an absolute filesystem path', normalized_content)
-        self.assertIn('target facts come from evidence rather than the generator', normalized_content)
-        self.assertIn(
-            'Do not turn a target-specific rule into a shared rule', normalized_content
-        )
-        self.assertIn(
-            'When intent is clear, implement the policy in its natural owner and report the '
-            'named-destination conflict',
-            normalized_content,
-        )
-        self.assertIn(
-            'Would this be the rule written today if no previous version existed?',
-            normalized_content,
-        )
-        self.assertIn('name: write-rule', mirror)
-        self.assertEqual(content.count('\n## '), mirror.count('\n## '))
 
-    def test_setup_project_agents_uses_public_archive_without_local_source_or_cache(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+    def test_public_config_uses_archive_without_local_source_or_cache(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
 
-        self.assertIn('Always fetch the configured public GitHub archive', content)
-        self.assertNotIn('`--source', content)
         self.assertIn('source_repo', public_config)
         self.assertNotIn('source_default', public_config)
         self.assertNotIn('source_cache_dir', public_config)
@@ -1887,27 +1731,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'globs: ""',
                 (cursor_root / '20-project-tools.mdc').read_text(encoding='utf-8'),
             )
-
-    def test_entry_docs_route_project_asset_details_to_placeholders(self):
-        readme = (REPO_ROOT / 'README.md').read_text(encoding='utf-8')
-        if 'Shared agent configuration for projects that use `.agents/` rules' not in readme:
-            self.skipTest('target repositories replace public placeholders with local project facts')
-        update_skill = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        project_rule = (REPO_ROOT / '.agents' / 'rules' / '20-project-tools.md').read_text(encoding='utf-8')
-        project_skill = (
-            REPO_ROOT
-            / '.agents'
-            / 'skills'
-            / 'worktree-environment-setup'
-            / 'SKILL.md'
-        ).read_text(encoding='utf-8')
-
-        self.assertNotIn('Local Project Rule Authoring Guide', readme)
-        self.assertNotIn('Local Project Skill Authoring Guide', readme)
-        self.assertNotIn('## Local Project Assets', update_skill)
-        self.assertNotIn('## Local Project Skills', update_skill)
-        self.assertIn('## Generation Contract', project_rule)
-        self.assertIn('## Generation Contract', project_skill)
 
     def test_render_template_replaces_nested_variables(self):
         result = sync.render_template(

@@ -2,6 +2,7 @@
 name: {{agent.name}}
 description: {{agent.description}}
 model: {{agent.github_model}}
+disable-model-invocation: false
 ---
 
-应用 @{{agent.apply_ref}}
+Apply @{{agent.apply_ref}}

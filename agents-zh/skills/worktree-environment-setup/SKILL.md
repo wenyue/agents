@@ -1,39 +1,39 @@
 ---
 name: worktree-environment-setup
-description: 创建或修订目标仓库的环境准备 skill，用于已经创建的 linked Git worktree 时使用。
+description: 为目标仓库创建或修订环境准备 skill，供已经创建的关联 Git worktree 使用时触发。
 ---
 
 # Worktree 环境准备
 
-生成目标自有 skill，用于准备已经创建的 linked Git worktree，并在项目环境可供实现时停止。
+生成由目标仓库拥有的 skill，用于准备已经创建的关联 Git worktree，并在项目环境可以开始实现工作时结束。
 
 ## 证据
 
-读取 `.agents/rules/20-project-tools.md`、manifest、lock file、setup script、CI workflow、生成文件所有权、必需本地服务和 readiness check。识别 Windows 与非 Windows 主机所需的最小可重复准备。
+阅读 `.agents/rules/20-project-tools.md`、项目清单、锁文件、准备脚本、CI 工作流、生成文件的所有权、必需的本地服务和就绪检查。确定 Windows 与非 Windows 主机所需、能够重复执行的最少准备步骤。
 
-## 编写工作流
+## 编写流程
 
-1. 确定生成 skill 如何识别 linked worktree，并在任何修改前拒绝 primary checkout。
-2. 复用最窄的仓库自有 setup 入口，只添加当前证据表明确实缺失的准备。
-3. 同时生成 `SKILL.md`、`scripts/setup.ps1` 和 `scripts/setup.sh`。把可执行命令序列放在脚本中；让 `SKILL.md` 只负责调用方式、前置条件、可选分支和 readiness。
-4. 让两个脚本都在命令失败时停止，并能在部分 setup 后安全重跑。
-5. 按下述契约审查完整目录。
+1. 确定生成的 skill 如何识别关联 worktree，并在作出任何修改前拒绝主检出目录。
+2. 复用范围最小的仓库自有准备入口，只补充当前证据表明确实缺失的步骤。
+3. 同时生成 `SKILL.md`、`scripts/setup.ps1` 和 `scripts/setup.sh`。将可执行命令序列放入脚本；`SKILL.md` 只说明调用方式、前提条件、可选分支和就绪要求。
+4. 确保两个脚本都在任一命令失败时停止，并且在部分准备完成后仍可安全重跑。
+5. 按照下述契约审查整个目录。
 
 ## 生成 Skill 契约
 
-- 要求在已经创建的 linked worktree 中执行。在安装依赖、生成文件、改变服务或其他修改前拒绝 primary checkout。
-- Windows 使用 `scripts/setup.ps1`，非 Windows 主机使用 `scripts/setup.sh`。要求相同的核心环境结果，同时允许有证据支持的平台差异。
-- 从 skill 或仓库根目录解析路径；绝不依赖调用者的当前目录。
-- 将昂贵、可选或任务特定的准备排除在默认路径之外，除非每个新 worktree 都需要它。
-- 使用真实项目配置和必需工具或服务行为验证 readiness，不要只检查版本。
-- 在环境就绪时停止。排除 worktree 创建或删除、baseline 验证、业务变更、commit、integration 和 agent 同步。
-- 将已完成变更验证交给 `change-set-verification`。
-- 不负责验证触发时机、范围选择或结果策略。
+- 必须在已经创建的关联 worktree 中运行。在安装依赖、生成文件、更改服务或作出其他修改之前，拒绝主检出目录。
+- Windows 使用 `scripts/setup.ps1`，非 Windows 主机使用 `scripts/setup.sh`。两者必须得到相同的核心环境结果，但可以保留有证据依据的平台差异。
+- 根据 skill 根目录或仓库根目录解析路径，绝不能依赖调用方当前所在目录。
+- 昂贵、可选或任务特有的准备工作不得进入默认路径，除非每个新 worktree 都必须执行。
+- 应根据真实项目配置，以及必需工具或服务的实际行为验证环境就绪，不能只检查版本。
+- 环境就绪后即停止。不得负责 worktree 的创建或删除、基线验证、业务变更、提交、集成和 agent 同步。
+- 将已完成变更的验证交给 `change-set-verification`。
+- 不得负责验证的触发时机、范围选择或结果策略。
 
 ## 失败恢复
 
-要求生成的 `SKILL.md` 包含自己的 `## Failure Recovery`。任一主机脚本失败时立即停止，报告准确命令和错误，分析原因，并提出具体脚本或环境变更。候选变更通过审查前，不要继续 setup 或重试修改后的脚本。
+要求生成的 `SKILL.md` 自行包含 `## Failure Recovery`。任一主机脚本失败时，立即停止，报告准确的命令和错误，分析原因，并提出具体的脚本或环境候选变更。在候选变更通过审查前，不得继续准备，也不得重试修改后的脚本。
 
-## 审查和交付
+## 审查与交付
 
-确认脚本内部一致、按主机选择、可重跑，并且只负责环境准备。将完整生成目录和支持证据交给 `setup-project-agents` 进行候选审查和验收。
+确认两个脚本内部一致、会按主机正确选择、可重复运行，且职责仅限环境准备。将完整生成目录和支持证据交给 `setup-project-agents`，供其审查和验收候选方案。
