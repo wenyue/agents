@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import re
 import shutil
+import sys
 import tempfile
 import tomllib
 import urllib.request
@@ -58,6 +60,134 @@ _PUBLIC_AGENT_MODEL_FIELDS = {
 }
 _CONFIG_KEY_PATTERN = re.compile(r'^[A-Za-z0-9_-]+$')
 _MISSING = object()
+
+
+def _catalog_digest(public_config: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        public_config,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(',', ':'),
+    ).encode('utf-8')
+    return f'sha256:{hashlib.sha256(encoded).hexdigest()}'
+
+
+def build_model_request(
+    public_config: dict[str, Any],
+    local_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    agents: dict[str, Any] = {}
+    public_agents = _require_items(public_config, 'agent_prompts')
+    local_agents = _require_items(local_config or {}, 'agent_prompts')
+    for index, agent in enumerate(public_agents + local_agents):
+        name = agent.get('name')
+        if not isinstance(name, str) or not _ASSET_NAME_PATTERN.fullmatch(name):
+            raise SyncError(f'Invalid agent prompt name: {name!r}')
+        if name in agents:
+            raise SyncError(f'Duplicate agent prompt name: {name}')
+        required_intelligence = agent.get('required_intelligence')
+        if index >= len(public_agents) and not required_intelligence:
+            required_intelligence = agent.get('description')
+        if not isinstance(required_intelligence, str) or not required_intelligence.strip():
+            raise SyncError(f'Agent {name} requires a non-empty required_intelligence description')
+        agents[name] = {
+            'required_intelligence': required_intelligence.strip(),
+            'codex': {
+                'model': None,
+                'model_reasoning_effort': None,
+            },
+            'cursor': {'model': None},
+            'github': {'model': None},
+        }
+    return {
+        'schema_version': 1,
+        'catalog_digest': _catalog_digest(public_config),
+        'agents': agents,
+    }
+
+
+def _model_config_string(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise SyncError(f'{label} must be a non-empty string')
+    return value.strip()
+
+
+def _reject_unknown_fields(value: dict[str, Any], supported: set[str], label: str) -> None:
+    unknown = sorted(set(value) - supported)
+    if unknown:
+        raise SyncError(f"{label} contains unsupported fields: {', '.join(unknown)}")
+
+
+def load_model_config(
+    path: Path,
+    public_config: dict[str, Any],
+    local_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    supplied = load_json(path)
+    expected = build_model_request(public_config, local_config)
+    _reject_unknown_fields(
+        supplied,
+        {'schema_version', 'catalog_digest', 'agents'},
+        'Model config',
+    )
+    if supplied.get('schema_version') != expected['schema_version']:
+        raise SyncError('Model config schema_version does not match the current script')
+    if supplied.get('catalog_digest') != expected['catalog_digest']:
+        raise SyncError('Model config catalog_digest does not match the current catalog')
+    supplied_agents = supplied.get('agents')
+    if not isinstance(supplied_agents, dict):
+        raise SyncError('Model config agents must be an object')
+    if set(supplied_agents) != set(expected['agents']):
+        raise SyncError('Model config agents must exactly match the current catalog')
+
+    codex_overrides: dict[str, dict[str, str]] = {}
+    cursor_overrides: dict[str, dict[str, str]] = {}
+    github_overrides: dict[str, dict[str, str]] = {}
+    for name, expected_agent in expected['agents'].items():
+        supplied_agent = supplied_agents[name]
+        if not isinstance(supplied_agent, dict):
+            raise SyncError(f'Model config agent {name} must be an object')
+        _reject_unknown_fields(
+            supplied_agent,
+            {'required_intelligence', 'codex', 'cursor', 'github'},
+            f'Model config agent {name}',
+        )
+        if supplied_agent.get('required_intelligence') != expected_agent['required_intelligence']:
+            raise SyncError(f'Model config agent {name} changed required_intelligence')
+        codex = supplied_agent.get('codex')
+        cursor = supplied_agent.get('cursor')
+        github = supplied_agent.get('github')
+        if not isinstance(codex, dict):
+            raise SyncError(f'Model config agent {name}.codex must be an object')
+        if not isinstance(cursor, dict):
+            raise SyncError(f'Model config agent {name}.cursor must be an object')
+        if not isinstance(github, dict):
+            raise SyncError(f'Model config agent {name}.github must be an object')
+        _reject_unknown_fields(
+            codex,
+            {'model', 'model_reasoning_effort'},
+            f'Model config agent {name}.codex',
+        )
+        _reject_unknown_fields(cursor, {'model'}, f'Model config agent {name}.cursor')
+        _reject_unknown_fields(github, {'model'}, f'Model config agent {name}.github')
+        codex_overrides[name] = {
+            'model': _model_config_string(codex.get('model'), f'{name}.codex.model'),
+            'model_reasoning_effort': _model_config_string(
+                codex.get('model_reasoning_effort'),
+                f'{name}.codex.model_reasoning_effort',
+            ),
+        }
+        cursor_overrides[name] = {
+            'model': _model_config_string(cursor.get('model'), f'{name}.cursor.model'),
+        }
+        github_overrides[name] = {
+            'model': _model_config_string(github.get('model'), f'{name}.github.model'),
+        }
+    return {
+        'codex_agent_runtime_overrides': codex_overrides,
+        'cursor_agent_runtime_overrides': cursor_overrides,
+        'github_agent_runtime_overrides': github_overrides,
+    }
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -450,7 +580,8 @@ def _retired_assets(config: dict[str, Any]) -> dict[str, tuple[str, ...]]:
     active = {
         'rules': {
             rule.get('file')
-            for rule in _require_items(config, 'rules')
+            for key in ('rules', 'project_rule_generators')
+            for rule in _require_items(config, key)
             if isinstance(rule.get('file'), str)
         },
         'skills': {
@@ -775,13 +906,18 @@ def _rule_data(rule: dict[str, Any]) -> dict[str, Any]:
     filename = rule['file']
     cursor = rule.get('cursor', {})
     github = rule.get('github', {})
+    cursor_description = _scalar_value(cursor.get('description'), '')
+    if not cursor_description:
+        strength = _scalar_value(rule.get('strength'), 'Default').lower()
+        read_when = _scalar_value(rule.get('read_when'), filename.removesuffix('.md'))
+        cursor_description = f'[{strength}] {read_when}'
     return {
         'rule': {
             **rule,
             'path': f'.agents/rules/{filename}',
             'apply_ref': f'.agents/rules/{filename}',
             'name': filename.removesuffix('.md'),
-            'cursor_description': _scalar_value(cursor.get('description'), ''),
+            'cursor_description': cursor_description,
             'cursor_globs': _scalar_value(cursor.get('globs'), '""'),
             'cursor_always_apply': str(bool(cursor.get('alwaysApply', False))).lower(),
             'github_apply_to': _scalar_value(github.get('applyTo'), '**'),
@@ -854,112 +990,6 @@ def _agent_with_runtime_overrides(
             )
         effective[platform] = {**platform_config, **override}
     return effective
-
-
-def _agent_wrapper_pattern(
-    public_config: dict[str, Any],
-    template_name: str,
-) -> str | None:
-    platforms = public_config.get('platforms') or {}
-    if not isinstance(platforms, dict):
-        raise SyncError('platforms must be an object')
-    for wrapper in _require_items(platforms, 'agent_wrappers'):
-        if wrapper.get('template') == template_name:
-            path = wrapper.get('path')
-            if not isinstance(path, str) or not path:
-                raise SyncError(f'{template_name} requires path')
-            return path
-    return None
-
-
-def _discover_codex_agent_runtime_overrides(
-    target_root: Path,
-    public_config: dict[str, Any],
-    agents: list[dict[str, Any]],
-) -> dict[str, dict[str, str]]:
-    target_pattern = _agent_wrapper_pattern(public_config, 'agent_wrapper.codex.toml')
-    if not target_pattern:
-        return {}
-    overrides: dict[str, dict[str, str]] = {}
-    for agent in agents:
-        name = agent.get('name')
-        if not isinstance(name, str) or not name:
-            raise SyncError('Each agent prompt requires name')
-        relative_target = render_template(target_pattern, _agent_data(agent), target_pattern)
-        wrapper_path = target_root / relative_target
-        if not wrapper_path.is_file():
-            continue
-        try:
-            wrapper = tomllib.loads(wrapper_path.read_text(encoding='utf-8'))
-        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
-            raise SyncError(f'Invalid Codex agent wrapper {wrapper_path}: {error}') from error
-        runtime: dict[str, str] = {}
-        for field in _CODEX_RUNTIME_FIELDS:
-            if field not in wrapper:
-                continue
-            value = wrapper[field]
-            if not isinstance(value, str) or not value.strip():
-                raise SyncError(f'Codex agent wrapper field {name}.{field} must be a non-empty string')
-            runtime[field] = value.strip()
-        if runtime:
-            overrides[name] = runtime
-    return overrides
-
-
-def _discover_cursor_agent_runtime_overrides(
-    target_root: Path,
-    public_config: dict[str, Any],
-    agents: list[dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    target_pattern = _agent_wrapper_pattern(public_config, 'agent_wrapper.cursor.md')
-    if not target_pattern:
-        return {}
-    overrides: dict[str, dict[str, Any]] = {}
-    for agent in agents:
-        name = agent.get('name')
-        if not isinstance(name, str) or not name:
-            raise SyncError('Each agent prompt requires name')
-        relative_target = render_template(target_pattern, _agent_data(agent), target_pattern)
-        wrapper_path = target_root / relative_target
-        frontmatter = _read_frontmatter(wrapper_path)
-        runtime: dict[str, Any] = {}
-        if 'model' in frontmatter:
-            model = frontmatter['model']
-            if not isinstance(model, str) or not model.strip():
-                raise SyncError(f'Cursor agent wrapper field {name}.model must be a non-empty string')
-            runtime['model'] = model.strip()
-        if 'readonly' in frontmatter:
-            readonly = frontmatter['readonly']
-            if not isinstance(readonly, bool):
-                raise SyncError(f'Cursor agent wrapper field {name}.readonly must be a boolean')
-            runtime['readonly'] = readonly
-        if runtime:
-            overrides[name] = runtime
-    return overrides
-
-
-def _discover_github_agent_runtime_overrides(
-    target_root: Path,
-    public_config: dict[str, Any],
-    agents: list[dict[str, Any]],
-) -> dict[str, dict[str, str]]:
-    target_pattern = _agent_wrapper_pattern(public_config, 'agent_wrapper.github.agent.md')
-    if not target_pattern:
-        return {}
-    overrides: dict[str, dict[str, str]] = {}
-    for agent in agents:
-        name = agent.get('name')
-        if not isinstance(name, str) or not name:
-            raise SyncError('Each agent prompt requires name')
-        relative_target = render_template(target_pattern, _agent_data(agent), target_pattern)
-        frontmatter = _read_frontmatter(target_root / relative_target)
-        if 'model' not in frontmatter:
-            continue
-        model = frontmatter['model']
-        if not isinstance(model, str) or not model.strip():
-            raise SyncError(f'GitHub agent wrapper field {name}.model must be a non-empty string')
-        overrides[name] = {'model': model.strip()}
-    return overrides
 
 
 def _read_strength(path: Path) -> str:
@@ -1139,9 +1169,18 @@ def discover_local_assets(target_root: Path, public_config: dict[str, Any]) -> d
     rules = []
     rules_root = target_root / '.agents' / 'rules'
     agents_rows = _read_entry_rule_rows(target_root, public_config)
+    generated_rule_metadata = {
+        rule.get('file'): rule
+        for rule in _require_items(public_config, 'project_rule_generators')
+        if isinstance(rule.get('file'), str)
+    }
     if rules_root.exists():
         for rule_path in sorted(rules_root.glob('*.md')):
             if rule_path.name in public_rule_files:
+                continue
+            generated_metadata = generated_rule_metadata.get(rule_path.name)
+            if generated_metadata:
+                rules.append({**generated_metadata})
                 continue
             metadata = _local_rule_metadata(target_root, rule_path.name, agents_rows)
             rules.append(
@@ -1162,27 +1201,13 @@ def discover_local_assets(target_root: Path, public_config: dict[str, Any]) -> d
             if name in public_agent_names:
                 continue
             description = _local_agent_description(target_root, agent_path, name)
-            model = _read_frontmatter_value(agent_path, 'model') or 'sonnet'
-            agent_prompts.append({'name': name, 'description': description, 'model': model})
-    all_agents = _require_items(public_config, 'agent_prompts') + agent_prompts
+            agent_prompts.append({'name': name, 'description': description})
     return {
         'rules': rules,
         'agent_prompts': agent_prompts,
-        'codex_agent_runtime_overrides': _discover_codex_agent_runtime_overrides(
-            target_root,
-            public_config,
-            all_agents,
-        ),
-        'cursor_agent_runtime_overrides': _discover_cursor_agent_runtime_overrides(
-            target_root,
-            public_config,
-            all_agents,
-        ),
-        'github_agent_runtime_overrides': _discover_github_agent_runtime_overrides(
-            target_root,
-            public_config,
-            all_agents,
-        ),
+        'codex_agent_runtime_overrides': {},
+        'cursor_agent_runtime_overrides': {},
+        'github_agent_runtime_overrides': {},
     }
 
 
@@ -1369,6 +1394,28 @@ def _generate_entry_files(
         )
 
 
+def _record_missing_generated_outputs(
+    context: SyncContext,
+    public_config: dict[str, Any],
+) -> None:
+    if not context.check:
+        return
+    for rule in _require_items(public_config, 'project_rule_generators'):
+        filename = rule.get('file')
+        if not isinstance(filename, str) or not _RULE_FILENAME_PATTERN.fullmatch(filename):
+            raise SyncError('Each project Rule generator requires a safe file name')
+        target = context.target_root / '.agents' / 'rules' / filename
+        if not target.is_file():
+            _record_file(context, 'missing', target)
+    for skill in _require_items(public_config, 'project_skill_generators'):
+        name = skill.get('name')
+        if not isinstance(name, str) or not _ASSET_NAME_PATTERN.fullmatch(name):
+            raise SyncError('Each project Skill generator requires a safe name')
+        target = context.target_root / '.agents' / 'skills' / name / 'SKILL.md'
+        if not target.is_file():
+            _record_file(context, 'missing', target)
+
+
 def sync_public_assets(
     context: SyncContext,
     public_config: dict[str, Any],
@@ -1424,23 +1471,49 @@ def sync_public_assets(
     )
     _reconcile_root_configs(context, public_config)
     _generate_entry_files(context, public_config, merged_local_config)
+    _record_missing_generated_outputs(context, public_config)
     return context.changes
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Sync public agent assets from wenyue/agents.')
     parser.add_argument('--check', action='store_true', help='Report drift without writing files.')
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument(
+        '--model-request',
+        metavar='PATH',
+        help='Write the first-stage model-selection request JSON to PATH.',
+    )
+    model_group.add_argument(
+        '--model-config',
+        metavar='PATH',
+        help='Read completed second-stage model-selection JSON from PATH.',
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.check and not args.model_config:
+        print('ERROR: --check requires --model-config PATH', file=sys.stderr)
+        return 2
+    if not args.model_request and not args.model_config:
+        print(
+            'ERROR: synchronization requires --model-request or --model-config with a PATH',
+            file=sys.stderr,
+        )
+        return 2
     target_root = Path.cwd()
     skill_root = Path(__file__).resolve().parents[1]
     try:
         public_config = load_json(skill_root / 'references' / 'public_assets.json')
         local_config = discover_local_assets(target_root, public_config)
+        if args.model_config:
+            local_config = {
+                **local_config,
+                **load_model_config(Path(args.model_config), public_config, local_config),
+            }
         source_root = resolve_source(public_config)
         context = SyncContext(
             target_root=target_root,
@@ -1453,14 +1526,31 @@ def main(argv: list[str] | None = None) -> int:
             context,
             public_config,
             local_config,
-            require_agent_runtime=args.check,
+            require_agent_runtime=bool(args.model_config),
         )
+        if args.model_request:
+            request_path = Path(args.model_request)
+            try:
+                request_path.write_text(
+                    json.dumps(
+                        build_model_request(public_config, local_config),
+                        indent=2,
+                        ensure_ascii=False,
+                    )
+                    + '\n',
+                    encoding='utf-8',
+                )
+            except OSError as error:
+                raise SyncError(f'Unable to write model request {request_path}: {error}') from error
     except SyncError as error:
         print(f'ERROR: {error}')
         return 2
     for change in changes:
         print(f'{change.action} {change.path}')
-    if args.check and any(change.action in {'created', 'updated', 'deleted'} for change in changes):
+    if args.check and any(
+        change.action in {'created', 'updated', 'deleted', 'missing'}
+        for change in changes
+    ):
         return 1
     return 0
 

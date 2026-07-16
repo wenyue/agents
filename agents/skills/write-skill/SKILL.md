@@ -1,205 +1,129 @@
 ---
 name: write-skill
-description: Use when creating, rewriting, or materially updating any agent skill, including project-local skills, shared skills, and shared skill-generation contracts. Rebuilds the complete skill from current evidence, assigns the correct ownership and contract shape, prevents patch-style accumulation, and validates the full skill before handoff.
+description: Use when creating, rewriting, or materially updating agent skills, including project-local skills, shared skills, and skill-generation contracts.
 ---
 
 # Write Skill
 
-Create one coherent skill contract that another agent can execute without hidden context. Classify
-its distribution and contract role before writing, then own the quality of the whole skill on every
-invocation even when the request names only one defect.
+Create one discoverable, executable, evidence-backed skill that another agent can use without hidden
+context. Rebuild the complete owned job on every invocation instead of preserving the shape of earlier edits.
 
-## Whole-Skill Rewrite Invariant
+## Classify
 
-- Treat every creation or update as a fresh synthesis from the skill's complete current purpose.
-- Treat the existing skill and its resources as evidence and an omission checklist, not as an
-  immutable scaffold or preferred outline.
-- Reconstruct the trigger, outcome, distribution, ownership, boundaries, workflow, failure
-  behavior, validation, and resources before deciding which existing wording still belongs.
-- Produce a complete candidate and replace the owned artifact coherently. The diff is only a
-  delivery mechanism; never optimize the skill for the smallest textual patch.
-- Integrate each valid requirement at its natural owner. Remove superseded, duplicated,
-  contradictory, misplaced, and change-history content.
-- Do not append a new exception, note, addendum, or trailing section merely to address the latest
-  request. Rewrite the governing sections and then review the entire skill again.
-- Preserve the skill's established direction when current intent and evidence still support it, but
-  do not preserve weak structure or stale wording solely because it already exists.
+Use distribution and ownership evidence to select one class before authoring.
 
-## Classify Before Authoring
+| Class | Owns | Specificity |
+| --- | --- | --- |
+| Project-local skill | A complete job for one repository | Verified repository-relative paths, commands, services, modules, rules, and stop conditions |
+| Shared skill | Stable behavior executed across repositories | Cross-repository invariants, skill-owned resources, runtime discovery, and protocol-owned paths |
+| Shared skill-generation contract | Authoring of a complete target-owned skill | Target evidence categories and the generated skill's contract, not its final project procedure |
 
-Determine the ownership scope first. A shared artifact is either a shared skill, which performs its
-workflow directly, or a shared skill-generation contract, which authors a complete target-owned
-skill. Use manifests, catalogs, sync ownership, installation scope, and the requested output as
-evidence.
+Catalogs, manifests, installation scope, sync ownership, and the requested output are stronger
+classification evidence than generic wording. Deleting local details does not make a skill shared;
+redesign it around stable behavior and runtime discovery or keep it project-local.
 
-| Class | Purpose and evidence | Allowed specificity | Required boundary |
-| --- | --- | --- | --- |
-| Project-local skill | Serves one target repository and is owned by that repository, whether handwritten or generated | Current repository-relative paths, real commands, services, modules, and project rules | Optimize for target accuracy; do not publish or generalize unsupported facts |
-| Shared skill | Is distributed across repositories and performs its workflow directly | Cross-repository invariants, skill-owned relative resources, and stable protocol-owned paths | Resolve project facts at runtime and defer target-specific policy to target rules |
-| Shared skill-generation contract | Is distributed across repositories to author a complete target-owned skill from target evidence | Semantic evidence categories and stable protocol-owned paths only | Describe authoring and the generated contract; do not act like the final target skill |
-
-A project-local skill normally contains the final executable project procedure. If a project-local
-skill-generation contract is explicitly required, use the generation-contract shape but keep its
-evidence and output owned by that repository. Do not turn a target-specific skill into a shared skill
-merely by deleting concrete paths; redesign it around a genuinely stable cross-repository contract
-or keep it local.
+Direct skills may be operational, diagnostic, or orchestration contracts. Use that distinction only
+when it changes ownership, execution, review gates, or completion conditions.
 
 ## Evidence
 
-Read the complete owned skill directory and collect evidence appropriate to its class.
+Collect only evidence that can change the skill's behavior, ownership, resources, or validation:
 
-Common evidence:
+- the user's outcome, triggers, constraints, examples, compatibility needs, and failure expectations;
+- the complete owned skill directory, scripts, references, assets, mirrors, tests, and real usage;
+- applicable project rules, manifests, catalogs, wrappers, validators, and authoritative specifications;
+- for project-local skills, current code, configuration, commands, services, generated ownership, and
+  verification behavior;
+- for shared artifacts, the minimum behavior or evidence categories that remain valid across
+  supported repositories and platforms.
 
-- the user's requested outcome, examples, constraints, and compatibility requirements;
-- the existing `SKILL.md`, scripts, references, assets, mirrors, tests, and real usage artifacts;
-- applicable ownership rules, manifests, validators, wrappers, catalogs, and authoritative
-  specifications.
+Treat the existing skill as evidence and an omission check, not as the preferred outline. Separate
+reusable execution knowledge from change history, project policy, personal taste, and explanations
+that belong in project documentation.
 
-Class-specific evidence:
+## Author
 
-- For a project-local skill, inspect current project rules, code, configuration, commands,
-  generated-file ownership, services, and verification behavior. Prefer these facts over generic
-  best practices.
-- For a shared skill, identify the minimum behavior that remains correct across supported
-  repositories and platforms. Treat facts from one repository as examples, not defaults.
-- For a shared skill-generation contract, inspect the target evidence categories its generated
-  skill must consume and test the contract against materially different representative repositories.
+1. Define the complete job, trigger, outcome, start condition, completion condition, stop conditions,
+   failure behavior, and responsibilities the skill excludes.
+2. Synthesize the full candidate from current intent. Preserve supported direction and safety
+   boundaries; remove stale, duplicated, contradictory, or misplaced content and resources.
+   Organize the result as the skill you would author today, integrating each requirement into its
+   owning phase instead of appending a note or preserving old order for a smaller diff.
+3. Put each instruction at its natural owner. Keep project policy in rules and reference it from the
+   skill instead of copying it.
+4. Update owned resources, wrappers, manifests, mirrors, and contract tests when execution or
+   distribution requires them.
+5. Read the complete candidate without the diff and revise it until every paragraph contributes
+   unique, current, executable information.
 
-Separate stable execution requirements from implementation history, prior edits, personal taste,
-and explanations that belong in project documentation.
+Prefer the desired outcome, relevant facts, and decision boundaries over procedural narration. Give
+the executing agent freedom when context determines the best approach; prescribe ordered steps when
+sequence affects correctness or safety; use a script when repeated deterministic behavior is more
+reliable than generated instructions.
 
-## Path and Ownership Rules
+Tracked skills use repository-relative, skill-root-relative, or stable protocol-owned paths, never
+machine-specific absolute paths. When a runtime tool needs an absolute path, derive it from a
+discovered root or task input rather than persisting it in the skill.
 
-- Never hardcode an absolute filesystem path in a tracked skill or resource. Do not embed drive
-  letters, user-home paths, checkout locations, or machine-specific temporary directories.
-- When a tool requires an absolute path at runtime, derive it from the skill root, repository root,
-  task input, or another discovered owner. Never persist the resolved machine path as authored
-  skill content.
-- Reference skill-owned scripts, references, and assets with paths relative to the skill root. Keep
-  references one level deep and state exactly when to load them.
-- In a project-local skill, use repository-root-relative paths for project files and record concrete
-  commands only when current project evidence proves them.
-- In a shared skill, use semantic project targets and runtime discovery. Keep a concrete path only
-  when the shared protocol owns and standardizes it across supported targets.
-- In a shared skill-generation contract, describe target files semantically unless a path belongs
-  to the shared generation protocol itself. Require the generated project skill to resolve its
-  concrete paths from target evidence.
-- Keep universal skill-authoring constraints in `write-skill`. Keep target facts and behavioral
-  policy in the target repository's rules, and reference them instead of duplicating them.
-- Keep one source of truth for each instruction. A wrapper contains only platform metadata or a
-  source reference unless its platform requires additional runtime fields.
+Refer to another rule or skill by the canonical name declared or recognized by the target system,
+never by its filesystem path. Use paths only for owned files or resources whose location is part of
+the current contract.
 
-## Required Format and Contract Shape
+## Skill Contract
 
-Give every skill:
+Start with discovery metadata:
 
-1. YAML frontmatter containing only `name` and `description` under this project's convention.
-2. A lowercase hyphenated name no longer than 64 characters and matching its directory.
-3. A description that states what the skill does and the concrete situations that trigger it. Put
-   all trigger information here because the body loads only after activation.
-4. One H1 title followed by a short outcome-and-boundary paragraph.
-5. Imperative instructions, explicit ownership, evidence-backed decisions, validation, and a
-   defined result or handoff.
+```markdown
+---
+name: lowercase-hyphenated-name
+description: Use when [concrete triggers and situations].
+---
+```
 
-Choose the contract shape after classification. Add or omit a section only when the responsibility
-proves it necessary; do not combine complete templates.
+Under this repository's convention, frontmatter contains only `name` and `description`; the name is
+no longer than 64 characters and matches its directory. The description supports reliable selection
+without summarizing the workflow that loads after activation.
 
-| Contract shape | Required section order | Additional constraint |
+Follow the metadata with one H1 and a short outcome-and-boundary paragraph. Make ownership, start,
+completion, stop, failure, validation, and handoff discoverable in the body. Add sections because the
+job needs them, not to satisfy a universal template.
+
+| Contract shape | Required content | Additional constraint |
 | --- | --- | --- |
-| Project-local operational or diagnostic | Preconditions or Evidence; Workflow or Phases; Stop Conditions; Validation; Result | Use verified target facts and finish at the target task outcome |
-| Project-local orchestrator | Ownership; Managed Assets; Workflow; Review or Acceptance gates when candidates are handed off; Validation; Output | Coordinate target-owned components without absorbing their implementation contracts |
-| Shared operational or diagnostic skill | Preconditions or Evidence; Workflow or Phases; Stop Conditions; Validation; Result | Preserve only cross-repository behavior and resolve local facts before mutation |
-| Shared orchestrator skill | Ownership; Managed Assets; Reconciliation Workflow; Review Gate; Acceptance Gate; Validation; Output | Keep orchestration, review, and acceptance distinct from generated or delegated implementation |
-| Shared skill-generation contract | Evidence; Authoring Workflow; Generated Skill Contract; Review and Handoff | Produce a complete target-owned candidate; never mix authoring instructions with the generated runtime procedure |
+| Project-local operational or diagnostic | Evidence or Preconditions; Workflow or Phases; Stop Conditions; Validation; Result | Use verified project facts and finish at the requested outcome |
+| Project-local orchestrator | Ownership; Managed Assets; Workflow; Review or Acceptance gates; Validation; Output | Coordinate components without absorbing their contracts |
+| Shared operational or diagnostic | Evidence or Preconditions; Workflow or Phases; Stop Conditions; Validation; Result | Discover target facts before mutation |
+| Shared orchestrator | Ownership; Managed Assets; Reconciliation Workflow; Review Gate; Acceptance Gate; Validation; Output | Keep orchestration, review, and acceptance distinct |
+| Shared skill-generation contract | Evidence; Authoring Workflow; Generated Skill Contract; Review and Handoff | Produce a complete target-owned candidate without mixing authoring instructions with its runtime procedure |
 
-## Workflow
+Keep core decisions in `SKILL.md`. Move conditional or detailed material to directly referenced
+resources only when the body states when to load it; keep references one level deep. Add scripts only
+for repeated deterministic or fragile operations, with explicit dependencies, errors, recovery, and
+safe representative tests. Add assets only when the skill uses them in an output.
 
-1. Classify the artifact as a project-local skill, shared skill, or shared skill-generation
-   contract. Record the evidence for that decision before drafting.
-2. Define the complete job the skill must perform and the responsibilities it must exclude. Infer
-   clear details from evidence; ask only when unresolved ambiguity would materially change behavior.
-3. Inventory every existing claim and resource. Classify each as retained, rewritten, removed, or
-   moved to its actual owner.
-4. State the skill's invariants, completion condition, stop conditions, and cross-skill boundaries
-   from scratch before reusing current headings or sentences.
-5. Select the contract shape and outline the complete candidate in the required order.
-6. Write the frontmatter for precise triggering. Remove nonstandard metadata unless the target
-   runtime explicitly requires and supports it.
-7. Write the body as one end-to-end contract. Integrate retained facts into their natural sections
-   instead of preserving the old document order.
-8. Design resources through progressive disclosure. Keep core decisions in `SKILL.md`; move only
-   conditional or detailed material to directly referenced resources.
-9. Update every owned resource, language mirror, public manifest, wrapper, and contract test in the
-   same coherent change. Preserve unrelated project-owned files and existing Git state.
-10. Read the complete candidate without the diff and apply the anti-degradation and validation gates.
-    Rewrite again when any gate fails.
+Do not add README, changelog, installation, or quick-reference files unless an external packaging
+contract requires them. Keep one source of truth for each instruction and keep wrappers limited to
+required platform metadata plus a source reference.
 
-## Content and Resources
+## Validate
 
-- Include only non-obvious procedural knowledge, domain constraints, and decisions another capable
-  agent needs to perform the task reliably.
-- Design one coherent unit of work. Split unrelated responsibilities instead of growing one broad
-  skill, but do not fragment a single end-to-end job across skills that must always load together.
-- Match specificity to fragility: explain goals and reasons where context varies; use exact ordered
-  steps where mutation is risky; use executable scripts where determinism is essential.
-- Keep `SKILL.md` concise enough that every instruction deserves attention. Move conditional detail
-  to references before the core workflow becomes difficult to scan; keep the main file below 500
-  lines unless the target runtime proves a different limit.
-- Add a script only for repeated deterministic behavior or fragile operations, and test it on safe
-  representative inputs. Give it explicit dependencies, errors, and recovery behavior.
-- Add a reference only when the body states the condition for reading it. Add an asset only when the
-  skill directly uses it in an output.
-- Use concise examples only when they disambiguate behavior. Do not explain concepts the agent
-  already knows, narrate obvious actions, or describe the edit that created an instruction.
-- Do not create README, changelog, installation, or quick-reference files inside a skill unless an
-  external packaging standard explicitly requires one.
+- Verify classification, ownership, discovery metadata, outcome, start, completion, stop, failure,
+  validation, resources, and handoff by reading the final skill rather than only changed lines.
+- For a project-local skill, run its changed workflow and resources against current repository facts.
+- For a shared skill, test representative contexts that exercise runtime discovery, project-rule
+  precedence, and stop conditions.
+- For a generation contract, simulate at least one complete target skill; use materially different
+  targets when broad portability is claimed.
+- Test changed scripts on safe representative inputs and confirm explicit error and recovery behavior.
+- Compare language mirrors structurally and preserve paths, commands, identifiers, code blocks,
+  classification, and behavior.
+- Run the current validators, contract tests, and diff-integrity checks for every owned resource and
+  discovery surface.
 
-## Anti-Degradation Gate
-
-Reject and rewrite the candidate when any condition is true:
-
-- the latest request appears as an appended note instead of changing the governing contract;
-- one obligation is repeated across sections or conflicts with an older exception;
-- project-local facts leak into a shared contract, or a local skill is weakened into vague generic
-  advice in the name of portability;
-- a shared skill-generation contract contains the final target procedure, or a shared skill
-  contains authoring instructions for a different skill;
-- obsolete names, paths, assumptions, placeholders, or abandoned workflow stages remain;
-- the document grew without adding a distinct responsibility or necessary evidence;
-- the old section order survives only to minimize the diff;
-- content describes change history, review discussion, or what was recently fixed;
-- a resource duplicates the body or is not reached by an explicit instruction.
-
-Before acceptance, answer yes to all of these questions:
-
-- Would this be the skill written today if no previous version existed?
-- Is its project-local or shared ownership explicit and supported by the catalog or repository?
-- If shared, is it unambiguously a shared skill or a shared skill-generation contract?
-- Does every paragraph own unique, current, executable information?
-- Can an agent identify the start condition, completion condition, stop conditions, and handoff?
-- Did the rewrite reduce or hold complexity unless the responsibility genuinely expanded?
-
-## Validation and Handoff
-
-1. Run the current skill validator and all project contract tests covering manifests, wrappers,
-   mirrors, synchronization, and ownership.
-2. For a project-local skill, execute its changed scripts and representative workflow against the
-   target repository's real configuration and verification surfaces.
-3. For a shared skill, forward-test the actual workflow in representative contexts that exercise
-   runtime discovery, target-rule precedence, and stop conditions.
-4. For a shared skill-generation contract, generate or simulate at least one complete target
-   candidate and verify that target facts come from evidence rather than the generator. Use
-   materially different targets when the contract claims broad portability.
-5. Compare language mirrors structurally and preserve commands, relative paths, identifiers, code
-   blocks, classification, and behavioral meaning.
-6. Run repository formatting and diff-integrity checks, then inspect the complete final skill once
-   more rather than reviewing only changed lines.
-7. Do not report success while placeholders, absolute path literals, unsupported claims, stale
-   resources, failed checks, or unresolved ownership conflicts remain.
+Do not report success while evidence is unresolved, resources are stale or unreachable, behavior is
+unsupported, or required checks fail or remain unreported.
 
 ## Result
 
-Report whether the artifact is a project-local skill, shared skill, or shared skill-generation
-contract; then report the selected contract shape, preserved direction, globally rewritten
-responsibilities, removed duplication or stale content, owned resources, synchronized surfaces, and
-exact validation results.
+Report the artifact class, natural owner, resulting contract shape, preserved decisions, removed or
+moved content and resources, updated discovery surfaces and mirrors, and exact validation outcomes.

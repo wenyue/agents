@@ -161,6 +161,44 @@
       }
     }
   ],
+  "project_rule_generators": [
+    {
+      "file": "20-project-tools.md",
+      "read_when": "Project tooling, MCP, runtime, or verification",
+      "strength": "Mandatory",
+      "section": "project",
+      "cursor": {
+        "alwaysApply": true
+      },
+      "github": {
+        "applyTo": "**"
+      }
+    },
+    {
+      "file": "21-project-rules.md",
+      "read_when": "Project APIs, generated files, lint, or domain conventions",
+      "strength": "Default",
+      "section": "project",
+      "cursor": {
+        "alwaysApply": true
+      },
+      "github": {
+        "applyTo": "**"
+      }
+    },
+    {
+      "file": "22-project-structure.md",
+      "read_when": "Making structure, module, or dependency-boundary decisions",
+      "strength": "Advisory",
+      "section": "project",
+      "cursor": {
+        "alwaysApply": true
+      },
+      "github": {
+        "applyTo": "**"
+      }
+    }
+  ],
   "skills": [
     {
       "name": "debug-mode"
@@ -202,6 +240,7 @@
     {
       "name": "change-set-verifier",
       "description": "Normalizes and verifies a coherent completed change set, then returns semantic diagnostics to the parent agent.",
+      "required_intelligence": "High: reason across the complete change set, repository contracts, and verification results without making semantic fixes.",
       "codex": {
         "sandbox_mode": "workspace-write"
       },

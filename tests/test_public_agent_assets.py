@@ -1,6 +1,7 @@
 import contextlib
 import importlib.util
 import io
+import inspect
 import os
 import json
 import shutil
@@ -53,9 +54,211 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertIn('must contain a JSON object', str(error.exception))
 
+    def test_model_request_describes_each_subagent_and_requested_model_fields(self):
+        public_config = {
+            'agent_prompts': [
+                {
+                    'name': 'reviewer',
+                    'required_intelligence': 'High: compare cross-file behavior and invariants.',
+                    'codex': {'sandbox_mode': 'workspace-write'},
+                    'cursor': {'readonly': True},
+                }
+            ]
+        }
+
+        self.assertTrue(hasattr(sync, 'build_model_request'))
+        request = sync.build_model_request(public_config)
+
+        self.assertEqual(request['schema_version'], 1)
+        self.assertRegex(request['catalog_digest'], r'^sha256:[0-9a-f]{64}$')
+        self.assertEqual(
+            request['agents'],
+            {
+                'reviewer': {
+                    'required_intelligence': (
+                        'High: compare cross-file behavior and invariants.'
+                    ),
+                    'codex': {
+                        'model': None,
+                        'model_reasoning_effort': None,
+                    },
+                    'cursor': {'model': None},
+                    'github': {'model': None},
+                }
+            },
+        )
+
+    def test_model_request_includes_target_local_subagent(self):
+        public_config = {
+            'agent_prompts': [
+                {
+                    'name': 'public-reviewer',
+                    'required_intelligence': 'High reasoning depth.',
+                }
+            ]
+        }
+        local_config = {
+            'agent_prompts': [
+                {
+                    'name': 'project-reviewer',
+                    'description': 'Reviews project-specific API compatibility.',
+                }
+            ]
+        }
+
+        self.assertIn('local_config', inspect.signature(sync.build_model_request).parameters)
+        request = sync.build_model_request(public_config, local_config)
+
+        self.assertEqual(
+            request['agents']['project-reviewer']['required_intelligence'],
+            'Reviews project-specific API compatibility.',
+        )
+        self.assertEqual(
+            set(request['agents']['project-reviewer']),
+            {'required_intelligence', 'codex', 'cursor', 'github'},
+        )
+
+    def test_model_config_converts_completed_request_to_runtime_overrides(self):
+        public_config = {
+            'agent_prompts': [
+                {
+                    'name': 'reviewer',
+                    'required_intelligence': 'High reasoning depth.',
+                }
+            ]
+        }
+        model_config = sync.build_model_request(public_config)
+        model_config['agents']['reviewer']['codex'].update(
+            model='codex-model',
+            model_reasoning_effort='high',
+        )
+        model_config['agents']['reviewer']['cursor']['model'] = 'cursor-model'
+        model_config['agents']['reviewer']['github']['model'] = 'github-model'
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'models.json'
+            path.write_text(json.dumps(model_config), encoding='utf-8')
+
+            self.assertTrue(hasattr(sync, 'load_model_config'))
+            result = sync.load_model_config(path, public_config)
+
+        self.assertEqual(
+            result,
+            {
+                'codex_agent_runtime_overrides': {
+                    'reviewer': {
+                        'model': 'codex-model',
+                        'model_reasoning_effort': 'high',
+                    }
+                },
+                'cursor_agent_runtime_overrides': {
+                    'reviewer': {'model': 'cursor-model'}
+                },
+                'github_agent_runtime_overrides': {
+                    'reviewer': {'model': 'github-model'}
+                },
+            },
+        )
+
+    def test_model_config_validates_target_local_subagents_from_same_request(self):
+        public_config = {'agent_prompts': []}
+        local_config = {
+            'agent_prompts': [
+                {
+                    'name': 'project-reviewer',
+                    'description': 'Reviews project-specific API compatibility.',
+                }
+            ]
+        }
+        model_config = sync.build_model_request(public_config, local_config)
+        agent = model_config['agents']['project-reviewer']
+        agent['codex'].update(model='codex-model', model_reasoning_effort='high')
+        agent['cursor']['model'] = 'cursor-model'
+        agent['github']['model'] = 'github-model'
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'models.json'
+            path.write_text(json.dumps(model_config), encoding='utf-8')
+
+            self.assertIn('local_config', inspect.signature(sync.load_model_config).parameters)
+            result = sync.load_model_config(path, public_config, local_config)
+
+        self.assertIn('project-reviewer', result['codex_agent_runtime_overrides'])
+
+    def test_model_config_rejects_unknown_fields(self):
+        public_config = {
+            'agent_prompts': [
+                {
+                    'name': 'reviewer',
+                    'required_intelligence': 'High reasoning depth.',
+                }
+            ]
+        }
+        model_config = sync.build_model_request(public_config)
+        model_config['agents']['reviewer']['codex'] = {
+            'model': 'codex-model',
+            'model_reasoning_effort': 'high',
+            'sandbox_mode': 'danger-full-access',
+        }
+        model_config['agents']['reviewer']['cursor']['model'] = 'cursor-model'
+        model_config['agents']['reviewer']['github']['model'] = 'github-model'
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'models.json'
+            path.write_text(json.dumps(model_config), encoding='utf-8')
+
+            with self.assertRaises(sync.SyncError) as error:
+                sync.load_model_config(path, public_config)
+
+        self.assertIn('unsupported fields: sandbox_mode', str(error.exception))
+
+    def test_local_asset_discovery_does_not_read_models_from_existing_wrappers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            codex_wrapper = target / '.codex' / 'agents' / 'reviewer.toml'
+            codex_wrapper.parent.mkdir(parents=True)
+            codex_wrapper.write_text(
+                'model = "old-model"\nmodel_reasoning_effort = "low"\n',
+                encoding='utf-8',
+            )
+            public_config = {
+                'agent_prompts': [
+                    {
+                        'name': 'reviewer',
+                        'required_intelligence': 'High reasoning depth.',
+                    }
+                ],
+                'platforms': {
+                    'agent_wrappers': [
+                        {
+                            'template': 'agent_wrapper.codex.toml',
+                            'path': '.codex/agents/{{agent.name}}.toml',
+                        }
+                    ]
+                },
+            }
+
+            result = sync.discover_local_assets(target, public_config)
+
+        self.assertEqual(result['codex_agent_runtime_overrides'], {})
+
     def test_parser_rejects_local_source_argument(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             sync.build_parser().parse_args(['--source', 'local-agents'])
+
+    def test_parser_declares_two_stage_model_json_arguments(self):
+        parser = sync.build_parser()
+
+        self.assertIn('--model-request', parser.format_help())
+        self.assertIn('--model-config', parser.format_help())
+        self.assertEqual(
+            parser.parse_args(['--model-request', 'models.json']).model_request,
+            'models.json',
+        )
+        self.assertEqual(
+            parser.parse_args(['--model-config', 'models.json']).model_config,
+            'models.json',
+        )
 
     def test_resolve_source_ignores_local_default_and_fetches_archive(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -508,7 +711,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 (target / '.github' / 'agents' / 'change-set-verifier.agent.md').exists()
             )
 
-    def test_sync_preserves_reviewed_codex_runtime_fields_from_target_wrapper(self):
+    def test_sync_uses_explicit_codex_runtime_fields_instead_of_target_wrapper(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
@@ -544,9 +747,20 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 if wrapper['template'] == 'agent_wrapper.codex.toml'
             ]
             local_config = sync.discover_local_assets(target, public_config)
+            local_config['codex_agent_runtime_overrides'] = {
+                'change-set-verifier': {
+                    'model': 'json-selected-model',
+                    'model_reasoning_effort': 'medium',
+                }
+            }
             context = sync.SyncContext(target, source, skill_root, False, [])
 
-            sync.sync_public_assets(context, public_config, local_config)
+            sync.sync_public_assets(
+                context,
+                public_config,
+                local_config,
+                require_agent_runtime=True,
+            )
 
             wrapper = tomllib.loads(existing_wrapper.read_text(encoding='utf-8'))
             self.assertEqual(wrapper['name'], 'change-set-verifier')
@@ -555,9 +769,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'Normalizes and verifies a coherent completed change set, then returns semantic '
                 'diagnostics to the parent agent.',
             )
-            self.assertEqual(wrapper['model'], 'project-reviewed-model')
-            self.assertEqual(wrapper['model_reasoning_effort'], 'high')
-            self.assertEqual(wrapper['sandbox_mode'], 'read-only')
+            self.assertEqual(wrapper['model'], 'json-selected-model')
+            self.assertEqual(wrapper['model_reasoning_effort'], 'medium')
+            self.assertEqual(wrapper['sandbox_mode'], 'workspace-write')
 
     def test_sync_does_not_invent_missing_codex_model_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -632,7 +846,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
             self.assertIn('requires reviewed fields: model', str(error.exception))
 
-    def test_sync_preserves_reviewed_cursor_runtime_fields_from_target_wrapper(self):
+    def test_sync_uses_explicit_cursor_model_instead_of_target_wrapper(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
@@ -656,21 +870,34 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config['rules'] = []
             public_config['skills'] = []
             public_config['project_skill_generators'] = []
+            public_config['platforms']['agent_wrappers'] = [
+                wrapper
+                for wrapper in public_config['platforms']['agent_wrappers']
+                if wrapper['template'] == 'agent_wrapper.cursor.md'
+            ]
             local_config = sync.discover_local_assets(target, public_config)
+            local_config['cursor_agent_runtime_overrides'] = {
+                'change-set-verifier': {'model': 'json-selected-cursor-model'}
+            }
             context = sync.SyncContext(target, source, skill_root, False, [])
 
-            sync.sync_public_assets(context, public_config, local_config)
+            sync.sync_public_assets(
+                context,
+                public_config,
+                local_config,
+                require_agent_runtime=True,
+            )
 
             frontmatter = sync._read_frontmatter(existing_wrapper)
             self.assertEqual(frontmatter['name'], 'change-set-verifier')
-            self.assertEqual(frontmatter['model'], 'project-reviewed-cursor-model')
+            self.assertEqual(frontmatter['model'], 'json-selected-cursor-model')
             self.assertIs(frontmatter['readonly'], False)
             self.assertIn(
                 'Apply @.agents/agents/change-set-verifier.md',
                 existing_wrapper.read_text(encoding='utf-8'),
             )
 
-    def test_sync_preserves_reviewed_github_model_and_enables_model_invocation(self):
+    def test_sync_uses_explicit_github_model_instead_of_target_wrapper(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
@@ -695,14 +922,27 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config['rules'] = []
             public_config['skills'] = []
             public_config['project_skill_generators'] = []
+            public_config['platforms']['agent_wrappers'] = [
+                wrapper
+                for wrapper in public_config['platforms']['agent_wrappers']
+                if wrapper['template'] == 'agent_wrapper.github.agent.md'
+            ]
             local_config = sync.discover_local_assets(target, public_config)
+            local_config['github_agent_runtime_overrides'] = {
+                'change-set-verifier': {'model': 'json-selected-github-model'}
+            }
             context = sync.SyncContext(target, source, skill_root, False, [])
 
-            sync.sync_public_assets(context, public_config, local_config)
+            sync.sync_public_assets(
+                context,
+                public_config,
+                local_config,
+                require_agent_runtime=True,
+            )
 
             frontmatter = sync._read_frontmatter(existing_wrapper)
             self.assertEqual(frontmatter['name'], 'change-set-verifier')
-            self.assertEqual(frontmatter['model'], 'project-reviewed-github-model')
+            self.assertEqual(frontmatter['model'], 'json-selected-github-model')
             self.assertIs(frontmatter['disable-model-invocation'], False)
             self.assertIn(
                 'Apply @.agents/agents/change-set-verifier.md',
@@ -748,6 +988,22 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config['skills'] = []
             public_config['project_skill_generators'] = []
             local_config = sync.discover_local_assets(target, public_config)
+            local_config.update(
+                {
+                    'codex_agent_runtime_overrides': {
+                        'change-set-verifier': {
+                            'model': 'json-codex-model',
+                            'model_reasoning_effort': 'high',
+                        }
+                    },
+                    'cursor_agent_runtime_overrides': {
+                        'change-set-verifier': {'model': 'json-cursor-model'}
+                    },
+                    'github_agent_runtime_overrides': {
+                        'change-set-verifier': {'model': 'json-github-model'}
+                    },
+                }
+            )
             context = sync.SyncContext(target, source, skill_root, False, [])
 
             sync.sync_public_assets(
@@ -758,15 +1014,15 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             )
 
             codex = tomllib.loads(codex_wrapper.read_text(encoding='utf-8'))
-            self.assertEqual(codex['model'], 'project-codex-model')
+            self.assertEqual(codex['model'], 'json-codex-model')
             self.assertEqual(codex['model_reasoning_effort'], 'high')
             self.assertEqual(
                 sync._read_frontmatter(cursor_wrapper)['model'],
-                'project-cursor-model',
+                'json-cursor-model',
             )
             self.assertEqual(
                 sync._read_frontmatter(github_wrapper)['model'],
-                'project-github-model',
+                'json-github-model',
             )
             self.assertIs(
                 sync._read_frontmatter(github_wrapper)['disable-model-invocation'],
@@ -807,16 +1063,15 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             self.assertIs(codex_config['features']['multi_agent'], True)
             self.assertFalse((target / '.cursor' / 'mcp.json').exists())
 
-    def test_setup_skill_delegates_root_configuration_to_sync_script(self):
+    def test_setup_skill_delegates_deterministic_configuration_to_sync_script(self):
         content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
         normalized = ' '.join(content.split())
 
         self.assertIn(
-            'Let the synchronization command manage deterministic root configuration and entry files',
+            'Let the synchronization script maintain deterministic configuration.',
             normalized,
         )
-        self.assertIn('Review its reported changes', normalized)
-        self.assertIn('instead of reconstructing or editing managed values manually', normalized)
+        self.assertIn('sync_public_agent_assets.py', normalized)
         for detail in (
             '.codex/config.toml',
             'features.multi_agent',
@@ -845,15 +1100,109 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         ).read_text(encoding='utf-8')
 
         self.assertIn(
-            'Generate project-owned configuration from current target evidence. Previous content '
-            'may be used as reference during generation, but it is not a source of truth.',
+            'Use current repository evidence; previous content may be used as a reference during '
+            'generation, but it is not a source of truth.',
             ' '.join(english.split()),
         )
         self.assertIn(
-            '根据目标仓库的当前证据生成项目自有配置。生成过程中可以参考旧内容，'
-            '但旧内容不是事实源。',
+            '旧内容可在生成过程中作为参考，但不是事实源。',
             ' '.join(chinese.split()),
         )
+
+    def test_setup_skill_configures_every_catalog_declared_platform(self):
+        english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+        chinese = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        normalized_english = ' '.join(english.split())
+        normalized_chinese = ' '.join(chinese.split())
+
+        self.assertIn('synchronizes every catalog-declared platform', normalized_english)
+        self.assertIn('同步公共目录声明的 所有平台', normalized_chinese)
+        for forbidden in (
+            'installed or explicitly targeted',
+            'installed or targeted',
+            'Discover installed',
+            'or is named in an explicit unresolved blocker',
+        ):
+            self.assertNotIn(forbidden, normalized_english)
+        for forbidden in (
+            '已安装或用户明确要求支持',
+            '已安装或指定',
+            '发现已安装',
+            '或已列入明确的未解决阻塞项',
+        ):
+            self.assertNotIn(forbidden, normalized_chinese)
+
+    def test_setup_skill_uses_two_stage_model_json(self):
+        english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+        chinese = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        normalized_english = ' '.join(english.split())
+        normalized_chinese = ' '.join(chinese.split())
+
+        for required in (
+            '--model-request',
+            '`required_intelligence`',
+            '`model` for Codex, Cursor, and GitHub',
+            '`model_reasoning_effort` for Codex',
+            '--model-config',
+            'Existing wrappers are not a value source',
+        ):
+            self.assertIn(required, normalized_english)
+        for required in (
+            '--model-request',
+            '`required_intelligence`',
+            '为 Codex、Cursor 和 GitHub 选择 `model`',
+            '为 Codex 选择 `model_reasoning_effort`',
+            '--model-config',
+            '现有 Wrapper 不是取值来源',
+        ):
+            self.assertIn(required, normalized_chinese)
+
+    def test_setup_skill_keeps_model_json_in_system_temp_directory(self):
+        skill_paths = (
+            REPO_SKILL_ROOT / 'SKILL.md',
+            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md',
+        )
+
+        for skill_path in skill_paths:
+            with self.subTest(skill_path=skill_path):
+                content = skill_path.read_text(encoding='utf-8')
+                self.assertIn('tempfile.gettempdir()', content)
+                self.assertNotIn('.agents/setup-project-agent-models.json', content)
+
+    def test_setup_skill_delegates_generation_and_validation_to_each_contract(self):
+        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+        normalized = ' '.join(content.split())
+
+        for generated_rule in (
+            '20-project-tools.md',
+            '21-project-rules.md',
+            '22-project-structure.md',
+        ):
+            self.assertIn(generated_rule, normalized)
+        for generated_skill in (
+            'worktree-environment-setup',
+            'change-set-verification',
+        ):
+            self.assertIn(generated_skill, normalized)
+        self.assertIn('Each contract owns its generation and validation.', normalized)
+        self.assertIn('https://github.com/wenyue/agents/blob/master/agents/rules/', normalized)
+        self.assertIn('https://github.com/wenyue/agents/blob/master/agents/skills/', normalized)
+        self.assertNotIn('references/generation-contracts', normalized)
+
+    def test_setup_skill_generates_assets_before_applying_model_config(self):
+        english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+        chinese = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+
+        self.assertLess(english.index('Open and execute'), english.index('--model-config'))
+        self.assertLess(chinese.index('依次打开并执行'), chinese.index('--model-config'))
+        self.assertNotIn('Reapply `$MODEL_CONFIG`', english)
+        self.assertNotIn('再次应用 `$MODEL_CONFIG`', chinese)
 
     def test_setup_skill_excludes_public_source_maintenance(self):
         english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
@@ -1516,8 +1865,88 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             self.assertFalse(
                 (target / '.agents' / 'skills' / 'change-set-verification').exists()
             )
+
             self.assertIn(
                 sync.Change('deleted', '.agents/skills/project-verification/SKILL.md'),
+                changes,
+            )
+
+    def test_sync_does_not_copy_project_generation_contracts_into_target(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'agents'
+            target = root / 'target'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
+            source_rule = source / 'agents' / 'rules' / '20-project-tools.md'
+            source_skill = source / 'agents' / 'skills' / 'change-set-verification'
+            source_setup_skill = source / 'agents' / 'skills' / 'setup-project-agents'
+            source_rule.parent.mkdir(parents=True)
+            source_skill.mkdir(parents=True)
+            source_setup_skill.mkdir(parents=True)
+            skill_root.mkdir(parents=True)
+            source_rule.write_text('project rule contract\n', encoding='utf-8')
+            (source_skill / 'SKILL.md').write_text(
+                'project skill contract\n',
+                encoding='utf-8',
+            )
+            (source_setup_skill / 'SKILL.md').write_text(
+                'setup contract\n',
+                encoding='utf-8',
+            )
+            public_config = {
+                'mirror_delete': True,
+                'rules': [],
+                'skills': [{'name': 'setup-project-agents'}],
+                'project_rule_generators': [{'file': '20-project-tools.md'}],
+                'project_skill_generators': [{'name': 'change-set-verification'}],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, False, [])
+
+            sync.sync_public_assets(
+                context,
+                public_config,
+                {'rules': [], 'agent_prompts': []},
+            )
+
+            contracts = skill_root / 'references' / 'generation-contracts'
+            self.assertFalse(contracts.exists())
+            self.assertFalse(
+                (target / '.agents' / 'skills' / 'change-set-verification').exists()
+            )
+
+    def test_check_reports_missing_project_generation_outputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            source = root / 'source'
+            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
+            target.mkdir()
+            skill_root.mkdir(parents=True)
+            public_config = {
+                'rules': [],
+                'skills': [],
+                'project_rule_generators': [{'file': '20-project-tools.md'}],
+                'project_skill_generators': [{'name': 'change-set-verification'}],
+                'agent_prompts': [],
+            }
+            context = sync.SyncContext(target, source, skill_root, True, [])
+
+            changes = sync.sync_public_assets(
+                context,
+                public_config,
+                {'rules': [], 'agent_prompts': []},
+            )
+
+            self.assertIn(
+                sync.Change('missing', '.agents/rules/20-project-tools.md'),
+                changes,
+            )
+            self.assertIn(
+                sync.Change(
+                    'missing',
+                    '.agents/skills/change-set-verification/SKILL.md',
+                ),
                 changes,
             )
 
@@ -1536,6 +1965,44 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn('worktree-environment-setup', generator_names)
         self.assertIn('change-set-verification', generator_names)
 
+    def test_public_config_owns_project_rule_routing(self):
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+
+        self.assertIn('project_rule_generators', public_config)
+        self.assertEqual(
+            public_config['project_rule_generators'],
+            [
+                {
+                    'file': '20-project-tools.md',
+                    'read_when': 'Project tooling, MCP, runtime, or verification',
+                    'strength': 'Mandatory',
+                    'section': 'project',
+                    'cursor': {'alwaysApply': True},
+                    'github': {'applyTo': '**'},
+                },
+                {
+                    'file': '21-project-rules.md',
+                    'read_when': (
+                        'Project APIs, generated files, lint, or domain conventions'
+                    ),
+                    'strength': 'Default',
+                    'section': 'project',
+                    'cursor': {'alwaysApply': True},
+                    'github': {'applyTo': '**'},
+                },
+                {
+                    'file': '22-project-structure.md',
+                    'read_when': (
+                        'Making structure, module, or dependency-boundary decisions'
+                    ),
+                    'strength': 'Advisory',
+                    'section': 'project',
+                    'cursor': {'alwaysApply': True},
+                    'github': {'applyTo': '**'},
+                },
+            ],
+        )
+
     def test_public_config_exposes_only_change_set_verifier(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
 
@@ -1547,6 +2014,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     'description': (
                         'Normalizes and verifies a coherent completed change set, then returns '
                         'semantic diagnostics to the parent agent.'
+                    ),
+                    'required_intelligence': (
+                        'High: reason across the complete change set, repository contracts, and '
+                        'verification results without making semantic fixes.'
                     ),
                     'codex': {
                         'sandbox_mode': 'workspace-write',
@@ -1646,6 +2117,17 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                         'agents': ['same-agent'],
                     },
                     'agent_prompts': [{'name': 'same-agent'}],
+                }
+            )
+        with self.assertRaisesRegex(sync.SyncError, 'active and retired'):
+            sync._retired_assets(
+                {
+                    'retired_assets': {
+                        'rules': ['20-project-tools.md'],
+                        'skills': [],
+                        'agents': [],
+                    },
+                    'project_rule_generators': [{'file': '20-project-tools.md'}],
                 }
             )
 
@@ -1807,6 +2289,59 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
 
         self.assertIn({'name': 'write-rule'}, public_config['skills'])
+
+    def test_write_authoring_skills_reference_rules_and_skills_by_name(self):
+        expected_source = (
+            'Refer to another rule or skill by the canonical name declared or recognized by the '
+            'target system, never by its filesystem path.'
+        )
+        expected_mirror = (
+            '引用其他 Rule 或 Skill 时，使用目标系统声明或识别的规范名称，绝不使用其文件系统路径。'
+        )
+
+        for skill_name in ('write-rule', 'write-skill'):
+            with self.subTest(skill=skill_name):
+                source = (
+                    REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md'
+                ).read_text(encoding='utf-8')
+                mirror = (
+                    REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md'
+                ).read_text(encoding='utf-8')
+
+                self.assertEqual(' '.join(source.split()).count(expected_source), 1)
+                self.assertEqual(' '.join(mirror.split()).count(expected_mirror), 1)
+
+    def test_write_rule_skill_allows_project_local_boundaries_when_needed(self):
+        source = (
+            REPO_ROOT / 'agents' / 'skills' / 'write-rule' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        mirror = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'write-rule' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        project_local_source_shapes = [
+            line
+            for line in source.splitlines()
+            if line.startswith(('| Project-local rule |', '| Project-local direct rule |'))
+        ]
+        project_local_mirror_shapes = [
+            line
+            for line in mirror.splitlines()
+            if line.startswith(('| 项目本地规则 |', '| 项目本地直接规则 |'))
+        ]
+        self.assertEqual(len(project_local_source_shapes), 2)
+        self.assertEqual(len(project_local_mirror_shapes), 2)
+        self.assertIn(
+            'Boundaries or Exceptions when needed',
+            project_local_source_shapes[1],
+        )
+        self.assertIn(
+            '必要时增加 Boundaries 或 Exceptions',
+            project_local_mirror_shapes[1],
+        )
+        self.assertNotIn('mutually independent', source)
+        self.assertNotIn('no `Boundaries` section', source)
+        self.assertNotIn('相互独立', mirror)
+        self.assertNotIn('不设 `Boundaries`', mirror)
 
     def test_public_config_uses_archive_without_local_source_or_cache(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
@@ -1994,7 +2529,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 {
                     'name': 'dart-verify',
                     'description': 'Dart and Flutter verification specialist.',
-                    'model': 'sonnet',
                 }
             ],
         )
@@ -2011,7 +2545,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertEqual(
             result['agent_prompts'],
-            [{'name': 'project-agent', 'description': 'Project-local agent: project-agent', 'model': 'sonnet'}],
+            [{'name': 'project-agent', 'description': 'Project-local agent: project-agent'}],
         )
 
     def test_empty_cursor_globs_are_normalized_before_wrapper_rendering(self):
@@ -2072,6 +2606,21 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         )
 
         self.assertEqual(result, 'Apply @.agents/rules/10-base-code.md\n')
+
+    def test_rule_data_builds_cursor_description_from_static_routing(self):
+        result = sync._rule_data(
+            {
+                'file': '20-project-tools.md',
+                'read_when': 'Project tooling, MCP, runtime, or verification',
+                'strength': 'Mandatory',
+                'cursor': {'alwaysApply': True},
+            }
+        )
+
+        self.assertEqual(
+            result['rule']['cursor_description'],
+            '[mandatory] Project tooling, MCP, runtime, or verification',
+        )
 
     def test_render_template_rejects_missing_variable(self):
         with self.assertRaises(sync.SyncError) as error:
@@ -2159,14 +2708,223 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     return_value=public_config,
                 ), mock.patch.object(
                     sync,
+                    'load_model_config',
+                    return_value={
+                        'codex_agent_runtime_overrides': {},
+                        'cursor_agent_runtime_overrides': {},
+                        'github_agent_runtime_overrides': {},
+                    },
+                ), mock.patch.object(
+                    sync,
                     'resolve_source',
                     return_value=source,
                 ), contextlib.redirect_stdout(stdout):
-                    exit_code = sync.main(['--check'])
+                    exit_code = sync.main(
+                        ['--check', '--model-config', str(root / 'models.json')]
+                    )
             finally:
                 os.chdir(previous_cwd)
 
         self.assertEqual(exit_code, 1)
+
+    def test_main_first_stage_writes_model_request_after_deterministic_sync(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            request_path = root / 'models.json'
+            public_config = {
+                'rules': [],
+                'skills': [],
+                'agent_prompts': [
+                    {
+                        'name': 'reviewer',
+                        'required_intelligence': 'High reasoning depth.',
+                    }
+                ],
+            }
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(target)
+                with mock.patch.object(
+                    sync,
+                    'load_json',
+                    return_value=public_config,
+                ), mock.patch.object(
+                    sync,
+                    'resolve_source',
+                    return_value=root / 'source',
+                ), mock.patch.object(
+                    sync,
+                    'sync_public_assets',
+                    return_value=[],
+                ) as sync_assets:
+                    exit_code = sync.main(['--model-request', str(request_path)])
+            finally:
+                os.chdir(previous_cwd)
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(request_path.is_file())
+            self.assertEqual(
+                json.loads(request_path.read_text(encoding='utf-8')),
+                sync.build_model_request(public_config),
+            )
+            supplied_local_config = sync_assets.call_args.args[2]
+            self.assertEqual(supplied_local_config['codex_agent_runtime_overrides'], {})
+            self.assertEqual(supplied_local_config['cursor_agent_runtime_overrides'], {})
+            self.assertEqual(supplied_local_config['github_agent_runtime_overrides'], {})
+
+    def test_main_check_requires_completed_model_config(self):
+        stderr = io.StringIO()
+        with mock.patch.object(
+            sync,
+            'load_json',
+            return_value={'rules': [], 'skills': [], 'agent_prompts': []},
+        ), mock.patch.object(
+            sync,
+            'resolve_source',
+            return_value=Path('/tmp/source'),
+        ), mock.patch.object(
+            sync,
+            'sync_public_assets',
+            return_value=[],
+        ), contextlib.redirect_stderr(stderr):
+            exit_code = sync.main(['--check'])
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn('--check requires --model-config', stderr.getvalue())
+
+    def test_main_requires_an_explicit_model_json_stage(self):
+        stderr = io.StringIO()
+        with mock.patch.object(
+            sync,
+            'load_json',
+            return_value={'rules': [], 'skills': [], 'agent_prompts': []},
+        ), mock.patch.object(
+            sync,
+            'resolve_source',
+            return_value=Path('/tmp/source'),
+        ), mock.patch.object(
+            sync,
+            'sync_public_assets',
+            return_value=[],
+        ), contextlib.redirect_stderr(stderr):
+            exit_code = sync.main([])
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn('requires --model-request or --model-config', stderr.getvalue())
+
+    def test_main_second_stage_supplies_model_config_to_strict_sync(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            public_config = {
+                'rules': [],
+                'skills': [],
+                'agent_prompts': [
+                    {
+                        'name': 'reviewer',
+                        'required_intelligence': 'High reasoning depth.',
+                    }
+                ],
+            }
+            model_config = sync.build_model_request(public_config)
+            model_config['agents']['reviewer']['codex'].update(
+                model='codex-model',
+                model_reasoning_effort='high',
+            )
+            model_config['agents']['reviewer']['cursor']['model'] = 'cursor-model'
+            model_config['agents']['reviewer']['github']['model'] = 'github-model'
+            model_path = root / 'models.json'
+            model_path.write_text(json.dumps(model_config), encoding='utf-8')
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(target)
+                with mock.patch.object(
+                    sync,
+                    'load_json',
+                    side_effect=lambda path: (
+                        model_config if Path(path) == model_path else public_config
+                    ),
+                ), mock.patch.object(
+                    sync,
+                    'resolve_source',
+                    return_value=root / 'source',
+                ), mock.patch.object(
+                    sync,
+                    'sync_public_assets',
+                    return_value=[],
+                ) as sync_assets:
+                    exit_code = sync.main(['--model-config', str(model_path)])
+            finally:
+                os.chdir(previous_cwd)
+
+        self.assertEqual(exit_code, 0)
+        supplied_local_config = sync_assets.call_args.args[2]
+        self.assertIn('reviewer', supplied_local_config['codex_agent_runtime_overrides'])
+        self.assertEqual(
+            supplied_local_config['codex_agent_runtime_overrides']['reviewer'],
+            {'model': 'codex-model', 'model_reasoning_effort': 'high'},
+        )
+        self.assertEqual(
+            supplied_local_config['cursor_agent_runtime_overrides']['reviewer'],
+            {'model': 'cursor-model'},
+        )
+        self.assertEqual(
+            supplied_local_config['github_agent_runtime_overrides']['reviewer'],
+            {'model': 'github-model'},
+        )
+        self.assertTrue(sync_assets.call_args.kwargs['require_agent_runtime'])
+
+    def test_main_model_protocol_includes_discovered_target_subagents(self):
+        public_config = {'rules': [], 'skills': [], 'agent_prompts': []}
+        local_config = {
+            'rules': [],
+            'agent_prompts': [
+                {
+                    'name': 'project-reviewer',
+                    'description': 'Reviews project-specific API compatibility.',
+                }
+            ],
+            'codex_agent_runtime_overrides': {},
+            'cursor_agent_runtime_overrides': {},
+            'github_agent_runtime_overrides': {},
+        }
+        model_config = sync.build_model_request(public_config, local_config)
+        agent = model_config['agents']['project-reviewer']
+        agent['codex'].update(model='codex-model', model_reasoning_effort='high')
+        agent['cursor']['model'] = 'cursor-model'
+        agent['github']['model'] = 'github-model'
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = Path(temp_dir) / 'models.json'
+            model_path.write_text(json.dumps(model_config), encoding='utf-8')
+            with mock.patch.object(
+                sync,
+                'load_json',
+                side_effect=lambda path: (
+                    model_config if Path(path) == model_path else public_config
+                ),
+            ), mock.patch.object(
+                sync,
+                'discover_local_assets',
+                return_value=local_config,
+            ), mock.patch.object(
+                sync,
+                'resolve_source',
+                return_value=Path(temp_dir) / 'source',
+            ), mock.patch.object(
+                sync,
+                'sync_public_assets',
+                return_value=[],
+            ) as sync_assets:
+                exit_code = sync.main(['--model-config', str(model_path)])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn(
+            'project-reviewer',
+            sync_assets.call_args.args[2]['codex_agent_runtime_overrides'],
+        )
 
     def test_main_check_returns_zero_for_unchanged_only_changes(self):
         stdout = io.StringIO()
@@ -2187,6 +2945,14 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             return_value=public_config,
         ), mock.patch.object(
             sync,
+            'load_model_config',
+            return_value={
+                'codex_agent_runtime_overrides': {},
+                'cursor_agent_runtime_overrides': {},
+                'github_agent_runtime_overrides': {},
+            },
+        ), mock.patch.object(
+            sync,
             'discover_local_assets',
             return_value=local_config,
         ), mock.patch.object(
@@ -2198,12 +2964,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             'cwd',
             return_value=Path('/tmp/target'),
         ), contextlib.redirect_stdout(stdout):
-            exit_code = sync.main(['--check'])
+            exit_code = sync.main(['--check', '--model-config', '/tmp/models.json'])
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(stdout.getvalue().strip(), 'unchanged .agents/rules/10-base-code.md')
 
-    def test_main_check_returns_one_for_drift_changes(self):
+    def test_main_check_returns_one_for_missing_generated_output(self):
         stdout = io.StringIO()
         public_config = {
             'mirror_delete': True,
@@ -2215,11 +2981,19 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         with mock.patch.object(
             sync,
             'sync_public_assets',
-            return_value=[sync.Change('created', '.agents/rules/10-base-code.md')],
+            return_value=[sync.Change('missing', '.agents/rules/20-project-tools.md')],
         ), mock.patch.object(
             sync,
             'load_json',
             return_value=public_config,
+        ), mock.patch.object(
+            sync,
+            'load_model_config',
+            return_value={
+                'codex_agent_runtime_overrides': {},
+                'cursor_agent_runtime_overrides': {},
+                'github_agent_runtime_overrides': {},
+            },
         ), mock.patch.object(
             sync,
             'discover_local_assets',
@@ -2233,10 +3007,13 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             'cwd',
             return_value=Path('/tmp/target'),
         ), contextlib.redirect_stdout(stdout):
-            exit_code = sync.main(['--check'])
+            exit_code = sync.main(['--check', '--model-config', '/tmp/models.json'])
 
         self.assertEqual(exit_code, 1)
-        self.assertEqual(stdout.getvalue().strip(), 'created .agents/rules/10-base-code.md')
+        self.assertEqual(
+            stdout.getvalue().strip(),
+            'missing .agents/rules/20-project-tools.md',
+        )
 
     def test_discover_local_assets_preserves_project_specific_rules_and_agents(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2278,7 +3055,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         )
         self.assertEqual(
             result['agent_prompts'],
-            [{'name': 'project-agent', 'description': 'Project reviewer', 'model': 'sonnet'}],
+            [{'name': 'project-agent', 'description': 'Project reviewer'}],
         )
 
     def test_discover_local_assets_preserves_existing_rule_metadata(self):
@@ -2344,6 +3121,33 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 }
             ],
         )
+
+    def test_discover_local_assets_uses_catalog_routing_for_generated_project_rule(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            rules_root = target / '.agents' / 'rules'
+            rules_root.mkdir(parents=True)
+            (rules_root / '20-project-tools.md').write_text(
+                'Strength: Default\n',
+                encoding='utf-8',
+            )
+            expected = {
+                'file': '20-project-tools.md',
+                'read_when': 'Project tooling, MCP, runtime, or verification',
+                'strength': 'Mandatory',
+                'section': 'project',
+                'cursor': {'alwaysApply': True},
+                'github': {'applyTo': '**'},
+            }
+            public_config = {
+                'rules': [],
+                'project_rule_generators': [expected],
+                'agent_prompts': [],
+            }
+
+            result = sync.discover_local_assets(target, public_config)
+
+        self.assertEqual(result['rules'], [expected])
 
 
 class TrackWorktreeTimeTest(unittest.TestCase):

@@ -1,97 +1,78 @@
 ---
 name: setup-project-agents
-description: 从 wenyue/agents 公共目录初始化或更新仓库 Agent 配置时使用；包括共享资产、项目自有规则和 Skill、Wrapper、运行时值以及平台原生配置。
+description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
 ---
 
 # 设置项目 Agent
 
-通过同一套幂等流程初始化或更新目标仓库的 Agent 配置。完成时，公共资产应保持最新，
-项目配置应有当前证据支持，本地所有权应得到保留，且托管范围内没有未解决的偏差。
+同步确定性的 Agent 配置，选择 Subagent 模型，并生成本流程声明的五个仓库特有资产。
 
-## 结果要求
+## 所有权
 
-- 每次运行都获取 `https://github.com/wenyue/agents/archive/refs/heads/master.zip`。不得把本地
-  检出、缓存或过时快照作为公共源。
-- 严格镜像公共目录列出的资产和已声明的退役项。
-- 保留公共、生成和退役集合之外的目标仓库自有资产。发生所有权冲突时，应停止并报告，
-  不得静默处理。
-- 根据目标仓库的当前证据生成项目自有配置。生成过程中可以参考旧内容，但旧内容不是事实源。
+- 脚本负责所有受支持平台的确定性配置。
+- LLM 负责模型选择，以及仓库特有 Rule 和 Skill 的生成。
 
-## 托管配置
+## 托管资产
 
-在同一个变更集中协调所有适用的配置：
+根据以下公共契约生成 Rule：
 
-- 公共规则、Skill、Agent 提示词、Wrapper、入口文件和已声明的退役项；
-- `.agents/rules/20-project-tools.md`；
-- `.agents/rules/21-project-rules.md`；
-- `.agents/rules/22-project-structure.md`；
-- 目标仓库存在真实准备步骤时的 `.agents/skills/worktree-environment-setup/`；
-- `.agents/skills/change-set-verification/`；
-- Agent 原生 Wrapper 中由目标仓库管理的运行时值；以及
-- 每个已安装或用户明确要求支持的 Agent 平台原生配置。
+- [`20-project-tools.md`](https://github.com/wenyue/agents/blob/master/agents/rules/20-project-tools.md)
+- [`21-project-rules.md`](https://github.com/wenyue/agents/blob/master/agents/rules/21-project-rules.md)
+- [`22-project-structure.md`](https://github.com/wenyue/agents/blob/master/agents/rules/22-project-structure.md)
 
-新生成或刷新的项目自有规则和 Skill 使用英语。生成完整文件和目录，遵守它们各自的
-生成契约，并将通过验收的候选版本作为目标仓库的运行时事实源。
+根据以下公共契约生成 Skill：
 
-## 执行流程
+- [`worktree-environment-setup`](https://github.com/wenyue/agents/blob/master/agents/skills/worktree-environment-setup/SKILL.md)
+- [`change-set-verification`](https://github.com/wenyue/agents/blob/master/agents/skills/change-set-verification/SKILL.md)
 
-1. 读取目标仓库的 `AGENTS.md`，以及所有适用的 `00-*` 至 `09-*` 规则。
-2. 运行：
+## 协调流程
 
-   ```bash
-   python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py
+1. 在目标仓库根目录解析系统临时目录中的模型配置路径，并在整个流程中保留该路径：
+
+   ```sh
+   MODEL_CONFIG="$(python -c 'import os, tempfile; print(os.path.join(tempfile.gettempdir(), "setup-project-agent-models.json"))')"
+   python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py \
+     --model-request "$MODEL_CONFIG"
    ```
 
-3. 审查脚本报告的每项创建、更新、删除、退役、Wrapper 变更、入口文件变更和根配置变更。
-   确认无关的本地资产未受影响。
-4. 发现已安装和用户明确要求支持的 Agent 平台。收集工具、运行时、服务、生成文件、API、
-   约定、模块、依赖、Wrapper 和平台配置的当前证据。
-5. 根据这些证据重新验证每项保留的项目声明和运行时值。
-6. 补齐每个已安装或指定平台所需的目标仓库自有运行时值。
-7. 使用同一份共享证据为所有托管的项目规则和 Skill 生成完整候选版本。使用一个 Subagent
-   执行生成任务；Subagent 不可用时，应报告阻塞。
-8. 审查每份完整候选版本，解决所有问题后才能替换目标文件。
-9. 应用通过审查的候选版本，然后再次运行同步命令，使 Wrapper、入口文件和确定性配置
-   向各自事实源收敛。
-10. 按依赖顺序验证实质变更：平台原生配置、项目规则、环境准备和变更集验证。
-11. 再次运行同步命令，最后执行：
+   脚本会获取 `https://github.com/wenyue/agents/archive/refs/heads/master.zip`，同步公共目录声明的
+   所有平台，并写出模型请求。
 
-    ```bash
-    python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py --check
-    ```
+2. 填写 `$MODEL_CONFIG` 中的全部模型字段。根据每个 Subagent 的 `required_intelligence`，为
+   Codex、Cursor 和 GitHub 选择 `model`，并为 Codex 选择 `model_reasoning_effort`。现有
+   Wrapper 不是取值来源。
 
-## 目标仓库决策
+3. 依次打开并执行“托管资产”中枚举的公共生成契约。Rule 输出到 `.agents/rules/<name>.md`，Skill
+   输出到 `.agents/skills/<name>/`。生成内容以目标仓库的当前证据为准；
+   旧内容可在生成过程中作为参考，但不是事实源。生成和验证方式由各契约定义。
 
-- 将项目特有的模型、推理强度、权限、服务和平台选择保存在目标仓库自有配置中。
-- 现有 Wrapper 中的值代表目标仓库以前的决定。只有当它们仍受支持，且仍适合 Wrapper 的职责时
-  才能保留。
-- 显式填写每个必填运行时值，并保留有证据支持的沙箱和权限限制。
-- 只有平台支持情况、角色职责、权限、实测质量、项目复杂度，或明确的成本、延迟、质量策略能够
-  提供依据时，才能修改运行时值。
-- 由同步命令管理确定性根配置和入口文件。审查命令报告的变更，不要重建或手工编辑托管值。
+4. 所有生成文件存在后，应用填写完成的模型配置：
+
+   ```sh
+   python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py \
+     --model-config "$MODEL_CONFIG"
+   ```
 
 ## 审查关卡
 
-应用候选版本前，确认：
-
-- 每项变更都属于托管配置，且保留了无关的目标仓库自有文件；
-- 每个已安装或指定平台都具有完整、受支持的 Wrapper 和运行时值；
-- 生成的规则具有正确的标题、强度、适用范围、编号、所有权和当前证据；
-- 生成的 Skill 满足各自的契约，并且只包含目标流程需要的资源；以及
-- Wrapper 保持精简，只引用一个事实源，并且可以从 `AGENTS.md` 中发现。
-
-不得验收占位内容、没有证据支持的声明、过时路径、未解决的所有权、缺失的引用、无效配置或不完整的
-必填运行时字段。
+只验收满足自身公共契约的生成资产，并保留无关的目标仓库自有文件。
 
 ## 验收关卡
 
-- 确认最终同步检查没有报告托管偏差。
-- 使用确定性本地检查验证发生变化的平台原生配置，包括语法、必填字段、引用、权限和平台适用性。
-- 按各自契约和目标仓库支持的检查，验证每个发生变化的项目规则和 Skill。
-- 设置或验收期间不得调用真实模型。模型可用性、响应质量、延迟和成本不属于本流程的验收边界。
-- 只要必需检查失败、没有结果或留下未解决问题，受影响的资产或平台就不能通过验收。
+所有枚举的 Rule 和 Skill 均应完整，所有必填模型字段均应得到解决。
 
-## 结果
+## 验证
 
-报告已创建、已更新、已删除和未变化的托管文件。概括公共同步、项目自有配置、Agent 运行时、平台配置、
-候选版本审查、验收、剩余阻塞项，以及任何未产生明确结果的检查。
+使用同一份临时模型配置执行最终检查。脚本检查所有枚举的输出是否存在，以及确定性配置是否存在
+偏差；内容验证由各生成契约负责。
+
+```sh
+python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py \
+  --check --model-config "$MODEL_CONFIG"
+```
+
+脚本或生成契约失败时停止。不得调用真实模型进行验证。
+
+## 输出
+
+报告发生变化的托管文件，以及尚未解决的模型或生成契约阻塞项。
