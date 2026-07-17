@@ -1505,20 +1505,28 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     target_root = Path.cwd()
-    skill_root = Path(__file__).resolve().parents[1]
+    installed_skill_root = Path(__file__).resolve().parents[1]
     try:
-        public_config = load_json(skill_root / 'references' / 'public_assets.json')
+        installed_config = load_json(
+            installed_skill_root / 'references' / 'public_assets.json'
+        )
+        source_root = resolve_source(installed_config)
+        source_skill_root = (
+            source_root / _PUBLIC_SOURCE_DIRECTORY / 'skills' / 'setup-project-agents'
+        )
+        public_config = load_json(
+            source_skill_root / 'references' / 'public_assets.json'
+        )
         local_config = discover_local_assets(target_root, public_config)
         if args.model_config:
             local_config = {
                 **local_config,
                 **load_model_config(Path(args.model_config), public_config, local_config),
             }
-        source_root = resolve_source(public_config)
         context = SyncContext(
             target_root=target_root,
             source_root=source_root,
-            skill_root=skill_root,
+            skill_root=source_skill_root,
             check=args.check,
             changes=[],
         )

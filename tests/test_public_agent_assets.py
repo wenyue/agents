@@ -3831,6 +3831,69 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             self.assertEqual(supplied_local_config['cursor_agent_runtime_overrides'], {})
             self.assertEqual(supplied_local_config['github_agent_runtime_overrides'], {})
 
+    def test_main_uses_downloaded_manifest_instead_of_installed_manifest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'source'
+            target = root / 'target'
+            source_rule = source / 'agents' / 'rules' / 'new-rule.md'
+            source_skill = source / 'agents' / 'skills' / 'setup-project-agents'
+            source_rule.parent.mkdir(parents=True)
+            source_skill.mkdir(parents=True)
+            target.mkdir()
+            source_rule.write_text('new rule\n', encoding='utf-8')
+            request_path = root / 'models.json'
+            installed_config = {
+                'source_repo': 'https://example.invalid/agents',
+                'rules': [{'file': 'removed-rule.md'}],
+                'skills': [],
+                'agent_prompts': [],
+            }
+            downloaded_config = {
+                'rules': [{'file': 'new-rule.md'}],
+                'skills': [],
+                'agent_prompts': [],
+            }
+            installed_manifest = REPO_REFERENCES / 'public_assets.json'
+            downloaded_manifest = source_skill / 'references' / 'public_assets.json'
+
+            def load_manifest(path):
+                if Path(path) == installed_manifest:
+                    return installed_config
+                if Path(path) == downloaded_manifest:
+                    return downloaded_config
+                self.fail(f'Unexpected manifest path: {path}')
+
+            previous_cwd = Path.cwd()
+            stdout = io.StringIO()
+            try:
+                os.chdir(target)
+                with mock.patch.object(
+                    sync,
+                    'load_json',
+                    side_effect=load_manifest,
+                ), mock.patch.object(
+                    sync,
+                    'resolve_source',
+                    return_value=source,
+                ), contextlib.redirect_stdout(stdout):
+                    exit_code = sync.main(['--model-request', str(request_path)])
+            finally:
+                os.chdir(previous_cwd)
+
+            self.assertEqual(exit_code, 0, stdout.getvalue())
+            self.assertEqual(
+                (target / '.agents' / 'rules' / 'new-rule.md').read_text(
+                    encoding='utf-8'
+                ),
+                'new rule\n',
+            )
+            self.assertFalse((target / '.agents' / 'rules' / 'removed-rule.md').exists())
+            self.assertEqual(
+                json.loads(request_path.read_text(encoding='utf-8')),
+                sync.build_model_request(downloaded_config),
+            )
+
     def test_main_check_requires_completed_model_config(self):
         stderr = io.StringIO()
         with mock.patch.object(
