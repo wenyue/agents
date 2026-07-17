@@ -2018,7 +2018,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     'required_intelligence': (
                         'Medium: follow the explicit verification contract, run the required '
                         'checks, preserve unrelated work, and return diagnostics without making '
-                        'semantic fixes.'
+                        "semantic fixes. Select each platform's current balanced general-purpose "
+                        'model tier—the tier between the flagship/deepest model and the fastest/'
+                        'lightweight model—and use medium reasoning effort where supported. '
+                        'Prefer capability, latency, and cost balance; escalate to a flagship '
+                        'model only when repository evidence shows that the verification task '
+                        'requires deeper judgment.'
                     ),
                     'codex': {
                         'sandbox_mode': 'workspace-write',
