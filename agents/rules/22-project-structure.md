@@ -26,13 +26,13 @@ dependencies, not a directory-by-directory inventory.
 - Record allowed and forbidden dependency directions and the boundaries they protect.
 - Record ownership across UI, backend, domain, data, infrastructure, tests, assets, generated
   sources, configuration, scripts, and documentation when those areas exist.
-- Record real enforcement mechanisms, but keep their exact invocation in `20-project-tools.md`.
+- Record real enforcement mechanisms, but keep their exact invocation in `Project Tools`.
 
 ## Boundaries
 
-- Keep tool, runtime, build, test, and verification commands in `20-project-tools.md`.
+- Keep tool, runtime, build, test, and verification commands in `Project Tools`.
 - Keep API contracts, payloads, domain vocabulary, generated-file edit policy, and lint
-  interpretation in `21-project-rules.md`.
+  interpretation in `Project Rules`.
 - Exclude generic architecture advice, speculative future layout, and directories whose names are
   self-explanatory and impose no placement or dependency constraint.
 - Do not duplicate an ownership statement across multiple sections or rules.

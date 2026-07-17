@@ -31,8 +31,8 @@ review agents must preserve; omit conventions that are only common practice or p
 ## Boundaries
 
 - Keep tool invocations, generation commands, runtimes, and verification capabilities in
-  `20-project-tools.md`.
-- Keep directory ownership, module layout, and dependency direction in `22-project-structure.md`.
+  `Project Tools`.
+- Keep directory ownership, module layout, and dependency direction in `Project Structure`.
 - Exclude generic language style already covered by base rules and unsupported architectural advice.
-- Do not duplicate generated-file facts across `20-project-tools.md` and this rule. This rule owns
+- Do not duplicate generated-file facts across `Project Tools` and this rule. This rule owns
   semantic ownership and edit boundaries; the tooling rule owns generator invocation.

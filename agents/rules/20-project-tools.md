@@ -33,17 +33,17 @@ needs to invoke, scope, or preserve project tooling correctly.
   configurations. Leave platform-native schemas, file locations, and wrapper generation behavior
   to their owning configuration or synchronization manifest.
 - Record generation entry points and their inputs and outputs. Keep semantic ownership and the ban on
-  hand-editing generated files in `21-project-rules.md`.
+  hand-editing generated files in `Project Rules`.
 - Record repository-owned selectors that generated project skills can invoke without duplicating
   their implementation.
 
 ## Boundaries
 
-- Keep environment preparation order in `.agents/skills/worktree-environment-setup/` and completed
-  change verification in `.agents/skills/change-set-verification/`.
+- Keep environment preparation order in `worktree-environment-setup` and completed change
+  verification in `change-set-verification`.
 - Exclude verification trigger timing, check ordering, deduplication, risk-based broadening,
   baseline comparison, and result policy; the generated verification skill owns those decisions.
-- Keep API and domain conventions in `21-project-rules.md`, and module and dependency ownership in
-  `22-project-structure.md`.
+- Keep API and domain conventions in `Project Rules`, and module and dependency ownership in
+  `Project Structure`.
 - Do not turn a command inventory into an instruction to run every command.
 - Do not infer tools, commands, supported scopes, or costs that current evidence does not prove.

@@ -10,9 +10,9 @@ the project environment is ready for implementation.
 
 ## Evidence
 
-Read `.agents/rules/20-project-tools.md`, manifests, lock files, setup scripts, CI workflows,
-generated-file ownership, required local services, and readiness checks. Identify the minimum
-repeatable preparation required on Windows and non-Windows hosts.
+Read the target repository's `Project Tools` rule, manifests, lock files, setup scripts, CI
+workflows, generated-file ownership, required local services, and readiness checks. Identify the
+minimum repeatable preparation required on Windows and non-Windows hosts.
 
 ## Authoring Workflow
 

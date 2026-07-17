@@ -27,16 +27,15 @@
 - 同一个项目自有 MCP 服务器的名称和用途应在支持的平台配置中保持一致。平台原生 schema、
   文件位置和包装文件生成方式应交给对应的归属配置或同步清单。
 - 记录生成入口点及其输入和输出。生成文件的语义归属和禁止手工编辑规则应放在
-  `21-project-rules.md` 中。
+  `Project Rules` 中。
 - 记录由仓库拥有、可供生成的项目 Skill 调用而无需重复其实现的选择器。
 
 ## 边界
 
-- 环境准备顺序应放在 `.agents/skills/worktree-environment-setup/` 中，完成变更后的验证应放在
-  `.agents/skills/change-set-verification/` 中。
+- 环境准备顺序应交给 `worktree-environment-setup`，完成变更后的验证应交给
+  `change-set-verification`。
 - 不要包含验证触发时机、检查顺序、去重、基于风险的范围扩展、基线比较和结果策略；这些决策
   由生成的验证 Skill 负责。
-- API 和领域约定应放在 `21-project-rules.md` 中；模块和依赖归属应放在
-  `22-project-structure.md` 中。
+- API 和领域约定应放在 `Project Rules` 中；模块和依赖归属应放在 `Project Structure` 中。
 - 不要把命令清单变成要求运行每条命令的指令。
 - 不要臆测当前证据无法证明的工具、命令、支持范围或成本。

@@ -55,7 +55,7 @@ boundaries.
 
 ## Boundaries
 
-- Keep runtime versions and executable commands in `20-project-tools.md`.
-- Keep public ownership, mirror maintenance, and installation policy in `21-project-rules.md`.
+- Keep runtime versions and executable commands in `Project Tools`.
+- Keep public ownership, mirror maintenance, and installation policy in `Project Rules`.
 - Do not infer application modules, package dependencies, or service layers from the catalog
   directory structure.

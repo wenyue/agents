@@ -2296,7 +2296,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             'target system, never by its filesystem path.'
         )
         expected_mirror = (
-            '引用其他 Rule 或 Skill 时，使用目标系统声明或识别的规范名称，绝不使用其文件系统路径。'
+            '提到其他 Rule 或 Skill 时，使用目标系统声明或认可的正式名称，'
+            '不要写它在文件系统里的路径。'
         )
 
         for skill_name in ('write-rule', 'write-skill'):
@@ -2310,6 +2311,90 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
                 self.assertEqual(' '.join(source.split()).count(expected_source), 1)
                 self.assertEqual(' '.join(mirror.split()).count(expected_mirror), 1)
+
+    def test_rule_and_skill_responsibility_references_use_canonical_names(self):
+        cases = {
+            REPO_ROOT / 'agents' / 'rules' / '20-project-tools.md': {
+                'expected': (
+                    '`Project Rules`',
+                    '`Project Structure`',
+                    '`worktree-environment-setup`',
+                    '`change-set-verification`',
+                ),
+                'forbidden': (
+                    '`21-project-rules.md`',
+                    '`22-project-structure.md`',
+                    '`.agents/skills/worktree-environment-setup/`',
+                    '`.agents/skills/change-set-verification/`',
+                ),
+            },
+            REPO_ROOT / 'agents' / 'rules' / '21-project-rules.md': {
+                'expected': ('`Project Tools`', '`Project Structure`'),
+                'forbidden': ('`20-project-tools.md`', '`22-project-structure.md`'),
+            },
+            REPO_ROOT / 'agents' / 'rules' / '22-project-structure.md': {
+                'expected': ('`Project Tools`', '`Project Rules`'),
+                'forbidden': ('`20-project-tools.md`', '`21-project-rules.md`'),
+            },
+            REPO_ROOT / 'agents' / 'skills' / 'worktree-environment-setup' / 'SKILL.md': {
+                'expected': ('`Project Tools`',),
+                'forbidden': ('`.agents/rules/20-project-tools.md`',),
+            },
+            REPO_ROOT / 'agents-zh' / 'rules' / '20-project-tools.md': {
+                'expected': (
+                    '`Project Rules`',
+                    '`Project Structure`',
+                    '`worktree-environment-setup`',
+                    '`change-set-verification`',
+                ),
+                'forbidden': (
+                    '`21-project-rules.md`',
+                    '`22-project-structure.md`',
+                    '`.agents/skills/worktree-environment-setup/`',
+                    '`.agents/skills/change-set-verification/`',
+                ),
+            },
+            REPO_ROOT / 'agents-zh' / 'rules' / '21-project-rules.md': {
+                'expected': ('`Project Tools`', '`Project Structure`'),
+                'forbidden': ('`20-project-tools.md`', '`22-project-structure.md`'),
+            },
+            REPO_ROOT / 'agents-zh' / 'rules' / '22-project-structure.md': {
+                'expected': ('`Project Tools`', '`Project Rules`'),
+                'forbidden': ('`20-project-tools.md`', '`21-project-rules.md`'),
+            },
+            REPO_ROOT / 'agents-zh' / 'skills' / 'worktree-environment-setup' / 'SKILL.md': {
+                'expected': ('`Project Tools`',),
+                'forbidden': ('`.agents/rules/20-project-tools.md`',),
+            },
+            REPO_ROOT / '.agents' / 'rules' / '20-project-tools.md': {
+                'expected': (
+                    '`Project Rules`',
+                    '`Project Structure`',
+                    '`change-set-verification`',
+                ),
+                'forbidden': (
+                    '`21-project-rules.md`',
+                    '`22-project-structure.md`',
+                    '`.agents/skills/change-set-verification/SKILL.md`',
+                ),
+            },
+            REPO_ROOT / '.agents' / 'rules' / '21-project-rules.md': {
+                'expected': ('`Project Tools`', '`Project Structure`'),
+                'forbidden': ('`20-project-tools.md`', '`22-project-structure.md`'),
+            },
+            REPO_ROOT / '.agents' / 'rules' / '22-project-structure.md': {
+                'expected': ('`Project Tools`', '`Project Rules`'),
+                'forbidden': ('`20-project-tools.md`', '`21-project-rules.md`'),
+            },
+        }
+
+        for path, contract in cases.items():
+            with self.subTest(path=path.relative_to(REPO_ROOT)):
+                content = path.read_text(encoding='utf-8')
+                for canonical_name in contract['expected']:
+                    self.assertIn(canonical_name, content)
+                for filesystem_reference in contract['forbidden']:
+                    self.assertNotIn(filesystem_reference, content)
 
     def test_write_rule_skill_allows_project_local_boundaries_when_needed(self):
         source = (

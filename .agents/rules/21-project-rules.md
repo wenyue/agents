@@ -20,8 +20,10 @@ repository-local runtime boundaries.
 
 ## Simplified-Chinese Mirror
 
-- Treat `agents-zh/` as a hand-maintained Simplified-Chinese reading mirror of human-readable
-  Markdown under `agents/`.
+- Treat `agents-zh/` as a hand-maintained Simplified-Chinese translation of human-readable Markdown
+  under `agents/`, for reading only.
+- Translate meaning, not sentence form: use natural, plain Chinese instead of word-for-word
+  translation, and rewrite sentences when needed without changing their technical meaning.
 - When English Markdown changes materially, update its corresponding Chinese mirror in the same
   coherent change.
 - Preserve relative paths, commands, identifiers, code blocks, classification, and behavioral
@@ -52,7 +54,7 @@ repository-local runtime boundaries.
 
 ## Boundaries
 
-- Keep commands, runtime requirements, and tool mutation behavior in `20-project-tools.md`.
-- Keep directory ownership and dependency direction in `22-project-structure.md`.
+- Keep commands, runtime requirements, and tool mutation behavior in `Project Tools`.
+- Keep directory ownership and dependency direction in `Project Structure`.
 - Do not introduce framework, API, persistence, lifecycle, lint, or generated-file conventions
   without repository evidence.

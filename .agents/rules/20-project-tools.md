@@ -40,9 +40,8 @@ Run both commands for a completed change set. Do not treat one as a substitute f
 
 ## Boundaries
 
-- Completed change verification belongs to
-  `.agents/skills/change-set-verification/SKILL.md`.
+- Completed change verification belongs to `change-set-verification`.
 - The repository has no setup procedure, so do not create or invoke a project-local
   `worktree-environment-setup` skill without new repository evidence.
-- Keep public-source ownership and mirror policy in `21-project-rules.md`.
-- Keep directory responsibilities and dependency direction in `22-project-structure.md`.
+- Keep public-source ownership and mirror policy in `Project Rules`.
+- Keep directory responsibilities and dependency direction in `Project Structure`.
