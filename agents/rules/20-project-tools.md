@@ -2,48 +2,60 @@
 
 Strength: `Mandatory`
 
-Scope: Generation contract for repository-wide tool facts, capabilities, and invocation constraints,
-runtime services, MCP integrations, and generated-asset tooling.
+Scope: Generation contract for the target repository's executable tooling, runtime services,
+verification surfaces, integrations, and tool-to-skill handoffs.
 
 ## Generation Contract
 
-Author the target rule from current repository evidence. Keep only stable facts that another agent
-needs to invoke, scope, or preserve project tooling correctly.
+Produce a complete target-owned `Project Tools` rule from current repository evidence. State only
+facts and constraints an agent needs to select, invoke, or preserve the repository's real tooling;
+do not turn the target rule into an inventory of everything installed on one machine.
 
 ## Evidence
 
-- Package manifests, lock files, toolchain pins, workspace configuration, and package-manager files.
-- Repository scripts, task runners, CI workflows, tool configuration, and command help output.
-- Runtime entry points, service configuration, ports, environment templates, and health checks.
-- Code-generation configuration, generated outputs, and repository-owned orchestration selectors.
-- MCP and native agent-platform configuration that affects project tooling.
+- Inspect package and workspace manifests, lock files, toolchain pins, repository scripts, task
+  runners, CI workflows, and tool configuration.
+- Confirm commands from their owning script, configuration, or current help output. Establish the
+  required working directory, prerequisites, supported scope, mutation behavior, outputs, and cost.
+- Inspect runtime entry points, service configuration, environment templates, credential boundaries,
+  ports, data locations, startup dependencies, and health or readiness checks.
+- Inspect generator configuration and repository-owned verification or setup selectors without
+  copying the policy owned by generated files or project skills.
+- Inspect project-owned MCP and native agent-platform configuration. Reconcile names and intent
+  across supported platforms while preserving each platform's native schema.
+- Treat absent, conflicting, or machine-local evidence as unresolved. Do not convert it into a
+  repository-wide fact.
 
 ## Content
 
-- Record runtime versions, package managers, workspace layout, and required working directories.
-- Record development, setup, build, generation, formatting, analysis, lint, test, and packaging
-  commands. For each command, include prerequisites, inputs, outputs, supported scope selection,
-  mutation behavior, safe-fix capability, and relative cost.
-- Record runtime services, ports, environment variables, data directories, credential requirements,
-  startup dependencies, and health checks.
-- Record project-owned MCP servers and native agent integrations when they affect project tooling.
-  Include their intent, prerequisites, startup dependencies, binaries, ports, and owning
-  configuration.
-- Reconcile the name and intent of the same project-owned MCP server across supported platform
-  configurations. Leave platform-native schemas, file locations, and wrapper generation behavior
-  to their owning configuration or synchronization manifest.
-- Record generation entry points and their inputs and outputs. Keep semantic ownership and the ban on
-  hand-editing generated files in `Project Rules`.
-- Record repository-owned selectors that generated project skills can invoke without duplicating
-  their implementation.
+- State the supported runtimes, package managers, workspace topology, toolchain pins, and working
+  directories that materially affect command execution.
+- Organize commands by outcome, such as setup, development, generation, formatting, repair,
+  analysis, lint, test, build, packaging, and publication. For every recorded command, make its
+  prerequisites, scope, mutation behavior, outputs, and material cost or side effects clear.
+- Distinguish non-mutating checks from formatters, fixers, generators, installers, publishers, and
+  other state-changing tools. Record safe scope selectors and dry-run modes only when verified.
+- Describe required runtime services and integrations with their purpose, owning configuration,
+  startup dependencies, ports or endpoints, environment and credential needs, and readiness check.
+- Describe project-owned MCP servers and native agent integrations only when they are part of the
+  repository's supported tool surface.
+- Record generator entry points, their source inputs, and their outputs. Leave semantic ownership
+  and hand-edit restrictions to `Project Rules`.
+- Record repository-owned setup and verification selectors that `worktree-environment-setup` or
+  `change-set-verification` can invoke. Leave workflow timing, ordering, broadening, and result
+  policy to those skills.
+- When the repository does not declare a tool or capability, say so only when that absence prevents
+  agents from inventing a consequential command or workflow.
 
 ## Boundaries
 
-- Keep environment preparation order in `worktree-environment-setup` and completed change
-  verification in `change-set-verification`.
-- Exclude verification trigger timing, check ordering, deduplication, risk-based broadening,
-  baseline comparison, and result policy; the generated verification skill owns those decisions.
-- Keep API and domain conventions in `Project Rules`, and module and dependency ownership in
-  `Project Structure`.
-- Do not turn a command inventory into an instruction to run every command.
-- Do not infer tools, commands, supported scopes, or costs that current evidence does not prove.
+- Keep environment-preparation procedure in `worktree-environment-setup` and completed-change
+  verification procedure in `change-set-verification`; this rule supplies verified capabilities
+  and invocation constraints to both.
+- Keep API contracts, domain behavior, generated-file edit policy, and lint interpretation in
+  `Project Rules`. Keep module placement and dependency direction in `Project Structure`.
+- Leave platform wrapper generation and distribution metadata to their owning configuration or
+  synchronization manifest.
+- Do not require every recorded command to run for every task, duplicate another owner's policy,
+  expose credentials, or infer commands, selectors, costs, services, or integrations that evidence
+  does not prove.

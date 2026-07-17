@@ -5,52 +5,90 @@ description: Use when creating or revising a target repository's environment set
 
 # Worktree Environment Setup
 
-Generate a target-owned skill that prepares an already-created linked Git worktree and stops when
-the project environment is ready for implementation.
+Author a complete target-owned skill that prepares an already-created linked Git worktree and stops
+when the repository is ready for implementation. This generation contract does not perform setup or
+own the worktree lifecycle.
 
 ## Evidence
 
-Read the target repository's `Project Tools` rule, manifests, lock files, setup scripts, CI
-workflows, generated-file ownership, required local services, and readiness checks. Identify the
-minimum repeatable preparation required on Windows and non-Windows hosts.
+Inspect the target repository's `Project Tools` rule, manifests, lock files, toolchain pins, setup
+and generation entry points, CI workflows, generated-source policy, required assets, environment
+variables, credentials, local services, and readiness checks. Establish:
+
+- how to identify the repository root, its common Git directory, and an already-created linked
+  worktree before any mutation;
+- the minimum preparation every new worktree requires, plus optional task-specific branches;
+- the narrowest repository-owned commands that install locked dependencies, initialize required
+  inputs, generate required outputs, or start required services;
+- the supported host platforms, script runtime already established by the project, rerun behavior,
+  failure behavior, and observable readiness result; and
+- responsibilities owned by worktree creation, machine provisioning, baseline verification,
+  implementation, synchronization, integration, or cleanup instead of environment setup.
+
+Do not invent a cross-platform promise, command, prerequisite, or readiness check that target
+evidence does not support.
 
 ## Authoring Workflow
 
-1. Establish how the generated skill detects a linked worktree and rejects the primary checkout
-   before mutation.
-2. Reuse the narrowest repository-owned setup entry points and add only preparation that current
-   evidence shows is missing.
-3. Generate `SKILL.md`, `scripts/setup.ps1`, and `scripts/setup.sh` together. Put executable command
-   sequences in the scripts; keep invocation, prerequisites, optional branches, and readiness in
-   `SKILL.md`.
-4. Make both scripts stop on command failure and safe to rerun after partial setup.
-5. Review the complete directory against the contract below.
+1. Define the generated skill's trigger, prerequisites, ready state, stop conditions, and excluded
+   lifecycle responsibilities from the evidence above.
+2. Reuse the narrowest repository-owned setup entry point. Add a skill-owned script only when the
+   target lacks a reliable owner for repeated deterministic orchestration.
+3. If a skill-owned script is required, choose either the target project's established language and
+   runtime or paired `scripts/setup.ps1` and `scripts/setup.sh` entry points. For paired entry points,
+   require the same supported outcome while allowing verified host differences.
+4. Keep deterministic command sequences in scripts and keep invocation, prerequisites, optional
+   branches, readiness, failure recovery, and result reporting in `SKILL.md`.
+5. Read the complete generated directory without relying on the old target skill or its diff, then
+   revise it until every instruction and resource has one clear owner and execution meaning.
 
 ## Generated Skill Contract
 
-- Require execution inside an already-created linked worktree. Refuse the primary checkout before
-  any dependency install, generation, service change, or other mutation.
-- Use `scripts/setup.ps1` on Windows and `scripts/setup.sh` on non-Windows hosts. Require the same
-  core environment result while allowing evidence-backed platform differences.
-- Resolve paths from the skill or repository root; never depend on the caller's current directory.
-- Keep expensive, optional, or task-specific preparation out of the default path unless every new
-  worktree requires it.
-- Verify readiness using real project configuration and required tool or service behavior, not only
-  version probes.
-- Stop at environment readiness. Exclude worktree creation or removal, baseline verification,
-  business changes, commits, integration, and agent synchronization.
-- Hand completed-change verification to `change-set-verification`.
-- Do not own verification trigger timing, scope selection, or result policy.
+- Discovery metadata must trigger only for preparing an already-created linked worktree in the
+  target repository. The body must state the environment result and the point at which setup ends.
+- Detect and reject the primary checkout before installing dependencies, generating files,
+  changing services, or performing any other setup mutation. Resolve paths from the discovered
+  repository or skill root, never from the caller's current directory.
+- Execute only evidence-backed, locked, and repository-owned preparation. Keep expensive, optional,
+  platform-specific, or task-specific branches out of the default path unless every new worktree
+  requires them.
+- Make every owned command sequence stop on failure and safe to rerun after partial completion.
+  Do not silently substitute an unverified command or degraded result.
+- Verify readiness through real project configuration, required outputs, and tool or service
+  behavior. Version probes alone are insufficient when functional readiness can be checked.
+- Include `## Failure Recovery`. Report the failed step, exact command or condition, exit status
+  when available, relevant output, and smallest corrective action. Review any candidate script
+  change before retrying it.
+- Report the linked worktree root, completed preparation, selected optional branches, verified ready
+  state, and any task-relevant preparation intentionally left to another owner.
+- Stop at environment readiness. Exclude worktree selection or creation, machine provisioning,
+  baseline or completed-change verification, business implementation, Git history, integration,
+  cleanup, and agent synchronization. Hand later completed-change verification to
+  `change-set-verification`.
 
-## Failure Recovery
+## Review Gate
 
-Require the generated `SKILL.md` to include its own `## Failure Recovery`. If either host script
-fails, stop immediately, report the exact command and error, analyze the cause, and propose a
-concrete script or environment change. Do not continue setup or retry a modified script before the
-candidate change is reviewed.
+Review the complete generated directory before execution. Confirm every command, prerequisite,
+mutation, platform claim, optional branch, readiness check, and boundary against target evidence.
+Review skill-owned scripts for deterministic ordering, path resolution, failure propagation,
+rerun safety, and consistency with `SKILL.md`. A stale or unsupported instruction fails review.
 
-## Review and Handoff
+## Acceptance Gate
 
-Confirm that the scripts are internally consistent, host-selective, rerunnable, and limited to
-environment preparation. Give `setup-project-agents` the complete generated directory and
-supporting evidence for candidate review and acceptance.
+After review passes, exercise the complete generated skill in a representative already-created
+linked worktree for the target repository. Invoke the actual candidate, prove that the primary
+checkout guard runs before mutation, complete the default preparation path, and verify the declared
+ready state. Exercise an optional branch only when the target contract declares it part of the
+accepted capability.
+
+Validate a project-matched script with the project's established runtime. For paired entry points,
+run only the current host's entry point and do not claim the other host was executed. Record exact
+commands, observed mutations, readiness evidence, stop-path evidence, and anything not run. Any
+unexpected mutation, unsupported prerequisite, or unverified ready state fails acceptance.
+
+## Handoff
+
+Only after both gates pass, give `setup-project-agents` the complete accepted directory, supporting
+repository evidence, review decision, acceptance evidence, and unresolved or not-run platform and
+optional branches. If either gate fails, stop and report the blocker instead of handing off the
+candidate as accepted.

@@ -2,37 +2,53 @@
 
 Strength: `Default`
 
-Scope: Generation contract for project APIs, domain conventions, generated-file ownership, lint
-interpretation, persistence, and lifecycle behavior.
+Scope: Generation contract for the target repository's project-specific behavioral contracts,
+domain conventions, generated-source policy, and lifecycle invariants.
 
 ## Generation Contract
 
-Author the target rule from stable behavioral evidence. Record constraints that implementation and
-review agents must preserve; omit conventions that are only common practice or personal taste.
+Produce a complete target-owned `Project Rules` rule from stable repository evidence. State the
+project-specific behavior implementation and review agents must preserve, including verified
+exceptions to broader rules; omit generic guidance and patterns that carry no enforceable meaning.
 
 ## Evidence
 
-- Public APIs, routes, schemas, event definitions, serialization code, and compatibility tests.
-- Framework configuration, established call sites, custom lints, and repository-specific analyzers.
-- Generated-file headers, source schemas, generator configuration, and ownership documentation.
-- Domain models, persistence and migration code, lifecycle owners, and concurrency boundaries.
-- Repeated naming, terminology, localization, and user-visible copy conventions.
+- Inspect public APIs, routes, schemas, events, serialization, compatibility tests, and real call
+  sites to identify behavior that consumers rely on.
+- Inspect framework configuration, project analyzers, custom lints, and focused tests before
+  treating a repeated pattern as a requirement or an exception to a base rule.
+- Trace generated outputs to their source schemas, generator configuration, headers, and
+  regeneration owner.
+- Inspect domain models, persistence and migration code, state and lifecycle owners, cancellation,
+  concurrency, and cleanup behavior.
+- Inspect naming, terminology, localization sources, and user-visible copy where consistent usage
+  or enforcement establishes a real project contract.
+- Resolve conflicts in favor of the narrowest authoritative source. Treat unsupported convention,
+  historical residue, and personal preference as omissions rather than policy.
 
 ## Content
 
-- Record public API, route, event, payload, and compatibility contracts.
-- Record project-specific framework use and interpretations of formatter, analyzer, and lint output.
-- Record semantic owners for generated files and external schemas, regeneration requirements, and
-  files that must not be edited by hand.
-- Record domain terms, naming constraints, prefixes, identifiers, and user-visible copy conventions.
-- Record persistence, migration, state ownership, lifecycle, cancellation, and concurrency rules.
-- Record exceptions to base rules only when current project evidence establishes a real override.
+- State public API, route, event, payload, serialization, and compatibility constraints at the
+  level needed to implement or review changes safely.
+- State project-specific framework behavior and explain how project analyzers, custom lints, or
+  formatter results affect implementation decisions.
+- Name the semantic source for generated outputs and external schemas, the regeneration obligation,
+  and the files or regions that must not be edited by hand.
+- State domain vocabulary, naming, identifiers, prefixes, localization, and user-visible copy rules
+  only when they constrain valid changes.
+- State persistence compatibility, migrations, state ownership, lifecycle transitions,
+  cancellation, concurrency, and cleanup invariants where the repository defines them.
+- Express each verified exception to a broader rule with its exact scope and condition. Do not
+  silently weaken the broader policy outside that exception.
+- Organize the final rule by owned behavior, not by the order in which evidence was discovered.
 
 ## Boundaries
 
-- Keep tool invocations, generation commands, runtimes, and verification capabilities in
-  `Project Tools`.
-- Keep directory ownership, module layout, and dependency direction in `Project Structure`.
-- Exclude generic language style already covered by base rules and unsupported architectural advice.
-- Do not duplicate generated-file facts across `Project Tools` and this rule. This rule owns
-  semantic ownership and edit boundaries; the tooling rule owns generator invocation.
+- Keep runtimes, tool installation, command invocation, generator commands, services, and
+  verification capabilities in `Project Tools`.
+- Keep directory responsibility, file placement, module layout, and dependency direction in
+  `Project Structure`.
+- For generated outputs, this rule owns semantic source and edit boundaries; `Project Tools` owns
+  how to invoke the generator.
+- Exclude generic language style already covered by base rules, speculative architecture,
+  undocumented preferences, and duplicated facts whose authoritative owner is elsewhere.

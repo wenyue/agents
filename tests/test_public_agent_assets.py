@@ -2290,6 +2290,691 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertIn({'name': 'write-rule'}, public_config['skills'])
 
+    def test_write_skill_organizes_subsections_by_responsibility(self):
+        english_sections = {
+            'Classify': (),
+            'Evidence': (
+                'Task and Failure Evidence',
+                'Owned-Surface Evidence',
+                'Portability and Generation Evidence',
+            ),
+            'Author': (),
+            'Skill Contract': (
+                'Core Document',
+                'Resources',
+                'Review, Acceptance, and Handoff',
+                'Scripted Workflows',
+            ),
+            'Validate': ('Content Review', 'Execution', 'Distribution'),
+            'Result': (),
+        }
+        mirror_sections = {
+            '分类': (),
+            '证据': ('任务和失败预期', '负责范围的证据', '跨环境与生成证据'),
+            '编写': (),
+            'Skill 契约': ('正文', '资源', '审查、验收与交接', '脚本入口'),
+            '验证': ('成品检查', '实际执行', '分发检查'),
+            '结果': (),
+        }
+
+        def section_body(content, heading):
+            lines = content.splitlines()
+            start = lines.index(f'## {heading}') + 1
+            end = next(
+                (index for index in range(start, len(lines)) if lines[index].startswith('## ')),
+                len(lines),
+            )
+            return '\n'.join(lines[start:end])
+
+        for path in (
+            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md',
+            REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md',
+        ):
+            content = path.read_text(encoding='utf-8')
+            for section, expected_subsections in english_sections.items():
+                with self.subTest(path=path.relative_to(REPO_ROOT), section=section):
+                    body = section_body(content, section)
+                    actual_subsections = tuple(
+                        line.removeprefix('### ')
+                        for line in body.splitlines()
+                        if line.startswith('### ')
+                    )
+                    self.assertEqual(expected_subsections, actual_subsections)
+            self.assertIn('| Condition | Class |', content)
+            for type_heading in (
+                'Project-Local Skills',
+                'Shared Skills',
+                'Shared Skill-Generation Contracts',
+            ):
+                self.assertNotIn(f'### {type_heading}', content)
+
+        mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / 'write-skill' / 'SKILL.md'
+        mirror = mirror_path.read_text(encoding='utf-8')
+        for section, expected_subsections in mirror_sections.items():
+            with self.subTest(path=mirror_path.relative_to(REPO_ROOT), section=section):
+                body = section_body(mirror, section)
+                actual_subsections = tuple(
+                    line.removeprefix('### ')
+                    for line in body.splitlines()
+                    if line.startswith('### ')
+                )
+                self.assertEqual(expected_subsections, actual_subsections)
+        self.assertIn('| 判断依据 | 类型 |', mirror)
+        for type_heading in ('项目本地 Skill', '共享 Skill', '共享 Skill 生成契约'):
+            self.assertNotIn(f'### {type_heading}', mirror)
+
+    def test_write_rule_organizes_subsections_by_responsibility(self):
+        english_sections = {
+            'Classify': (),
+            'Evidence': (
+                'Policy Evidence',
+                'Repository Evidence',
+                'Distribution and Generation Evidence',
+            ),
+            'Author': (),
+            'Rule Contract': ('Required Header', 'Policy Body', 'Generation Contracts'),
+            'Validate': ('Policy Review', 'Context Validation', 'Discovery Surfaces'),
+            'Result': (),
+        }
+        mirror_sections = {
+            '分类': (),
+            '证据': ('规则依据', '仓库事实', '分发与生成依据'),
+            '编写': (),
+            '规则契约': ('基本格式', '规则正文', '生成契约'),
+            '验证': ('成品检查', '适用环境检查', '加载入口检查'),
+            '结果': (),
+        }
+
+        def section_body(content, heading):
+            lines = content.splitlines()
+            start = lines.index(f'## {heading}') + 1
+            end = next(
+                (index for index in range(start, len(lines)) if lines[index].startswith('## ')),
+                len(lines),
+            )
+            return '\n'.join(lines[start:end])
+
+        for path in (
+            REPO_ROOT / 'agents' / 'skills' / 'write-rule' / 'SKILL.md',
+            REPO_ROOT / '.agents' / 'skills' / 'write-rule' / 'SKILL.md',
+        ):
+            content = path.read_text(encoding='utf-8')
+            for section, expected_subsections in english_sections.items():
+                with self.subTest(path=path.relative_to(REPO_ROOT), section=section):
+                    body = section_body(content, section)
+                    actual_subsections = tuple(
+                        line.removeprefix('### ')
+                        for line in body.splitlines()
+                        if line.startswith('### ')
+                    )
+                    self.assertEqual(expected_subsections, actual_subsections)
+            self.assertIn('| Condition | Class |', content)
+            for type_heading in (
+                'Project-Local Rules',
+                'Shared Rules',
+                'Shared Rule-Generation Contracts',
+            ):
+                self.assertNotIn(f'### {type_heading}', content)
+
+        mirror = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'write-rule' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        for section, expected_subsections in mirror_sections.items():
+            with self.subTest(path='agents-zh/skills/write-rule/SKILL.md', section=section):
+                body = section_body(mirror, section)
+                actual_subsections = tuple(
+                    line.removeprefix('### ')
+                    for line in body.splitlines()
+                    if line.startswith('### ')
+                )
+                self.assertEqual(expected_subsections, actual_subsections)
+        self.assertIn('| 判断依据 | 类型 |', mirror)
+        for type_heading in ('项目本地规则', '共享规则', '共享规则生成契约'):
+            self.assertNotIn(f'### {type_heading}', mirror)
+
+    def test_write_authoring_skills_do_not_force_result_type_subsections(self):
+        cases = {
+            'write-skill': {
+                'english_heading': 'Result',
+                'mirror_heading': '结果',
+            },
+            'write-rule': {
+                'english_heading': 'Result',
+                'mirror_heading': '结果',
+            },
+        }
+
+        def subsection_headings(content, heading):
+            lines = content.splitlines()
+            start = lines.index(f'## {heading}') + 1
+            end = next(
+                (index for index in range(start, len(lines)) if lines[index].startswith('## ')),
+                len(lines),
+            )
+            return tuple(
+                line.removeprefix('### ')
+                for line in lines[start:end]
+                if line.startswith('### ')
+            )
+
+        for skill_name, contract in cases.items():
+            for path in (
+                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
+            ):
+                with self.subTest(path=path.relative_to(REPO_ROOT)):
+                    content = path.read_text(encoding='utf-8')
+                    self.assertEqual(
+                        (),
+                        subsection_headings(content, contract['english_heading']),
+                    )
+
+            mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md'
+            mirror = mirror_path.read_text(encoding='utf-8')
+            with self.subTest(path=mirror_path.relative_to(REPO_ROOT)):
+                self.assertEqual(
+                    (),
+                    subsection_headings(mirror, contract['mirror_heading']),
+                )
+
+    def test_write_authoring_skills_do_not_duplicate_type_rules_in_summary_tables(self):
+        for skill_name in ('write-skill', 'write-rule'):
+            for path in (
+                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md',
+            ):
+                with self.subTest(path=path.relative_to(REPO_ROOT)):
+                    content = path.read_text(encoding='utf-8')
+                    for duplicate_table_header in (
+                        '| Class | Owns | Specificity |',
+                        '| Contract shape | Required content | Additional constraint |',
+                        '| 类型 | 负责什么 | 需要具体到什么程度 |',
+                        '| 契约形式 | 必须包含 | 额外要求 |',
+                    ):
+                        self.assertNotIn(duplicate_table_header, content)
+
+    def test_write_authoring_skills_keep_shared_classification_guard_concise(self):
+        cases = {
+            'write-rule': {
+                'english': (
+                    'Use distribution, ownership, and the requested output to select one class '
+                    'before authoring.',
+                    'Removing local details does not make a rule shared. Classify it as shared '
+                    'only when the policy itself remains stable across repositories; otherwise '
+                    'keep it project-local.',
+                ),
+                'mirror': (
+                    '动笔前，先根据规则的分发方式、职责归属和用户要的产物判断类型。',
+                    '删掉本地细节，并不会自动变成共享规则。只有规则本身在不同仓库中都能保持稳定，'
+                    '才把它归为共享规则；否则继续作为项目本地规则。',
+                ),
+            },
+            'write-skill': {
+                'english': (
+                    'Use distribution, ownership, and the requested output to select one class '
+                    'before authoring.',
+                    'Removing local details does not make a skill shared. Classify it as shared '
+                    'only when the workflow itself remains stable across repositories and '
+                    'target-specific facts can be discovered at runtime; otherwise keep it '
+                    'project-local.',
+                ),
+                'mirror': (
+                    '动笔前，先根据 Skill 的分发方式、职责归属和用户要的产物判断类型。',
+                    '删掉本地细节，并不会自动变成共享 Skill。只有工作流本身在不同仓库中都能保持稳定，'
+                    '而且能在运行时发现目标项目的具体事实，才把它归为共享 Skill；否则继续作为项目本地 '
+                    'Skill。',
+                ),
+            },
+        }
+
+        for skill_name, expected in cases.items():
+            for path in (
+                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
+            ):
+                with self.subTest(path=path.relative_to(REPO_ROOT)):
+                    content = ' '.join(path.read_text(encoding='utf-8').split())
+                    for sentence in expected['english']:
+                        self.assertIn(sentence, content)
+                    self.assertNotIn('Catalogs, manifests, installation scope', content)
+
+            mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md'
+            with self.subTest(path=mirror_path.relative_to(REPO_ROOT)):
+                mirror = ''.join(mirror_path.read_text(encoding='utf-8').split())
+                for sentence in expected['mirror']:
+                    self.assertIn(''.join(sentence.split()), mirror)
+                self.assertNotIn('资产目录、清单、安装范围', mirror)
+
+    def test_write_authoring_skills_name_type_specific_boundaries_directly(self):
+        cases = {
+            'write-rule': {
+                'english': 'Use the selected rule class to set its content boundary:',
+                'mirror': '根据规则类型确定内容边界：',
+            },
+            'write-skill': {
+                'english': (
+                    'Use the selected skill class to set its execution and content boundaries:'
+                ),
+                'mirror': '根据 Skill 类型确定执行方式和内容边界：',
+            },
+        }
+
+        for skill_name, expected in cases.items():
+            for path in (
+                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
+            ):
+                with self.subTest(path=path.relative_to(REPO_ROOT)):
+                    content = ' '.join(path.read_text(encoding='utf-8').split())
+                    self.assertIn(expected['english'], content)
+                    self.assertNotIn(
+                        'Apply class-specific requirements inside the step that owns them',
+                        content,
+                    )
+
+            mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md'
+            with self.subTest(path=mirror_path.relative_to(REPO_ROOT)):
+                mirror = ''.join(mirror_path.read_text(encoding='utf-8').split())
+                self.assertIn(''.join(expected['mirror'].split()), mirror)
+                self.assertNotIn('类型特有的要求要放进真正负责它的步骤', mirror)
+
+    def test_write_authoring_skills_require_clear_unambiguous_faithful_language(self):
+        cases = {
+            'write-rule': {
+                'english_required': (
+                    'Every requirement must have one clear interpretation.',
+                    'subject, scope, conditions, strength, and expected behavior',
+                    'explicit wherever they affect meaning',
+                ),
+                'mirror_required': (
+                    '每项要求都只能有一种明确解读',
+                    '约束对象、适用范围、条件、强度和预期行为',
+                    '只要会影响含义',
+                ),
+            },
+            'write-skill': {
+                'english_required': (
+                    'Every instruction must have one clear interpretation.',
+                    'actor, trigger, conditions, action, stop or completion conditions, and expected result',
+                    'explicit wherever they affect execution',
+                ),
+                'mirror_required': (
+                    '每条指令都只能有一种明确解读',
+                    '执行者、触发条件、适用条件、动作、停止或完成条件和预期结果',
+                    '只要会影响执行',
+                ),
+            },
+        }
+        english_common = (
+            'Do not broaden, narrow, weaken, strengthen, or otherwise reinterpret',
+            'without new evidence or explicit user approval',
+            'Check the final candidate for ambiguity or semantic drift',
+            'If either condition fails, reject the candidate',
+        )
+        mirror_common = (
+            '不得扩大、缩小、弱化、强化或改写原意',
+            '除非有新证据或用户明确同意',
+            '检查最终成稿是否存在歧义或语义偏移',
+            '任一条件不满足都不能通过',
+        )
+        english_ambiguous = (
+            'supported direction',
+            'natural owner',
+            'resulting contract shape',
+            'against this standard',
+        )
+        mirror_ambiguous = ('仍有依据的方向', '最合适的责任方', '契约形式', '上述标准')
+
+        for skill_name, expected in cases.items():
+            for path in (
+                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
+            ):
+                with self.subTest(path=path.relative_to(REPO_ROOT)):
+                    content = ' '.join(path.read_text(encoding='utf-8').split())
+                    for required in (*expected['english_required'], *english_common):
+                        self.assertIn(required, content)
+                    for ambiguous in english_ambiguous:
+                        self.assertNotIn(ambiguous, content)
+                    if skill_name == 'write-skill':
+                        self.assertNotIn('Direct skills', content)
+
+            mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md'
+            with self.subTest(path=mirror_path.relative_to(REPO_ROOT)):
+                mirror = ''.join(mirror_path.read_text(encoding='utf-8').split())
+                for required in (*expected['mirror_required'], *mirror_common):
+                    self.assertIn(''.join(required.split()), mirror)
+                for ambiguous in mirror_ambiguous:
+                    self.assertNotIn(''.join(ambiguous.split()), mirror)
+                if skill_name == 'write-skill':
+                    self.assertNotIn('直接使用的Skill', mirror)
+
+    def test_write_authoring_skills_do_not_edit_each_others_artifacts(self):
+        cases = {
+            'write-rule': {
+                'contract_heading': '## Rule Contract',
+                'english_author_required': (
+                    'Put each requirement in the rule responsible for it.',
+                    'If the requested rule does not own a requirement, do not add it there.',
+                    'Modify the owning rule only if it is already within the user\'s requested '
+                    'scope; otherwise get explicit user approval first.',
+                    'Modify only rules and the wrappers, indexes, manifests, mirrors, and contract '
+                    'tests required to load or distribute them.',
+                    'Report any other required change as out of scope.',
+                ),
+                'english_validation_required':
+                    'Confirm changes are limited to rules and their owned surfaces.',
+                'english_forbidden': (
+                    'rule or skill responsible for it',
+                    'Put each instruction in the rule responsible for it.',
+                    'Do not edit anything outside rules and their owned surfaces',
+                ),
+                'mirror_contract_heading': '## 规则契约',
+                'mirror_author_required': (
+                    '每项要求都写进负责它的 Rule',
+                    '用户点名的 Rule 不负责某项要求时，不要写进去',
+                    '只有负责该要求的 Rule 已经在用户请求范围内时，才能直接修改；否则先取得用户明确同意',
+                    '只修改 Rule，以及让这些 Rule 正确加载或分发所必需的平台适配文件、索引、清单、语言镜像和契约测试',
+                    '其他类型的改动都超出范围，必须报告',
+                ),
+                'mirror_validation_required': '确认改动只限于 Rule 及其管理的文件和入口',
+                'mirror_forbidden': (
+                    '负责它的 Rule 或 Skill',
+                    '每项要求都放进负责它的 Rule',
+                    'Rule 及其管理的文件和入口',
+                ),
+            },
+            'write-skill': {
+                'contract_heading': '## Skill Contract',
+                'english_author_required': (
+                    'Put each requirement in the skill section or skill-owned resource responsible for it.',
+                    'If the requested skill does not own a requirement, do not add it there.',
+                    'Modify the owning skill only if it is already within the user\'s requested '
+                    'scope; otherwise get explicit user approval first.',
+                    'Modify only skills and the skill-owned resources, wrappers, indexes, manifests, '
+                    'mirrors, and contract tests required to execute or distribute them.',
+                    'Report any other required change as out of scope.',
+                ),
+                'english_validation_required':
+                    'Confirm changes are limited to skills and their owned surfaces.',
+                'english_forbidden': (
+                    'rule, skill section, or resource responsible for it',
+                    'Put each instruction in the skill section or owned resource responsible for it.',
+                    'Do not edit anything outside skills and their owned surfaces',
+                    'Project policy must remain in rules.',
+                    'A skill may reference a rule, but must not edit or copy the rule\'s content.',
+                ),
+                'mirror_contract_heading': '## Skill 契约',
+                'mirror_author_required': (
+                    '每项要求都写进负责它的 Skill 章节或 Skill 自有资源',
+                    '用户点名的 Skill 不负责某项要求时，不要写进去',
+                    '只有负责该要求的 Skill 已经在用户请求范围内时，才能直接修改；否则先取得用户明确同意',
+                    '只修改 Skill，以及执行或分发这些 Skill 所必需的自有资源、平台适配文件、索引、清单、语言镜像和契约测试',
+                    '其他类型的改动都超出范围，必须报告',
+                ),
+                'mirror_validation_required': '确认改动只限于 Skill 及其管理的文件和入口',
+                'mirror_forbidden': (
+                    '负责它的 Rule、Skill 章节或资源',
+                    '每项要求都放进负责它的 Skill 章节或自有资源',
+                    'Skill 及其管理的文件和入口',
+                    '项目政策必须留在 Rule 中',
+                    'Skill 可以引用 Rule，但不得修改或复制 Rule 的内容',
+                ),
+            },
+        }
+
+        for skill_name, expected in cases.items():
+            for path in (
+                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
+            ):
+                with self.subTest(path=path.relative_to(REPO_ROOT)):
+                    content = path.read_text(encoding='utf-8')
+                    authoring = content.split('## Author', 1)[1].split(
+                        expected['contract_heading'], 1
+                    )[0]
+                    validation = content.split('## Validate', 1)[1].split('## Result', 1)[0]
+                    normalized = ' '.join(authoring.split())
+                    for required in expected['english_author_required']:
+                        self.assertIn(required, normalized)
+                    self.assertIn(
+                        expected['english_validation_required'],
+                        ' '.join(validation.split()),
+                    )
+                    for forbidden in expected['english_forbidden']:
+                        self.assertNotIn(forbidden, normalized)
+
+            mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md'
+            with self.subTest(path=mirror_path.relative_to(REPO_ROOT)):
+                mirror = mirror_path.read_text(encoding='utf-8')
+                mirror_authoring = mirror.split('## 编写', 1)[1].split(
+                    expected['mirror_contract_heading'], 1
+                )[0]
+                mirror_validation = mirror.split('## 验证', 1)[1].split('## 结果', 1)[0]
+                normalized_mirror = ''.join(mirror_authoring.split())
+                for required in expected['mirror_author_required']:
+                    self.assertIn(''.join(required.split()), normalized_mirror)
+                self.assertIn(
+                    ''.join(expected['mirror_validation_required'].split()),
+                    ''.join(mirror_validation.split()),
+                )
+                for forbidden in expected['mirror_forbidden']:
+                    self.assertNotIn(''.join(forbidden.split()), normalized_mirror)
+
+    def test_write_authoring_skills_align_shared_language(self):
+        cases = {
+            'write-rule': {
+                'english_specific': (
+                    'Organize the result as the rule you would author today, placing each '
+                    'requirement where it belongs instead of appending a note or preserving old '
+                    'order for a smaller diff.',
+                    'Put each requirement in the rule responsible for it. '
+                    'If the requested rule does not own a requirement, do not add it there. '
+                    'Modify the owning rule only if it is already within the user\'s requested '
+                    'scope; otherwise get explicit user approval first.',
+                    'Run the current validators, contract tests, and diff-integrity checks for every '
+                    'required discovery surface. Confirm applicable wrappers, indexes, manifests, '
+                    'mirrors, and other distribution surfaces remain aligned.',
+                    'Do not report success while evidence is unresolved, claims are unsupported, '
+                    'required discovery surfaces are stale or unreachable, or required checks fail '
+                    'or remain unreported.',
+                    'Report the artifact class, owning artifact or repository, final document '
+                    'structure, preserved decisions, removed or moved content, updated discovery '
+                    'and distribution surfaces and language mirrors, and exact validation outcomes.',
+                ),
+                'mirror_specific': (
+                    '假设今天从零开始写这条规则，按最合理的顺序组织它；每项要求都放到应在的位置，'
+                    '不要为了缩小 diff 而在末尾补一句，也不要机械保留旧顺序。',
+                    '每项要求都写进负责它的 Rule。用户点名的 Rule 不负责某项要求时，不要写进去。'
+                    '只有负责该要求的 Rule 已经在用户请求范围内时，才能直接修改；否则先取得用户明确同意。',
+                    '对每个必需的发现入口运行当前项目规定的验证器、契约测试和 diff 完整性检查。'
+                    '确认适用的平台适配文件、索引、清单、语言镜像和其他分发入口仍然一致。',
+                    '只要证据还有疑点、说法没有事实支持、必需的发现入口已经过时或无法访问，'
+                    '或者必需检查失败或没有报告，就不能声称工作成功。',
+                    '交付时说明：产物属于哪一类、由哪个产物或仓库负责、最终文档结构、保留了哪些决定、'
+                    '删除或迁移了哪些内容、更新了哪些发现入口、分发入口和语言镜像，以及各项验证的具体结果。',
+                ),
+            },
+            'write-skill': {
+                'english_specific': (
+                    'Organize the result as the skill you would author today, placing each '
+                    'requirement where it belongs instead of appending a note or preserving old '
+                    'order for a smaller diff.',
+                    'Put each requirement in the skill section or skill-owned resource responsible '
+                    'for it. If the requested skill does not own a requirement, do not add it there. '
+                    'Modify the owning skill only if it is already within the user\'s requested '
+                    'scope; otherwise get explicit user approval first.',
+                    'Run the current validators, contract tests, and diff-integrity checks for every '
+                    'owned resource and required discovery surface. Confirm applicable wrappers, '
+                    'indexes, manifests, mirrors, and other distribution surfaces remain aligned.',
+                    'Do not report success while evidence is unresolved, behavior is unsupported, '
+                    'owned resources or required discovery surfaces are stale or unreachable, or '
+                    'required checks fail or remain unreported.',
+                    'Report the artifact class, owning artifact or repository, final document '
+                    'structure and gates, preserved decisions, removed or moved content and '
+                    'resources, updated discovery and distribution surfaces and language mirrors, '
+                    'and exact validation outcomes.',
+                ),
+                'mirror_specific': (
+                    '假设今天从零开始写这个 Skill，按最合理的顺序组织它；每项要求都放到应在的位置，'
+                    '不要为了缩小 diff 而在末尾补一句，也不要机械保留旧顺序。',
+                    '每项要求都写进负责它的 Skill 章节或 Skill 自有资源。用户点名的 Skill 不负责某项要求时，'
+                    '不要写进去。只有负责该要求的 Skill 已经在用户请求范围内时，才能直接修改；'
+                    '否则先取得用户明确同意。',
+                    '对每项自有资源和每个必需的发现入口运行当前项目规定的验证器、契约测试和 diff 完整性检查。'
+                    '确认适用的平台适配文件、索引、清单、语言镜像和其他分发入口仍然一致。',
+                    '只要证据还有疑点、行为没有事实支持、自有资源或必需的发现入口已经过时或无法访问，'
+                    '或者必需检查失败或没有报告，就不能声称工作成功。',
+                    '交付时说明：产物属于哪一类、由哪个产物或仓库负责、最终文档结构和关口、保留了哪些决定、'
+                    '删除或迁移了哪些内容与资源、更新了哪些发现入口、分发入口和语言镜像，以及各项验证的具体结果。',
+                ),
+            },
+        }
+        english_shared = (
+            'Give the implementing agent freedom when several approaches are valid; prescribe '
+            'ordered steps when sequence affects correctness or safety.',
+            'Refer to another rule or skill by the canonical name declared or recognized by the '
+            'target system, never by its filesystem path.',
+        )
+        mirror_shared = (
+            '如果有多种做法都合理，就给执行 Agent 留出选择空间；如果顺序会影响正确性或安全性，'
+            '就明确规定步骤。',
+            '提到其他 Rule 或 Skill 时，使用目标系统声明或认可的正式名称，不要写它在文件系统里的路径。',
+        )
+
+        for skill_name, expected in cases.items():
+            for path in (
+                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
+            ):
+                with self.subTest(path=path.relative_to(REPO_ROOT)):
+                    content = ' '.join(path.read_text(encoding='utf-8').split())
+                    for specific in expected['english_specific']:
+                        self.assertIn(specific, content)
+                    for shared in english_shared:
+                        self.assertIn(shared, content)
+
+            mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md'
+            with self.subTest(path=mirror_path.relative_to(REPO_ROOT)):
+                mirror = ''.join(mirror_path.read_text(encoding='utf-8').split())
+                for specific in expected['mirror_specific']:
+                    self.assertIn(''.join(specific.split()), mirror)
+                for shared in mirror_shared:
+                    self.assertIn(''.join(shared.split()), mirror)
+
+    def test_write_authoring_skills_require_unified_contract_format(self):
+        cases = {
+            'write-rule': {
+                'english_required': 'Start every rule with:',
+                'english_forbidden': (
+                    "When the target uses this repository's format",
+                    "Use the target system's supported title",
+                ),
+                'mirror_required': '每条规则都必须这样开头：',
+                'mirror_forbidden': ('如果目标项目采用本仓库的规则格式', '采用目标系统支持的格式'),
+            },
+            'write-skill': {
+                'english_required': (
+                    'Frontmatter contains only `name` and `description`; the name is'
+                ),
+                'english_forbidden': ("Under this repository's convention",),
+                'mirror_required': 'frontmatter 只能包含 `name` 和 `description`。',
+                'mirror_forbidden': ('按本仓库约定',),
+            },
+        }
+
+        for skill_name, expected in cases.items():
+            for path in (
+                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
+            ):
+                with self.subTest(path=path.relative_to(REPO_ROOT)):
+                    content = ' '.join(path.read_text(encoding='utf-8').split())
+                    self.assertIn(expected['english_required'], content)
+                    for forbidden in expected['english_forbidden']:
+                        self.assertNotIn(forbidden, content)
+
+            mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md'
+            with self.subTest(path=mirror_path.relative_to(REPO_ROOT)):
+                mirror = ' '.join(mirror_path.read_text(encoding='utf-8').split())
+                self.assertIn(expected['mirror_required'], mirror)
+                for forbidden in expected['mirror_forbidden']:
+                    self.assertNotIn(forbidden, mirror)
+
+    def test_write_skill_keeps_common_resource_rules_in_resources_topic(self):
+        english_common_rules = (
+            'Keep core decisions in `SKILL.md`.',
+            'Do not add README, changelog, installation, or quick-reference files',
+            'Keep one source of truth for each instruction',
+        )
+        for path in (
+            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md',
+            REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md',
+        ):
+            with self.subTest(path=path.relative_to(REPO_ROOT)):
+                content = path.read_text(encoding='utf-8')
+                contract = content.split('## Skill Contract', 1)[1].split('## Validate', 1)[0]
+                resources = contract.split('### Resources', 1)[1].split(
+                    '### Review, Acceptance, and Handoff', 1
+                )[0]
+                for common_rule in english_common_rules:
+                    self.assertIn(common_rule, ' '.join(resources.split()))
+
+        mirror = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'write-skill' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        mirror_contract = mirror.split('## Skill 契约', 1)[1].split('## 验证', 1)[0]
+        mirror_resources = mirror_contract.split('### 资源', 1)[1].split(
+            '### 审查、验收与交接', 1
+        )[0]
+        mirror_resources = ' '.join(mirror_resources.split())
+        for common_rule in (
+            '关键决定留在 `SKILL.md`。',
+            '不要添加 README、变更日志、安装说明或速查文件',
+            '每项要求只保留一个',
+            '权威来源',
+        ):
+            self.assertIn(common_rule, mirror_resources)
+
+    def test_write_skill_keeps_shared_orchestrator_contract_complete(self):
+        for path in (
+            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md',
+            REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md',
+        ):
+            with self.subTest(path=path.relative_to(REPO_ROOT)):
+                content = path.read_text(encoding='utf-8')
+                contract = content.split('## Skill Contract', 1)[1].split('## Validate', 1)[0]
+                core_document = contract.split('### Core Document', 1)[1].split(
+                    '### Resources', 1
+                )[0]
+                for required_part in (
+                    'Ownership',
+                    'Managed Assets',
+                    'Reconciliation Workflow',
+                    'Review Gate',
+                    'Acceptance Gate',
+                    'Validation',
+                    'Output',
+                ):
+                    self.assertIn(required_part, core_document)
+
+        mirror = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'write-skill' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        mirror_contract = mirror.split('## Skill 契约', 1)[1].split('## 验证', 1)[0]
+        mirror_document = mirror_contract.split('### 正文', 1)[1].split('### 资源', 1)[0]
+        for required_part in (
+            'Ownership',
+            'Managed Assets',
+            'Reconciliation Workflow',
+            'Review Gate',
+            'Acceptance Gate',
+            'Validation',
+            'Output',
+        ):
+            self.assertIn(required_part, mirror_document)
+
     def test_write_authoring_skills_reference_rules_and_skills_by_name(self):
         expected_source = (
             'Refer to another rule or skill by the canonical name declared or recognized by the '
@@ -2311,6 +2996,207 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
                 self.assertEqual(' '.join(source.split()).count(expected_source), 1)
                 self.assertEqual(' '.join(mirror.split()).count(expected_mirror), 1)
+
+    def test_shared_skill_generation_contract_requires_acceptance(self):
+        for path in (
+            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md',
+            REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md',
+        ):
+            with self.subTest(path=path.relative_to(REPO_ROOT)):
+                content = path.read_text(encoding='utf-8')
+                skill_contract = content.split('## Skill Contract', 1)[1].split('## Validate', 1)[0]
+                generation_contract = skill_contract.split(
+                    '### Review, Acceptance, and Handoff', 1
+                )[1].split('### Scripted Workflows', 1)[0]
+                required_gates = ('Review Gate', 'Acceptance Gate', 'Handoff')
+                for required_gate in required_gates:
+                    self.assertIn(required_gate, generation_contract)
+                self.assertEqual(
+                    [generation_contract.index(gate) for gate in required_gates],
+                    sorted(generation_contract.index(gate) for gate in required_gates),
+                )
+                for handoff_contract in (
+                    'Hand off only after review and acceptance pass',
+                    'accepted candidate',
+                    'review decision',
+                    'acceptance evidence',
+                    'unresolved or not-run items',
+                    'stop and report',
+                ):
+                    self.assertIn(handoff_contract, generation_contract)
+                normalized = ' '.join(content.split())
+                for acceptance_contract in (
+                    'review the complete candidate',
+                    'exercising its workflow',
+                    'representative target context',
+                ):
+                    self.assertIn(acceptance_contract, normalized)
+
+        mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / 'write-skill' / 'SKILL.md'
+        mirror = mirror_path.read_text(encoding='utf-8')
+        mirror_skill_contract = mirror.split('## Skill 契约', 1)[1].split('## 验证', 1)[0]
+        mirror_generation_contract = mirror_skill_contract.split(
+            '### 审查、验收与交接', 1
+        )[1].split('### 脚本入口', 1)[0]
+        required_gates = ('Review Gate', 'Acceptance Gate', 'Handoff')
+        for required_gate in required_gates:
+            self.assertIn(required_gate, mirror_generation_contract)
+        self.assertEqual(
+            [mirror_generation_contract.index(gate) for gate in required_gates],
+            sorted(mirror_generation_contract.index(gate) for gate in required_gates),
+        )
+        self.assertIn('验收', mirror_generation_contract)
+        for handoff_contract in (
+            '审查和验收都通过后才能交接',
+            '通过验收的候选 Skill',
+            '审查结论',
+            '验收证据',
+            '未运行',
+            '未解决的事项',
+            '停止交接并报告',
+        ):
+            self.assertIn(handoff_contract, mirror_generation_contract)
+        normalized_mirror = ' '.join(mirror.split())
+        for acceptance_contract in (
+            '审查完整候选 Skill',
+            '有代表性的目标项目环境',
+            '实际执行它的工作流',
+            '完成验收',
+        ):
+            self.assertIn(acceptance_contract, normalized_mirror)
+
+    def test_write_skill_selects_script_runtime_by_artifact_ownership(self):
+        for path in (
+            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md',
+            REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md',
+        ):
+            with self.subTest(path=path.relative_to(REPO_ROOT)):
+                content = path.read_text(encoding='utf-8')
+                skill_contract = content.split('## Skill Contract', 1)[1].split(
+                    '## Validate', 1
+                )[0]
+                scripted_workflows = skill_contract.split('### Scripted Workflows', 1)[1]
+                validation = content.split('## Validate', 1)[1].split('## Result', 1)[0]
+                execution = validation.split('### Execution', 1)[1].split(
+                    '### Distribution', 1
+                )[0]
+                scripted_workflows = ' '.join(scripted_workflows.split())
+                execution = ' '.join(execution.split())
+                for provision_contract in (
+                    "For a project-local skill, choose either scripts that match the project's "
+                    'established language and runtime',
+                    'Python in a Python project',
+                    'Dart in a Dart project',
+                    'or paired `.sh` and `.ps1` entry points',
+                    'For any shared skill, including a shared skill-generation contract',
+                    'paired `.sh` and `.ps1` entry points',
+                    'same supported outcome',
+                    'evidence-backed platform differences',
+                    'A target-owned project-local skill produced by a generation contract',
+                    'its scripts do not become shared merely because its generator is shared',
+                ):
+                    self.assertIn(provision_contract, scripted_workflows)
+                for validation_contract in (
+                    'For the project-matched option',
+                    "using the project's established language and runtime",
+                    'For the paired-entry option',
+                    "validate only the current platform's entry point",
+                    '`.ps1` on Windows',
+                    '`.sh` on all other platforms',
+                    'Do not require validation of the other entry point on the current host',
+                    "Validate the generated skill's scripts according to that skill's own class",
+                ):
+                    self.assertIn(validation_contract, execution)
+                for forbidden in (
+                    'When a shared skill-generation contract produces executable scripts',
+                    'Review both files',
+                    'For the paired non-native entry point',
+                ):
+                    self.assertNotIn(forbidden, f'{scripted_workflows} {execution}')
+                self.assertNotIn('validate only the current platform', scripted_workflows)
+                self.assertNotIn(
+                    'may choose project-matched scripts or paired `.sh` and `.ps1` entry points',
+                    execution,
+                )
+
+        mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / 'write-skill' / 'SKILL.md'
+        mirror = mirror_path.read_text(encoding='utf-8')
+        mirror_contract = mirror.split('## Skill 契约', 1)[1].split('## 验证', 1)[0]
+        mirror_scripted_workflows = mirror_contract.split('### 脚本入口', 1)[1]
+        mirror_validation = mirror.split('## 验证', 1)[1].split('## 结果', 1)[0]
+        mirror_execution = mirror_validation.split('### 实际执行', 1)[1].split(
+            '### 分发检查', 1
+        )[0]
+        mirror_scripted_workflows = ''.join(mirror_scripted_workflows.split())
+        mirror_execution = ''.join(mirror_execution.split())
+        for provision_contract in (
+            '项目本地 Skill 可以选择与项目已有语言和运行时匹配的脚本',
+            'Python 项目使用 Python',
+            'Dart 项目使用 Dart',
+            '也可以同时提供 `.sh` 和 `.ps1` 入口',
+            '任何共享 Skill，包括共享 Skill 生成契约',
+            '同时提供 `.sh` 和 `.ps1` 入口',
+            '同一项受支持的结果',
+            '有证据依据的平台差异',
+            '生成契约产出的项目本地 Skill',
+            '不会因为生成器是共享的而自动变成共享脚本',
+        ):
+            self.assertIn(''.join(provision_contract.split()), mirror_scripted_workflows)
+        for validation_contract in (
+            '选择项目匹配方案时',
+            '使用项目已有的语言和运行时',
+            '选择成对入口时',
+            '只验证当前平台对应的入口',
+            'Windows 运行 `.ps1`',
+            '其他平台运行 `.sh`',
+            '不要求在当前宿主验证另一个入口',
+            '生成出来的 Skill 按自身类型验证脚本',
+        ):
+            self.assertIn(''.join(validation_contract.split()), mirror_execution)
+        for forbidden in (
+            '当共享 Skill 生成契约会生成可执行脚本时',
+            '两个文件都要审查',
+            '成对脚本中的非原生入口',
+        ):
+            self.assertNotIn(
+                ''.join(forbidden.split()),
+                f'{mirror_scripted_workflows}{mirror_execution}',
+            )
+        self.assertNotIn('只验证当前平台对应的入口', mirror_scripted_workflows)
+        self.assertNotIn(
+            ''.join('可以选择与项目匹配的脚本，也可以选择 `.sh` 和 `.ps1` 成对入口'.split()),
+            mirror_execution,
+        )
+
+    def test_write_rule_does_not_claim_file_or_resource_ownership(self):
+        source_exception = (
+            'Use paths only for owned files or resources whose location is part of the current '
+            'contract.'
+        )
+        mirror_exception = (
+            '只有文件或资源本身归当前契约管理，而且位置就是契约的一部分时，才使用路径。'
+        )
+        public_write_rule = (
+            REPO_ROOT / 'agents' / 'skills' / 'write-rule' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        local_write_rule = (
+            REPO_ROOT / '.agents' / 'skills' / 'write-rule' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        mirror_write_rule = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'write-rule' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        public_write_skill = (
+            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        mirror_write_skill = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'write-skill' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+
+        self.assertNotIn(source_exception, ' '.join(public_write_rule.split()))
+        self.assertNotIn(source_exception, ' '.join(local_write_rule.split()))
+        self.assertNotIn(mirror_exception, ' '.join(mirror_write_rule.split()))
+        self.assertIn(source_exception, ' '.join(public_write_skill.split()))
+        self.assertIn(mirror_exception, ' '.join(mirror_write_skill.split()))
 
     def test_rule_and_skill_responsibility_references_use_canonical_names(self):
         cases = {
@@ -2396,6 +3282,85 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 for filesystem_reference in contract['forbidden']:
                     self.assertNotIn(filesystem_reference, content)
 
+    def test_public_generation_contracts_keep_required_shapes_and_gates(self):
+        rule_contracts = {
+            REPO_ROOT / 'agents': (
+                '## Generation Contract',
+                '## Evidence',
+                '## Content',
+                '## Boundaries',
+            ),
+            REPO_ROOT / 'agents-zh': (
+                '## 生成契约',
+                '## 证据',
+                '## 内容',
+                '## 边界',
+            ),
+        }
+        for root, required_sections in rule_contracts.items():
+            for filename in (
+                '20-project-tools.md',
+                '21-project-rules.md',
+                '22-project-structure.md',
+            ):
+                path = root / 'rules' / filename
+                with self.subTest(path=path.relative_to(REPO_ROOT)):
+                    content = path.read_text(encoding='utf-8')
+                    positions = [content.index(section) for section in required_sections]
+                    self.assertEqual(positions, sorted(positions))
+
+        skill_contracts = {
+            REPO_ROOT / 'agents': (
+                (
+                    '## Evidence',
+                    '## Authoring Workflow',
+                    '## Generated Skill Contract',
+                    '## Review Gate',
+                    '## Acceptance Gate',
+                    '## Handoff',
+                ),
+                '## Review and Handoff',
+            ),
+            REPO_ROOT / 'agents-zh': (
+                (
+                    '## 证据',
+                    '## 编写流程',
+                    '## 生成 Skill 契约',
+                    '## 审查关口',
+                    '## 验收关口',
+                    '## 交接',
+                ),
+                '## 审查与交付',
+            ),
+        }
+        for root, (required_sections, obsolete_combined_gate) in skill_contracts.items():
+            for skill_name in ('worktree-environment-setup', 'change-set-verification'):
+                path = root / 'skills' / skill_name / 'SKILL.md'
+                with self.subTest(path=path.relative_to(REPO_ROOT)):
+                    content = path.read_text(encoding='utf-8')
+                    positions = [content.index(section) for section in required_sections]
+                    self.assertEqual(positions, sorted(positions))
+                    self.assertNotIn(obsolete_combined_gate, content)
+
+        worktree_source = (
+            REPO_ROOT / 'agents' / 'skills' / 'worktree-environment-setup' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        self.assertIn(
+            "choose either the target project's established language and runtime or paired",
+            ' '.join(worktree_source.split()),
+        )
+        worktree_mirror = (
+            REPO_ROOT
+            / 'agents-zh'
+            / 'skills'
+            / 'worktree-environment-setup'
+            / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        self.assertIn(
+            '可以选用目标项目已有的语言和运行时，也可以同时生成',
+            ' '.join(worktree_mirror.split()),
+        )
+
     def test_write_rule_skill_allows_project_local_boundaries_when_needed(self):
         source = (
             REPO_ROOT / 'agents' / 'skills' / 'write-rule' / 'SKILL.md'
@@ -2403,25 +3368,23 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         mirror = (
             REPO_ROOT / 'agents-zh' / 'skills' / 'write-rule' / 'SKILL.md'
         ).read_text(encoding='utf-8')
-        project_local_source_shapes = [
-            line
-            for line in source.splitlines()
-            if line.startswith(('| Project-local rule |', '| Project-local direct rule |'))
-        ]
-        project_local_mirror_shapes = [
-            line
-            for line in mirror.splitlines()
-            if line.startswith(('| 项目本地规则 |', '| 项目本地直接规则 |'))
-        ]
-        self.assertEqual(len(project_local_source_shapes), 2)
-        self.assertEqual(len(project_local_mirror_shapes), 2)
+        source_contract = source.split('## Rule Contract', 1)[1].split('## Validate', 1)[0]
+        policy_body = source_contract.split('### Policy Body', 1)[1].split(
+            '### Generation Contracts', 1
+        )[0]
+        mirror_contract = mirror.split('## 规则契约', 1)[1].split('## 验证', 1)[0]
+        mirror_policy_body = mirror_contract.split('### 规则正文', 1)[1].split(
+            '### 生成契约', 1
+        )[0]
+        policy_body = ' '.join(policy_body.split())
+        mirror_policy_body = ' '.join(mirror_policy_body.split())
         self.assertIn(
             'Boundaries or Exceptions when needed',
-            project_local_source_shapes[1],
+            policy_body,
         )
         self.assertIn(
-            '必要时增加 Boundaries 或 Exceptions',
-            project_local_mirror_shapes[1],
+            'Boundaries 或 Exceptions',
+            mirror_policy_body,
         )
         self.assertNotIn('mutually independent', source)
         self.assertNotIn('no `Boundaries` section', source)
