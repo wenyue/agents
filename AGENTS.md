@@ -12,7 +12,7 @@ Always read the global rules first:
 | Starting any repository task | `.agents/rules/00-global-rule-config.md` | `Mandatory` |
 | Starting any repository task | `.agents/rules/01-global-personality.md` | `Default` |
 | Starting any repository task | `.agents/rules/02-global-response-format.md` | `Default` |
-| Starting any repository task | `.agents/rules/03-global-engineering-workflow.md` | `Mandatory` |
+| Starting any repository task | `.agents/rules/03-global-reasoning-workflow.md` | `Mandatory` |
 | Starting any repository task | `.agents/rules/04-global-skill-config.md` | `Mandatory` |
 
 Then read the base rules that apply:

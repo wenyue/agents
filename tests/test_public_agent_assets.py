@@ -1251,7 +1251,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             '00-global-rule-config.md',
             '01-global-personality.md',
             '02-global-response-format.md',
-            '03-global-engineering-workflow.md',
+            '03-global-reasoning-workflow.md',
             '04-global-skill-config.md',
             '10-base-code.md',
             '20-project-tools.md',
@@ -2016,8 +2016,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                         'semantic diagnostics to the parent agent.'
                     ),
                     'required_intelligence': (
-                        'High: reason across the complete change set, repository contracts, and '
-                        'verification results without making semantic fixes.'
+                        'Medium: follow the explicit verification contract, run the required '
+                        'checks, preserve unrelated work, and return diagnostics without making '
+                        'semantic fixes.'
                     ),
                     'codex': {
                         'sandbox_mode': 'workspace-write',
@@ -2068,7 +2069,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertEqual(
             public_config['retired_assets'],
             {
-                'rules': ['03-global-skill-config.md'],
+                'rules': [
+                    '03-global-engineering-workflow.md',
+                    '03-global-skill-config.md',
+                ],
                 'skills': [
                     'update-project-rules',
                     'project-development-workflow',
@@ -2078,6 +2082,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             },
         )
         for retired_name in (
+            '03-global-engineering-workflow.md',
             '03-global-skill-config.md',
             'update-project-rules',
             'project-development-workflow',
@@ -2145,7 +2150,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         source_root = REPO_ROOT / 'agents' / 'rules'
         mirror_root = REPO_ROOT / 'agents-zh' / 'rules'
         personality = (source_root / '01-global-personality.md').read_text(encoding='utf-8')
-        workflow = (source_root / '03-global-engineering-workflow.md').read_text(
+        workflow = (source_root / '03-global-reasoning-workflow.md').read_text(
             encoding='utf-8'
         )
         skill_config = (source_root / '04-global-skill-config.md').read_text(
@@ -2154,7 +2159,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         mirror_personality = (mirror_root / '01-global-personality.md').read_text(
             encoding='utf-8'
         )
-        mirror_workflow = (mirror_root / '03-global-engineering-workflow.md').read_text(
+        mirror_workflow = (mirror_root / '03-global-reasoning-workflow.md').read_text(
             encoding='utf-8'
         )
         mirror_skill_config = (mirror_root / '04-global-skill-config.md').read_text(
@@ -2163,10 +2168,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertTrue(personality.startswith('# Agent Personality\n'))
         self.assertIn('## Reasoning', personality)
-        self.assertNotIn('## Change', personality)
-        self.assertTrue(workflow.startswith('# Engineering Workflow\n'))
-        self.assertIn('## Change', workflow)
+        self.assertNotIn('## Act', personality)
+        self.assertTrue(workflow.startswith('# Reasoning Workflow\n'))
+        self.assertIn('## Decide', workflow)
+        self.assertIn('## Act', workflow)
         self.assertIn('## Verify', workflow)
+        self.assertIn('The original request does not count as confirmation.', workflow)
         self.assertIn(
             'For advisory or informational questions, search the web before answering and ground '
             'the response in current sources.',
@@ -2175,9 +2182,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertTrue(skill_config.startswith('# Workflow Configuration\n'))
         self.assertTrue(mirror_personality.startswith('# Agent 人格\n'))
         self.assertIn('## 推理方式', mirror_personality)
-        self.assertTrue(mirror_workflow.startswith('# 工程工作流\n'))
-        self.assertIn('## 修改', mirror_workflow)
+        self.assertTrue(mirror_workflow.startswith('# 思考流程\n'))
+        self.assertIn('## 判断', mirror_workflow)
+        self.assertIn('## 行动', mirror_workflow)
         self.assertIn('## 验证', mirror_workflow)
+        self.assertIn('原始请求不构成确认。', mirror_workflow)
         self.assertIn(
             '对于咨询或信息类问题，回答前先搜索网上资料，并以当前来源作为依据。',
             mirror_workflow,

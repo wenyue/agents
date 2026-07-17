@@ -12,6 +12,7 @@
   ],
   "retired_assets": {
     "rules": [
+      "03-global-engineering-workflow.md",
       "03-global-skill-config.md"
     ],
     "skills": [
@@ -65,12 +66,12 @@
       }
     },
     {
-      "file": "03-global-engineering-workflow.md",
+      "file": "03-global-reasoning-workflow.md",
       "read_when": "Starting any repository task",
       "strength": "Mandatory",
       "section": "global",
       "cursor": {
-        "description": "[mandatory] Engineering preparation, change discipline, and verification",
+        "description": "[mandatory] Objective understanding, professional judgment, action, and verification",
         "alwaysApply": true
       },
       "github": {
@@ -240,7 +241,7 @@
     {
       "name": "change-set-verifier",
       "description": "Normalizes and verifies a coherent completed change set, then returns semantic diagnostics to the parent agent.",
-      "required_intelligence": "High: reason across the complete change set, repository contracts, and verification results without making semantic fixes.",
+      "required_intelligence": "Medium: follow the explicit verification contract, run the required checks, preserve unrelated work, and return diagnostics without making semantic fixes.",
       "codex": {
         "sandbox_mode": "workspace-write"
       },
