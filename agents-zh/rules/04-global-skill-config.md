@@ -10,6 +10,8 @@
 
 ## Superpowers
 
+- `superpowers:using-superpowers` 已禁用，不得调用。其他 `superpowers:*` Skill 应根据各自的触发条件和
+  适用的更高优先级规则直接判断并调用。
 - 只有用户明确要求使用 brainstorming 时，才调用 `superpowers:brainstorming`。
 - 具体的 Superpowers 执行计划使用英语。此例外只适用于分步实现计划，不适用于设计文档。
 

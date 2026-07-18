@@ -11,6 +11,9 @@ ownership and timing, and Git safety.
 
 ## Superpowers
 
+- `superpowers:using-superpowers` is disabled and must not be invoked. Evaluate other
+  `superpowers:*` skills directly under their own trigger conditions and applicable higher-priority
+  rules.
 - Invoke `superpowers:brainstorming` only when the user explicitly requests brainstorming.
 - Use English for concrete Superpowers execution plans. This exception applies to step-by-step
   implementation plans, not design documents.
