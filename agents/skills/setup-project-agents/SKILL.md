@@ -19,8 +19,9 @@ values. It never reads or modifies user configuration.
 - Literal templates own project configuration values and native startup-hook entries; Python
   contains only generic reconciliation logic.
 - The LLM owns model selection and repository-specific Rule and Skill generation.
-- Each startup hook checks only recommended tools for the platform that invoked it. It does not
-  inspect project or user configuration and never blocks the platform.
+- Each startup hook checks only the current platform's recommended tools once per day without
+  reading project or user configuration. On findings, the agent stops the current task and asks
+  whether to install; any next user reply may continue.
 
 ## Managed Assets
 
@@ -77,8 +78,10 @@ Generate these Skills from their public blueprints:
    python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform PLATFORM
    ```
 
-   Replace `PLATFORM` with `codex`, `cursor`, or `copilot`. The native startup hook performs the same
-   advisory check automatically.
+   Replace `PLATFORM` with `codex`, `cursor`, or `copilot`. The native startup hook checks
+   automatically. On findings, ask whether to install and wait for a reply. If the user chooses to
+   install, run `check_recommended_tools.py hook --platform PLATFORM --force` afterward. Any other
+   reply may continue the current task.
 
 ## Review Gate
 
@@ -88,7 +91,7 @@ target-owned files.
 ## Acceptance Gate
 
 Every enumerated Rule and Skill must be complete, every required model field must be resolved, and
-template-owned project configuration must be reconciled. Tool findings are warnings, not blockers.
+template-owned project configuration must be reconciled.
 
 ## Validation
 
@@ -102,8 +105,8 @@ python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py \
   --check --model-config "$MODEL_CONFIG"
 ```
 
-Stop on any synchronization or blueprint failure. A recommended-tool `check` status and
-its findings remain advisory. Do not invoke a real model for validation.
+Stop on any synchronization or blueprint failure. Recommended-tool checks and their internal
+failures do not block validation. Do not invoke a real model for validation.
 
 ## Output
 

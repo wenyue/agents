@@ -51,6 +51,12 @@ class HookResult:
     findings: tuple[Finding, ...] = ()
     internal_error: bool = False
 
+    @property
+    def requires_user_prompt(self) -> bool:
+        return not self.internal_error and any(
+            finding.code != 'detector-error' for finding in self.findings
+        )
+
 
 def parse_version(value: str) -> tuple[int, ...]:
     match = re.search(r'\d+(?:\.\d+)+', value)
@@ -313,21 +319,48 @@ def _fingerprint(policy_path: Path, checker_path: Path) -> str:
     return digest.hexdigest()
 
 
-def _state_matches(path: Path, date: str, fingerprint: str) -> bool:
+def _load_state(
+    path: Path,
+    date: str,
+    fingerprint: str,
+) -> str | None:
     try:
         state = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return False
-    return state == {'date': date, 'fingerprint': fingerprint}
+        return None
+    if not isinstance(state, dict):
+        return None
+    if state.get('date') != date or state.get('fingerprint') != fingerprint:
+        return None
+    outcome = state.get('outcome')
+    if outcome in {'passed', 'notified', 'error'} and set(state) == {
+        'date',
+        'fingerprint',
+        'outcome',
+    }:
+        return outcome
+    return None
 
 
-def _write_state(path: Path, date: str, fingerprint: str) -> None:
+def _write_state(
+    path: Path,
+    date: str,
+    fingerprint: str,
+    outcome: str,
+) -> None:
+    if outcome not in {'passed', 'notified', 'error'}:
+        raise ValueError('daily state outcome must be passed, notified, or error')
+    state: dict[str, Any] = {
+        'date': date,
+        'fingerprint': fingerprint,
+        'outcome': outcome,
+    }
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f'.{path.name}.', dir=path.parent)
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, 'w', encoding='utf-8') as output:
-            json.dump({'date': date, 'fingerprint': fingerprint}, output)
+            json.dump(state, output)
             output.write('\n')
         os.replace(temporary, path)
     finally:
@@ -379,23 +412,37 @@ def run_hook(
     try:
         fingerprint = _fingerprint(policy_path, Path(__file__))
         date = now.date().isoformat()
-        if not force and _state_matches(state_path, date, fingerprint):
+        if not force and _load_state(state_path, date, fingerprint):
             return HookResult(False)
         lock_status = _acquire_lock(lock_path)
         if lock_status == 'busy':
             return HookResult(False)
         try:
-            if not force and _state_matches(state_path, date, fingerprint):
+            if not force and _load_state(state_path, date, fingerprint):
                 return HookResult(False)
             policy = load_policy(policy_path, platform)
             findings = tuple(evaluator(policy))
-            if not any(finding.code == 'detector-error' for finding in findings):
+            if not findings:
                 try:
-                    _write_state(state_path, date, fingerprint)
+                    _write_state(state_path, date, fingerprint, 'passed')
+                except OSError:
+                    pass
+            elif any(finding.code != 'detector-error' for finding in findings):
+                try:
+                    _write_state(state_path, date, fingerprint, 'notified')
+                except OSError:
+                    pass
+            else:
+                try:
+                    _write_state(state_path, date, fingerprint, 'error')
                 except OSError:
                     pass
             return HookResult(True, findings)
         except Exception:
+            try:
+                _write_state(state_path, date, fingerprint, 'error')
+            except OSError:
+                pass
             return HookResult(True, internal_error=True)
         finally:
             if lock_status == 'owned':
@@ -418,14 +465,25 @@ def render_hook_result(result: HookResult, platform: str) -> str:
     if result.internal_error:
         message = '[setup-project-agents] Recommended-tool check could not complete; continuing.'
     else:
-        message = render_findings(result.findings)
+        findings = render_findings(result.findings)
+        if result.requires_user_prompt:
+            message = (
+                f'{findings}\n'
+                '[setup-project-agents] Stop the current task now. Ask the user whether to '
+                'install or upgrade the listed tools, end this turn after the question, and '
+                'wait for the next user message. If that message requests installation, '
+                'perform it and force this check again. Any other user message may continue '
+                'normally; no explicit decline is required.'
+            )
+        else:
+            message = findings
     if not message:
         return ''
     if platform == 'codex':
         return json.dumps({'continue': True, 'systemMessage': message})
     if platform == 'cursor':
         return json.dumps({'additional_context': message})
-    return message
+    return json.dumps({'additionalContext': message})
 
 
 def build_parser() -> argparse.ArgumentParser:

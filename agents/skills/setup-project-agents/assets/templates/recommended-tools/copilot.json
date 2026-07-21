@@ -55,6 +55,21 @@
       ],
       "install": "Install CodeGraph and expose the codegraph command to Copilot CLI.",
       "upgrade": "Upgrade CodeGraph with its installation package manager."
+    },
+    {
+      "id": "tokscale",
+      "name": "Tokscale",
+      "target_version": "4.5.2",
+      "comparison": ">",
+      "detectors": [
+        {
+          "kind": "command-regex",
+          "command": ["tokscale", "--version"],
+          "pattern": "([0-9]+(?:\\.[0-9]+)+)"
+        }
+      ],
+      "install": "Install Tokscale globally with npm install --global tokscale@latest and expose the tokscale command on PATH.",
+      "upgrade": "Upgrade Tokscale to the latest release with the package manager used to install it."
     }
   ]
 }

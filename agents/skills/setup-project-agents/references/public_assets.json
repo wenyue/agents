@@ -284,33 +284,9 @@
       "merge": "deep-overwrite"
     },
     {
-      "path": ".cursor/mcp.json",
-      "template": "project-config/cursor.mcp.json",
-      "format": "json",
-      "merge": "deep-overwrite"
-    },
-    {
       "path": ".github/copilot/settings.json",
       "template": "project-config/copilot.settings.json",
       "format": "jsonc",
-      "merge": "deep-overwrite"
-    },
-    {
-      "path": ".mcp.json",
-      "template": "project-config/copilot.mcp.json",
-      "format": "json",
-      "merge": "deep-overwrite"
-    },
-    {
-      "path": ".github/mcp.json",
-      "template": "project-config/copilot.mcp.json",
-      "format": "json",
-      "merge": "deep-overwrite"
-    },
-    {
-      "path": ".vscode/mcp.json",
-      "template": "project-config/vscode.mcp.json",
-      "format": "json",
       "merge": "deep-overwrite"
     },
     {

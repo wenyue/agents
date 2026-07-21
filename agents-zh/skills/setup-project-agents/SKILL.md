@@ -15,7 +15,8 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
 - 脚本负责所有受支持平台的确定性配置。
 - 字面量模板负责项目配置值及平台原生启动 Hook；Python 只包含通用的协调逻辑。
 - LLM 负责模型选择，以及仓库特有 Rule 和 Skill 的生成。
-- 每个启动 Hook 仅检查触发该 Hook 的平台所需的推荐工具，不检查项目配置或用户配置，也绝不阻断平台继续运行。
+- 每个启动 Hook 每天只检查一次当前平台的推荐工具，不读取项目配置或用户配置。发现问题时，Agent
+  先停止当前任务并询问是否安装；用户回复后即可继续。
 
 ## 托管资产
 
@@ -67,7 +68,9 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
    python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform PLATFORM
    ```
 
-   将 `PLATFORM` 替换为 `codex`、`cursor` 或 `copilot`。平台原生启动 Hook 会自动执行同一项提示性检查。
+   将 `PLATFORM` 替换为 `codex`、`cursor` 或 `copilot`。平台原生启动 Hook 会自动检查。发现问题时，
+   先询问用户是否安装并等待回复；用户选择安装时，完成后运行
+   `check_recommended_tools.py hook --platform PLATFORM --force`。其他回复不影响继续当前任务。
 
 ## 审查关卡
 
@@ -75,8 +78,7 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
 
 ## 验收关卡
 
-所有枚举的 Rule 和 Skill 均应完整，所有必填模型字段均应得到解决，模板托管的项目配置也必须完成
-协调。工具检查发现只产生警告，不构成阻塞。
+所有枚举的 Rule 和 Skill 均应完整，所有必填模型字段均应得到解决，模板托管的项目配置也必须完成协调。
 
 ## 验证
 
@@ -88,7 +90,7 @@ python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py \
   --check --model-config "$MODEL_CONFIG"
 ```
 
-同步脚本或蓝图失败时停止；推荐工具 `check` 的状态和发现仍然只作提示。不得调用真实模型进行验证。
+同步脚本或蓝图失败时停止；推荐工具检查及其内部故障不阻断验证。不得调用真实模型进行验证。
 
 ## 输出
 

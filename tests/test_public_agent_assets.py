@@ -1069,237 +1069,17 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 ),
                 (templates / 'project-config' / 'codex.rules').read_text(encoding='utf-8'),
             )
-            self.assertEqual(
-                json.loads((target / '.cursor' / 'mcp.json').read_text(encoding='utf-8')),
-                {'mcpServers': {}},
-            )
-
-    def test_setup_skill_delegates_deterministic_configuration_to_sync_script(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        normalized = ' '.join(content.split())
-
-        self.assertIn(
-            'Let the synchronization script maintain deterministic configuration.',
-            normalized,
-        )
-        self.assertIn('sync_public_agent_assets.py', normalized)
-        for detail in (
-            '.codex/config.toml',
-            'features.multi_agent',
-            'disable-model-invocation',
-            'agent/runSubagent',
-            'chat.subagents.allowInvocationsFromSubagents',
-        ):
-            self.assertNotIn(detail, content)
-
-    def test_setup_skill_names_public_archive_url(self):
-        expected = 'https://github.com/wenyue/agents/archive/refs/heads/master.zip'
-        skill_paths = (
-            REPO_SKILL_ROOT / 'SKILL.md',
-            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md',
-        )
-
-        for skill_path in skill_paths:
-            with self.subTest(skill_path=skill_path):
-                content = skill_path.read_text(encoding='utf-8')
-                self.assertIn(expected, content)
-
-    def test_setup_skill_documents_template_config_and_platform_scoped_hooks(self):
-        english = ' '.join((REPO_SKILL_ROOT / 'SKILL.md').read_text().split())
-        chinese = ' '.join(
-            (
-                REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
-            ).read_text().split()
-        )
-        for required in (
-            'Template-owned project configuration',
-            'partial deep merge',
-            'automatically repairs',
-            'never reads or modifies user configuration',
-            'for the platform that invoked it',
-            'only for the current execution platform',
-            'never blocks the platform',
-            'check_recommended_tools.py check --platform',
-        ):
-            self.assertIn(required, english)
-        for required in (
-            '模板托管的项目配置',
-            '部分深度合并',
-            '自动修复',
-            '绝不读取或修改用户配置',
-            '触发该 Hook 的平台',
-            '仅针对当前执行平台',
-            '绝不阻断平台继续运行',
-            'check_recommended_tools.py check --platform',
-        ):
-            self.assertIn(required, chinese)
-        self.assertEqual(english.count('check_recommended_tools.py check --platform'), 1)
-        self.assertEqual(chinese.count('check_recommended_tools.py check --platform'), 1)
-        for implementation_detail in (
-            'strictly greater than',
-            'once per local day and platform across repositories',
-        ):
-            self.assertNotIn(implementation_detail, english)
-        for implementation_detail in ('严格大于', '跨仓库按本地日期和平台每天只运行一次'):
-            self.assertNotIn(implementation_detail, chinese)
-
-    def test_setup_skill_uses_previous_content_only_as_generation_reference(self):
-        english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        chinese = (
-            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
-        ).read_text(encoding='utf-8')
-
-        self.assertIn(
-            'Use current repository evidence; previous content may be used as a reference during '
-            'generation, but it is not a source of truth.',
-            ' '.join(english.split()),
-        )
-        self.assertIn(
-            '旧内容可在生成过程中作为参考，但不是事实源。',
-            ' '.join(chinese.split()),
-        )
-
-    def test_setup_skill_configures_every_catalog_declared_platform(self):
-        english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        chinese = (
-            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
-        ).read_text(encoding='utf-8')
-        normalized_english = ' '.join(english.split())
-        normalized_chinese = ' '.join(chinese.split())
-
-        self.assertIn('synchronizes every catalog-declared platform', normalized_english)
-        self.assertIn('同步公共目录声明的 所有平台', normalized_chinese)
-        for forbidden in (
-            'installed or explicitly targeted',
-            'installed or targeted',
-            'Discover installed',
-            'or is named in an explicit unresolved blocker',
-        ):
-            self.assertNotIn(forbidden, normalized_english)
-        for forbidden in (
-            '已安装或用户明确要求支持',
-            '已安装或指定',
-            '发现已安装',
-            '或已列入明确的未解决阻塞项',
-        ):
-            self.assertNotIn(forbidden, normalized_chinese)
-
-    def test_setup_skill_uses_two_stage_model_json(self):
-        english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        chinese = (
-            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
-        ).read_text(encoding='utf-8')
-        normalized_english = ' '.join(english.split())
-        normalized_chinese = ' '.join(chinese.split())
-
-        for required in (
-            '--model-request',
-            '`required_intelligence`',
-            '`model` for Codex, Cursor, and GitHub',
-            '`model_reasoning_effort` for Codex',
-            '--model-config',
-            'Existing wrappers are not a value source',
-        ):
-            self.assertIn(required, normalized_english)
-        for required in (
-            '--model-request',
-            '`required_intelligence`',
-            '为 Codex、Cursor 和 GitHub 选择 `model`',
-            '为 Codex 选择 `model_reasoning_effort`',
-            '--model-config',
-            '现有 Wrapper 不是取值来源',
-        ):
-            self.assertIn(required, normalized_chinese)
-
-    def test_setup_skill_keeps_model_json_in_system_temp_directory(self):
-        skill_paths = (
-            REPO_SKILL_ROOT / 'SKILL.md',
-            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md',
-        )
-
-        for skill_path in skill_paths:
-            with self.subTest(skill_path=skill_path):
-                content = skill_path.read_text(encoding='utf-8')
-                self.assertIn('tempfile.gettempdir()', content)
-                self.assertNotIn('.agents/setup-project-agent-models.json', content)
-
-    def test_setup_skill_delegates_generation_and_validation_to_each_blueprint(self):
-        content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        normalized = ' '.join(content.split())
-
-        for generated_rule in (
-            '20-project-tools.md',
-            '21-project-rules.md',
-            '22-project-structure.md',
-        ):
-            self.assertIn(generated_rule, normalized)
-        for generated_skill in (
-            'worktree-environment-setup',
-            'change-set-verification',
-        ):
-            self.assertIn(generated_skill, normalized)
-        self.assertIn('Each blueprint owns its generation and validation.', normalized)
-        self.assertIn(
-            'https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/',
-            normalized,
-        )
-        self.assertIn(
-            'https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/',
-            normalized,
-        )
-        self.assertNotIn('references/generation-contracts', normalized)
-
-    def test_setup_skill_generates_assets_before_applying_model_config(self):
-        english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        chinese = (
-            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
-        ).read_text(encoding='utf-8')
-
-        self.assertLess(english.index('Open and execute'), english.index('--model-config'))
-        self.assertLess(chinese.index('依次打开并执行'), chinese.index('--model-config'))
-        self.assertNotIn('Reapply `$MODEL_CONFIG`', english)
-        self.assertNotIn('再次应用 `$MODEL_CONFIG`', chinese)
-
-    def test_setup_skill_excludes_public_source_maintenance(self):
-        english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        chinese = (
-            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
-        ).read_text(encoding='utf-8')
-
-        for forbidden in (
-            'public source owner',
-            'Root configuration declarations and conditions belong',
-            'Declare each managed entry file',
-            'For public-source edits',
-            'test_sync_public_agent_assets.py',
-        ):
-            self.assertNotIn(forbidden, english)
-        for forbidden in (
-            '公共源的维护者',
-            '根配置的声明和适用条件属于',
-            '每个托管入口文件都必须在',
-            '修改 `wenyue/agents` 公共源时',
-            'test_sync_public_agent_assets.py',
-        ):
-            self.assertNotIn(forbidden, chinese)
+            for relative_path in (
+                '.cursor/mcp.json',
+                '.mcp.json',
+                '.github/mcp.json',
+                '.vscode/mcp.json',
+            ):
+                with self.subTest(relative_path=relative_path):
+                    self.assertFalse((target / relative_path).exists())
 
     def test_setup_skill_directory_excludes_repository_tests(self):
         self.assertEqual(list((REPO_SKILL_ROOT / 'scripts').glob('test_*.py')), [])
-
-    def test_setup_skill_excludes_real_model_smoke_tests(self):
-        english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        chinese = (
-            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
-        ).read_text(encoding='utf-8')
-        normalized_english = ' '.join(english.split())
-        normalized_chinese = ' '.join(chinese.split())
-
-        self.assertIn('Do not invoke a real model', normalized_english)
-        self.assertNotIn('safe representative invocation', normalized_english)
-        self.assertNotIn('smoke checks', normalized_english)
-        self.assertIn('不得调用真实模型', normalized_chinese)
-        self.assertNotIn('安全的代表性调用方式', normalized_chinese)
-        self.assertNotIn('冒烟检查', normalized_chinese)
 
     def test_repository_local_agents_contains_only_curated_assets(self):
         local_root = REPO_ROOT / '.agents'
@@ -1309,15 +1089,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             '02-global-response-format.md',
             '03-global-reasoning-workflow.md',
             '04-global-skill-config.md',
-            '10-base-code.md',
             '20-project-tools.md',
             '21-project-rules.md',
             '22-project-structure.md',
         }
         expected_skills = {
-            'change-set-verification',
-            'track-worktree-time',
-            'worktree-integrate',
             'write-rule',
             'write-skill',
         }
@@ -1330,9 +1106,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             {path.name for path in (local_root / 'skills').iterdir()},
             expected_skills,
         )
+        local_agents = local_root / 'agents'
         self.assertEqual(
-            {path.name for path in (local_root / 'agents').iterdir()},
-            {'change-set-verifier.md'},
+            {path.name for path in local_agents.iterdir()} if local_agents.exists() else set(),
+            set(),
         )
 
     def test_public_manifest_declares_config_templates(self):
@@ -1362,33 +1139,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     'merge': 'deep-overwrite',
                 },
                 {
-                    'path': '.cursor/mcp.json',
-                    'template': 'project-config/cursor.mcp.json',
-                    'format': 'json',
-                    'merge': 'deep-overwrite',
-                },
-                {
                     'path': '.github/copilot/settings.json',
                     'template': 'project-config/copilot.settings.json',
                     'format': 'jsonc',
-                    'merge': 'deep-overwrite',
-                },
-                {
-                    'path': '.mcp.json',
-                    'template': 'project-config/copilot.mcp.json',
-                    'format': 'json',
-                    'merge': 'deep-overwrite',
-                },
-                {
-                    'path': '.github/mcp.json',
-                    'template': 'project-config/copilot.mcp.json',
-                    'format': 'json',
-                    'merge': 'deep-overwrite',
-                },
-                {
-                    'path': '.vscode/mcp.json',
-                    'template': 'project-config/vscode.mcp.json',
-                    'format': 'json',
                     'merge': 'deep-overwrite',
                 },
                 {
@@ -1439,13 +1192,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'project-config/codex.config.toml',
                 'project-config/codex.hooks.json',
                 'project-config/codex.rules',
-                'project-config/copilot.mcp.json',
                 'project-config/copilot.settings.json',
                 'project-config/copilot.tool-check.hooks.json',
                 'project-config/cursor.cli.json',
                 'project-config/cursor.hooks.json',
-                'project-config/cursor.mcp.json',
-                'project-config/vscode.mcp.json',
                 'recommended-tools/codex.json',
                 'recommended-tools/copilot.json',
                 'recommended-tools/cursor.json',
@@ -1607,7 +1357,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             ],
         )
 
-    def test_hook_templates_call_platform_checker_non_blockingly(self):
+    def test_hook_templates_register_one_native_checker_per_platform(self):
         project_templates = REPO_TEMPLATES / 'project-config'
         codex = json.loads((project_templates / 'codex.hooks.json').read_text())
         cursor = json.loads((project_templates / 'cursor.hooks.json').read_text())
@@ -1617,39 +1367,28 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         codex_group = codex['hooks']['SessionStart'][0]
         codex_handler = codex_group['hooks'][0]
-        codex_command = codex_handler['command']
-        cursor_command = cursor['hooks']['sessionStart'][0]['command']
-        copilot_hook = copilot['hooks']['sessionStart'][0]
-        self.assertIn('check_recommended_tools.sh', codex_command)
-        self.assertIn('hook --platform codex', codex_command)
         self.assertEqual(codex_group['matcher'], 'startup|resume|clear|compact')
-        self.assertIn('check_recommended_tools.ps1', codex_handler['commandWindows'])
         self.assertEqual(
-            cursor_command,
-            'python .agents/skills/setup-project-agents/scripts/'
-            'check_recommended_tools.py hook --platform cursor',
+            set(codex_handler),
+            {'type', 'command', 'commandWindows', 'timeout', 'statusMessage'},
         )
-        self.assertIn('check_recommended_tools.sh hook --platform copilot', copilot_hook['bash'])
-        self.assertIn('check_recommended_tools.ps1 hook --platform copilot', copilot_hook['powershell'])
-        for hook in (
-            codex_group,
-            cursor['hooks']['sessionStart'][0],
-            copilot_hook,
-        ):
-            self.assertIn('setup-project-agents', json.dumps(hook))
+        self.assertEqual(codex_handler['type'], 'command')
+        self.assertEqual(codex_handler['timeout'], 30)
 
-    def test_checker_wrappers_forward_arguments_to_same_python_script(self):
-        scripts = REPO_SKILL_ROOT / 'scripts'
-        shell = (scripts / 'check_recommended_tools.sh').read_text(encoding='utf-8')
-        powershell = (scripts / 'check_recommended_tools.ps1').read_text(encoding='utf-8')
+        self.assertEqual(cursor['version'], 1)
+        cursor_handler = cursor['hooks']['sessionStart'][0]
+        self.assertEqual(set(cursor_handler), {'name', 'command'})
 
-        self.assertIn('check_recommended_tools.py', shell)
-        self.assertIn('"$@"', shell)
-        self.assertIn('[ "$1" = "hook" ]', shell)
-        self.assertIn('check_recommended_tools.py', powershell)
-        self.assertIn('@args', powershell)
-        self.assertIn('try {', powershell)
-        self.assertIn("$args[0] -eq 'hook'", powershell)
+        self.assertEqual(copilot['version'], 1)
+        copilot_hooks = copilot['hooks']['sessionStart']
+        self.assertEqual(
+            [hook['type'] for hook in copilot_hooks],
+            ['command'],
+        )
+        self.assertEqual(
+            set(copilot_hooks[0]),
+            {'type', 'name', 'bash', 'powershell', 'cwd', 'timeoutSec'},
+        )
 
     def test_reconcile_config_templates_updates_toml_and_preserves_unmanaged_text(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2019,29 +1758,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             'config_file = "./agents/reviewer.toml"\n',
             'config_templates[0] object reviewer field config_file references missing path',
         )
-
-    def test_sync_repairs_copilot_mcp_root_structure(self):
-        self._assert_native_config_repaired(
-            '.vscode/mcp.json',
-            '{"mcpServers": {}}',
-            'servers',
-        )
-
-    def test_sync_repairs_cursor_mcp_root_structure(self):
-        self._assert_native_config_repaired(
-            '.cursor/mcp.json',
-            '{"servers": {}}',
-            'mcpServers',
-        )
-
-    def test_sync_repairs_copilot_cli_mcp_root_structure(self):
-        for relative_path in ('.mcp.json', '.github/mcp.json'):
-            with self.subTest(relative_path=relative_path):
-                self._assert_native_config_repaired(
-                    relative_path,
-                    '{"servers": {}}',
-                    'mcpServers',
-                )
 
     def test_sync_applies_codex_template_and_preserves_extra_values(self):
         cases = (
@@ -5031,19 +4747,25 @@ class RecommendedToolCheckerTest(unittest.TestCase):
     def test_platform_policies_keep_all_thresholds_out_of_python(self):
         policies = REPO_TEMPLATES / 'recommended-tools'
         expected = {
-            'codex': {'codex': '0.144.0', 'superpowers': '6.0.0', 'codegraph': '1.4.0'},
+            'codex': {
+                'codex': '0.144.0',
+                'superpowers': '6.0.0',
+                'codegraph': '1.4.0',
+                'tokscale': '4.5.2',
+            },
             'cursor': {
                 'cursor-agent': '2026.01.27',
                 'superpowers': '6.0.0',
                 'codegraph': '1.4.0',
+                'tokscale': '4.5.2',
             },
             'copilot': {
                 'copilot': '1.0.58',
                 'superpowers': '6.0.0',
                 'codegraph': '1.4.0',
+                'tokscale': '4.5.2',
             },
         }
-        checker_source = RECOMMENDED_TOOL_CHECKER.read_text(encoding='utf-8')
         for platform, targets in expected.items():
             policy = json.loads((policies / f'{platform}.json').read_text(encoding='utf-8'))
             self.assertEqual(policy['platform'], platform)
@@ -5051,8 +4773,6 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 {tool['id']: tool['target_version'] for tool in policy['tools']},
                 targets,
             )
-            for target in targets.values():
-                self.assertNotIn(target, checker_source)
 
     def test_command_and_manifest_detectors_are_data_driven(self):
         checker = self.checker
@@ -5120,10 +4840,14 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             [finding.code for finding in findings],
             ['tool-missing', 'version-not-greater', 'version-unreadable'],
         )
-        rendered = self.checker.render_findings(findings)
-        self.assertIn('install missing', rendered)
-        self.assertIn('upgrade equal', rendered)
-        self.assertNotIn('detector', rendered.lower())
+        self.assertEqual(
+            [(finding.code, finding.tool, finding.guidance) for finding in findings],
+            [
+                ('tool-missing', 'Missing Tool', 'install missing'),
+                ('version-not-greater', 'Equal Tool', 'upgrade equal'),
+                ('version-unreadable', 'Bad Tool', 'upgrade bad'),
+            ],
+        )
 
     def test_detector_timeout_is_retryable_and_equal_differs_from_lower(self):
         checker = self.checker
@@ -5162,8 +4886,8 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         )
 
         self.assertEqual(timeout[0].code, 'detector-error')
-        self.assertIn('equals', equal[0].message)
-        self.assertIn('older', lower[0].message)
+        self.assertEqual(equal[0].code, 'version-not-greater')
+        self.assertEqual(lower[0].code, 'version-not-greater')
 
     def test_command_detector_terminates_when_output_exceeds_limit(self):
         checker = self.checker
@@ -5235,7 +4959,52 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             self.assertTrue(next_day.ran)
             self.assertEqual(len(calls), 4)
 
-    def test_hook_internal_failure_is_non_blocking_and_not_cached(self):
+    def test_findings_prompt_the_user_only_once_per_day(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            policy_path = root / 'codex.json'
+            cache = root / 'cache'
+            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            calls = []
+            finding = checker.Finding(
+                'tool-missing',
+                'Example Tool',
+                'is missing',
+                'Install it.',
+            )
+
+            def missing(_policy):
+                calls.append(True)
+                return [finding]
+
+            day = datetime(2026, 7, 21, 9)
+            first = checker.run_hook(
+                'codex', policy_path, cache, day, evaluator=missing
+            )
+            repeated = checker.run_hook(
+                'codex', policy_path, cache, day, evaluator=missing
+            )
+
+            self.assertTrue(first.ran)
+            self.assertFalse(repeated.ran)
+            self.assertTrue(first.requires_user_prompt)
+            self.assertFalse(repeated.requires_user_prompt)
+            self.assertEqual(repeated.findings, ())
+            self.assertEqual(len(calls), 1)
+
+            next_day = checker.run_hook(
+                'codex',
+                policy_path,
+                cache,
+                day + timedelta(days=1),
+                evaluator=missing,
+            )
+
+            self.assertTrue(next_day.ran)
+            self.assertEqual(len(calls), 2)
+
+    def test_hook_internal_failure_is_non_blocking_and_cached_for_the_day(self):
         checker = self.checker
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -5249,14 +5018,13 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             second = checker.run_hook('codex', policy_path, root / 'cache', evaluator=fail)
 
             self.assertTrue(first.ran)
-            self.assertTrue(second.ran)
+            self.assertFalse(second.ran)
             self.assertTrue(first.internal_error)
-            self.assertNotIn(
-                'secret detector output',
-                checker.render_hook_result(first, 'codex'),
-            )
+            rendered = json.loads(checker.render_hook_result(first, 'codex'))
+            self.assertEqual(set(rendered), {'continue', 'systemMessage'})
+            self.assertIs(rendered['continue'], True)
 
-    def test_detector_error_finding_is_not_cached(self):
+    def test_detector_error_finding_is_cached_for_the_day(self):
         checker = self.checker
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -5283,8 +5051,9 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             )
 
             self.assertTrue(first.ran)
-            self.assertTrue(second.ran)
-            self.assertEqual(len(calls), 2)
+            self.assertFalse(second.ran)
+            self.assertFalse(first.requires_user_prompt)
+            self.assertEqual(len(calls), 1)
 
     def test_hook_output_uses_each_platform_native_shape(self):
         checker = self.checker
@@ -5302,12 +5071,15 @@ class RecommendedToolCheckerTest(unittest.TestCase):
 
         codex = json.loads(checker.render_hook_result(result, 'codex'))
         cursor = json.loads(checker.render_hook_result(result, 'cursor'))
-        copilot = checker.render_hook_result(result, 'copilot')
+        copilot = json.loads(checker.render_hook_result(result, 'copilot'))
 
+        self.assertEqual(set(codex), {'continue', 'systemMessage'})
         self.assertIs(codex['continue'], True)
-        self.assertIn('Example Tool', codex['systemMessage'])
-        self.assertIn('Example Tool', cursor['additional_context'])
-        self.assertIn('Example Tool', copilot)
+        self.assertIsInstance(codex['systemMessage'], str)
+        self.assertEqual(set(cursor), {'additional_context'})
+        self.assertIsInstance(cursor['additional_context'], str)
+        self.assertEqual(set(copilot), {'additionalContext'})
+        self.assertIsInstance(copilot['additionalContext'], str)
         self.assertEqual(
             checker.render_hook_result(checker.HookResult(False), 'codex'),
             '',

@@ -2,8 +2,8 @@
 
 Strength: `Default`
 
-Scope: Public catalog ownership, language-mirror policy, target installation contracts, and
-repository-local runtime boundaries.
+Scope: Public catalog ownership, language-mirror policy, target installation contracts,
+repository-local runtime boundaries, and repository test contracts.
 
 ## Public Catalog Ownership
 
@@ -49,6 +49,15 @@ repository-local runtime boundaries.
   corresponding target path as the final runtime artifact.
 - Preserve `.agents/` as the installation root in public prompts, templates, manifests, scripts,
   and documentation.
+
+## Test Contracts
+
+- Unit tests may assert structured configuration, schemas, filesystem effects, state transitions,
+  exit behavior, and other observable runtime results.
+- Do not use substring, presence, absence, or section-order assertions against human-readable
+  Markdown, Rule or Skill prose, prompt and hook message wording, or implementation source text.
+- When wording represents required behavior, expose that behavior through a structured configuration
+  or runtime decision surface and test that surface; review the prose itself semantically.
 
 ## Boundaries
 
