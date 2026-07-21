@@ -256,6 +256,12 @@
       "path": "AGENTS.md"
     }
   ],
+  "file_templates": [
+    {
+      "template": "project-config/codex.rules",
+      "path": ".codex/rules/setup-project-agents.rules"
+    }
+  ],
   "config_templates": [
     {
       "path": ".codex/config.toml",

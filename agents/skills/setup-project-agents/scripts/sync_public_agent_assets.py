@@ -846,6 +846,45 @@ def _entry_file_specs(public_config: dict[str, Any]) -> list[tuple[str, str]]:
     return specs
 
 
+def _file_template_specs(public_config: dict[str, Any]) -> list[tuple[str, str]]:
+    specs = []
+    for index, file_template in enumerate(_require_items(public_config, 'file_templates')):
+        label = f'file_templates[{index}]'
+        if set(file_template) != {'template', 'path'}:
+            raise SyncError(f'{label} requires only path and template')
+        template_name = file_template.get('template')
+        if not isinstance(template_name, str) or not template_name:
+            raise SyncError(f'{label}.template must be a non-empty string')
+        template_relative = Path(template_name)
+        if template_relative.is_absolute() or '..' in template_relative.parts:
+            raise SyncError(f'{label}.template must stay inside assets/templates')
+        target_path = file_template.get('path')
+        if not isinstance(target_path, str) or not target_path:
+            raise SyncError(f'{label}.path must be a non-empty string')
+        target_relative = Path(target_path)
+        if target_relative.is_absolute() or '..' in target_relative.parts:
+            raise SyncError(f'{label}.path must stay inside the target repository')
+        specs.append((template_name, target_path))
+    return specs
+
+
+def _reconcile_file_templates(
+    context: SyncContext,
+    public_config: dict[str, Any],
+) -> None:
+    for index, (template_name, target_path) in enumerate(
+        _file_template_specs(public_config)
+    ):
+        label = f'file_templates[{index}]'
+        template_path = context.skill_root / 'assets' / 'templates' / template_name
+        try:
+            content = template_path.read_bytes()
+        except FileNotFoundError as error:
+            raise SyncError(f'Missing file template: {template_path}') from error
+        target = _safe_config_target(context.target_root, Path(target_path), label)
+        _write_bytes(context, target, content)
+
+
 def _ignore_patterns(config: dict[str, Any]) -> list[str]:
     value = config.get('ignore', [])
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
@@ -1808,6 +1847,7 @@ def sync_public_assets(
         require_agent_runtime,
     )
     _reconcile_config_templates(context, public_config)
+    _reconcile_file_templates(context, public_config)
     _generate_entry_files(context, public_config, merged_local_config)
     _record_missing_generated_outputs(context, public_config)
     return context.changes

@@ -13,9 +13,9 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
 ## 所有权
 
 - 脚本负责所有受支持平台的确定性配置。
-- 字面量模板负责项目配置值、推荐工具版本门槛及平台原生启动 Hook；Python 只包含通用的协调与检测逻辑。
+- 字面量模板负责项目配置值及平台原生启动 Hook；Python 只包含通用的协调逻辑。
 - LLM 负责模型选择，以及仓库特有 Rule 和 Skill 的生成。
-- 仅检查工具的启动 Hook 只检查推荐工具及其版本，不检查项目配置或用户配置。
+- 每个启动 Hook 仅检查触发该 Hook 的平台所需的推荐工具，不检查项目配置或用户配置，也绝不阻断平台继续运行。
 
 ## 托管资产
 
@@ -61,17 +61,13 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
    同一次同步会从可读模板创建或更新 Codex、Cursor 和 Copilot 的项目原生配置及 Hook 文件。
    不要另外修改用户级配置，也不要移除模板未声明的项目字段。
 
-5. 需要立即获得设置反馈时，对正在使用的每个平台运行不使用每日缓存的推荐工具检查：
+5. 需要立即获得设置反馈时，仅针对当前执行平台运行不使用缓存的推荐工具检查：
 
    ```sh
-   python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform codex
-   python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform cursor
-   python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform copilot
+   python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform PLATFORM
    ```
 
-   只有已安装版本严格大于对应平台策略模板中的目标版本才算通过。平台原生 Hook 会执行相同的完整
-   检查，并且跨仓库按本地日期和平台每天只运行一次。所有发现都只是提示：Hook 给出简洁修复建议，
-   绝不阻断平台继续运行。
+   将 `PLATFORM` 替换为 `codex`、`cursor` 或 `copilot`。平台原生启动 Hook 会自动执行同一项提示性检查。
 
 ## 审查关卡
 

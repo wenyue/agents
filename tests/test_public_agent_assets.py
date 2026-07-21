@@ -1062,6 +1062,13 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 (target / '.codex' / 'config.toml').read_text(encoding='utf-8')
             )
             self.assertIs(codex_config['features']['multi_agent'], True)
+            self.assertIs(codex_config['sandbox_workspace_write']['network_access'], True)
+            self.assertEqual(
+                (target / '.codex' / 'rules' / 'setup-project-agents.rules').read_text(
+                    encoding='utf-8'
+                ),
+                (templates / 'project-config' / 'codex.rules').read_text(encoding='utf-8'),
+            )
             self.assertEqual(
                 json.loads((target / '.cursor' / 'mcp.json').read_text(encoding='utf-8')),
                 {'mcpServers': {}},
@@ -1097,7 +1104,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 content = skill_path.read_text(encoding='utf-8')
                 self.assertIn(expected, content)
 
-    def test_setup_skill_documents_template_config_and_tool_only_hooks(self):
+    def test_setup_skill_documents_template_config_and_platform_scoped_hooks(self):
         english = ' '.join((REPO_SKILL_ROOT / 'SKILL.md').read_text().split())
         chinese = ' '.join(
             (
@@ -1109,9 +1116,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             'partial deep merge',
             'automatically repairs',
             'never reads or modifies user configuration',
-            'tool-only startup hooks',
-            'strictly greater than',
-            'once per local day and platform across repositories',
+            'for the platform that invoked it',
+            'only for the current execution platform',
             'never blocks the platform',
             'check_recommended_tools.py check --platform',
         ):
@@ -1121,13 +1127,21 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             '部分深度合并',
             '自动修复',
             '绝不读取或修改用户配置',
-            '仅检查工具的启动 Hook',
-            '严格大于',
-            '跨仓库按本地日期和平台每天只运行一次',
+            '触发该 Hook 的平台',
+            '仅针对当前执行平台',
             '绝不阻断平台继续运行',
             'check_recommended_tools.py check --platform',
         ):
             self.assertIn(required, chinese)
+        self.assertEqual(english.count('check_recommended_tools.py check --platform'), 1)
+        self.assertEqual(chinese.count('check_recommended_tools.py check --platform'), 1)
+        for implementation_detail in (
+            'strictly greater than',
+            'once per local day and platform across repositories',
+        ):
+            self.assertNotIn(implementation_detail, english)
+        for implementation_detail in ('严格大于', '跨仓库按本地日期和平台每天只运行一次'):
+            self.assertNotIn(implementation_detail, chinese)
 
     def test_setup_skill_uses_previous_content_only_as_generation_reference(self):
         english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
@@ -1424,6 +1438,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'entry-files/AGENTS.md',
                 'project-config/codex.config.toml',
                 'project-config/codex.hooks.json',
+                'project-config/codex.rules',
                 'project-config/copilot.mcp.json',
                 'project-config/copilot.settings.json',
                 'project-config/copilot.tool-check.hooks.json',
@@ -1454,23 +1469,49 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertEqual(
             codex,
             {
-                'model': 'gpt-5.6',
-                'model_reasoning_effort': 'medium',
-                'plan_mode_reasoning_effort': 'medium',
-                'model_verbosity': 'low',
                 'approval_policy': 'on-request',
                 'approvals_reviewer': 'auto_review',
                 'sandbox_mode': 'workspace-write',
-                'model_auto_compact_token_limit': 64000,
-                'tool_output_token_limit': 12000,
+                'sandbox_workspace_write': {'network_access': True},
                 'features': {'multi_agent': True, 'hooks': True},
-                'agents': {
-                    'max_threads': 2,
-                    'max_depth': 1,
-                    'interrupt_message': False,
-                },
             },
         )
+
+        codex_rules = (project_templates / 'codex.rules').read_text(encoding='utf-8')
+        for safe_prefix in (
+            'pattern = ["git", "add"]',
+            'pattern = ["git", "fetch"]',
+            'pattern = ["git", "status"]',
+            'pattern = ["git", "rev-parse"]',
+            'pattern = ["git", "ls-files"]',
+            'pattern = ["gh", "pr", ["view", "list", "checks", "diff", "status"]]',
+            'pattern = ["gh", "issue", ["view", "list", "status"]]',
+            'pattern = ["gh", "run", ["view", "list", "watch"]]',
+        ):
+            self.assertIn(safe_prefix, codex_rules)
+        for unsafe_prefix in (
+            'pattern = ["bash"]',
+            'pattern = ["python"]',
+            'pattern = ["node"]',
+            'pattern = ["git"]',
+            'pattern = ["git", "diff"]',
+            'pattern = ["git", "commit"]',
+            'pattern = ["git", "push"]',
+        ):
+            self.assertNotIn(unsafe_prefix, codex_rules)
+        for model_preference in (
+            'model',
+            'model_reasoning_effort',
+            'plan_mode_reasoning_effort',
+            'model_verbosity',
+        ):
+            self.assertNotIn(model_preference, codex)
+        for defaulted_setting in (
+            'model_auto_compact_token_limit',
+            'tool_output_token_limit',
+            'agents',
+        ):
+            self.assertNotIn(defaulted_setting, codex)
         self.assertEqual(
             cursor,
             {
@@ -1480,9 +1521,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 }
             },
         )
-        self.assertEqual(copilot['model'], 'gpt-5.4')
-        self.assertEqual(copilot['effortLevel'], 'medium')
-        self.assertEqual(copilot['contextTier'], 'default')
+        for model_preference in ('model', 'effortLevel', 'contextTier'):
+            self.assertNotIn(model_preference, copilot)
         self.assertEqual(
             copilot['enabledPlugins'],
             {'superpowers@superpowers-marketplace': True},
@@ -1643,7 +1683,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
             content = config_path.read_text(encoding='utf-8')
             parsed = tomllib.loads(content)
-            self.assertEqual(parsed['model'], 'gpt-5.6')
+            self.assertEqual(parsed['model'], 'old')
             self.assertEqual(parsed['custom'], 'keep')
             self.assertIs(parsed['features']['multi_agent'], True)
             self.assertIs(parsed['features']['custom_feature'], True)
@@ -1676,7 +1716,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
             content = config_path.read_text(encoding='utf-8')
             parsed = tomllib.loads(content)
-            self.assertEqual(parsed['model'], 'gpt-5.6')
+            self.assertEqual(parsed['model'], 'old')
             self.assertIs(parsed['features']['multi_agent'], True)
             self.assertIs(parsed['features']['custom_feature'], True)
             self.assertIn('# keep model comment', content)
@@ -1830,7 +1870,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             )
             sync._reconcile_config_templates(apply_context, public_config)
             parsed = json.loads(config_path.read_text(encoding='utf-8'))
-            self.assertEqual(parsed['model'], 'gpt-5.4')
+            self.assertEqual(parsed['model'], 'old')
             self.assertEqual(parsed['custom'], {'value': 7})
 
     def test_reconcile_hook_template_preserves_unrelated_hook_and_is_idempotent(self):
@@ -1887,6 +1927,19 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 {
                     'template': 'entry-files/AGENTS.md',
                     'path': 'AGENTS.md',
+                }
+            ],
+        )
+
+    def test_public_manifest_declares_codex_exec_policy_template(self):
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+
+        self.assertEqual(
+            public_config.get('file_templates'),
+            [
+                {
+                    'template': 'project-config/codex.rules',
+                    'path': '.codex/rules/setup-project-agents.rules',
                 }
             ],
         )
@@ -2031,7 +2084,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     (target / '.codex' / 'config.toml').read_text(encoding='utf-8')
                 )
                 self.assertIs(parsed['features']['multi_agent'], True)
-                self.assertEqual(parsed['model'], 'gpt-5.6')
+                if config_content and 'model = "project-model"' in config_content:
+                    self.assertEqual(parsed['model'], 'project-model')
+                else:
+                    self.assertNotIn('model', parsed)
                 if config_content and 'other' in config_content:
                     self.assertIs(parsed['features']['other'], True)
 

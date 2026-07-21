@@ -1,0 +1,55 @@
+# Common repository inspection and reversible index/network updates.
+prefix_rule(
+    pattern = ["git", "status"],
+    decision = "allow",
+    justification = "Repository status is read-only.",
+)
+
+prefix_rule(
+    pattern = ["git", "rev-parse"],
+    decision = "allow",
+    justification = "Repository metadata resolution is read-only.",
+)
+
+prefix_rule(
+    pattern = ["git", "ls-files"],
+    decision = "allow",
+    justification = "Tracked-file listing is read-only.",
+)
+
+prefix_rule(
+    pattern = ["git", "add"],
+    decision = "allow",
+    justification = "Staging changes is local and reversible.",
+)
+
+prefix_rule(
+    pattern = ["git", "fetch"],
+    decision = "allow",
+    justification = "Fetching updates remote-tracking data without changing the worktree.",
+)
+
+# Read-only GitHub queries. Mutating commands such as create, merge, edit, and delete stay gated.
+prefix_rule(
+    pattern = ["gh", "pr", ["view", "list", "checks", "diff", "status"]],
+    decision = "allow",
+    justification = "Pull-request inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["gh", "issue", ["view", "list", "status"]],
+    decision = "allow",
+    justification = "Issue inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["gh", "run", ["view", "list", "watch"]],
+    decision = "allow",
+    justification = "Workflow-run inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["gh", "repo", ["view", "list"]],
+    decision = "allow",
+    justification = "Repository inspection is read-only.",
+)

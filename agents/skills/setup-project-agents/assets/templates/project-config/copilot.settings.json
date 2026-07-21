@@ -1,7 +1,4 @@
 {
-  "model": "gpt-5.4",
-  "effortLevel": "medium",
-  "contextTier": "default",
   "extraKnownMarketplaces": {
     "superpowers-marketplace": {
       "source": {

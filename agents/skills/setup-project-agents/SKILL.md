@@ -16,11 +16,11 @@ values. It never reads or modifies user configuration.
 ## Ownership
 
 - The script owns deterministic configuration for every supported platform.
-- Literal templates own project configuration values, recommended-tool thresholds, and native
-  startup-hook entries; Python contains only generic reconciliation and detection logic.
+- Literal templates own project configuration values and native startup-hook entries; Python
+  contains only generic reconciliation logic.
 - The LLM owns model selection and repository-specific Rule and Skill generation.
-- tool-only startup hooks inspect recommended installations and versions. They do not inspect
-  project or user configuration.
+- Each startup hook checks only recommended tools for the platform that invoked it. It does not
+  inspect project or user configuration and never blocks the platform.
 
 ## Managed Assets
 
@@ -70,19 +70,15 @@ Generate these Skills from their public blueprints:
    configuration and hook files from readable templates. Do not separately edit user-level
    configuration or remove template-external project fields.
 
-5. Run an uncached recommended-tool check for each platform in use when you need immediate setup
-   feedback:
+5. When you need immediate setup feedback, run an uncached recommended-tool check only for the
+   current execution platform:
 
    ```sh
-   python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform codex
-   python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform cursor
-   python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform copilot
+   python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform PLATFORM
    ```
 
-   An installed version passes only when it is strictly greater than the target in that platform's
-   policy template. Native hooks perform the same full check once per local day and platform across
-   repositories. Findings are advisory: every hook reports concise repair guidance and never blocks
-   the platform.
+   Replace `PLATFORM` with `codex`, `cursor`, or `copilot`. The native startup hook performs the same
+   advisory check automatically.
 
 ## Review Gate
 
