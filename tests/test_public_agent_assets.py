@@ -523,7 +523,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
-            public_config['project_skill_generators'] = []
+            public_config['skill_blueprints'] = []
             public_config['agent_prompts'] = []
             public_config['entry_files'] = []
             public_config['retired_assets'] = {
@@ -687,7 +687,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
-            public_config['project_skill_generators'] = []
+            public_config['skill_blueprints'] = []
             public_config['agent_prompts'] = [
                 agent
                 for agent in public_config['agent_prompts']
@@ -740,7 +740,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
-            public_config['project_skill_generators'] = []
+            public_config['skill_blueprints'] = []
             public_config['platforms']['agent_wrappers'] = [
                 wrapper
                 for wrapper in public_config['platforms']['agent_wrappers']
@@ -792,7 +792,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
-            public_config['project_skill_generators'] = []
+            public_config['skill_blueprints'] = []
             public_config['platforms']['agent_wrappers'] = [
                 wrapper
                 for wrapper in public_config['platforms']['agent_wrappers']
@@ -833,7 +833,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
-            public_config['project_skill_generators'] = []
+            public_config['skill_blueprints'] = []
             context = sync.SyncContext(target, source, skill_root, False, [])
 
             with self.assertRaises(sync.SyncError) as error:
@@ -869,7 +869,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
-            public_config['project_skill_generators'] = []
+            public_config['skill_blueprints'] = []
             public_config['platforms']['agent_wrappers'] = [
                 wrapper
                 for wrapper in public_config['platforms']['agent_wrappers']
@@ -921,7 +921,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
-            public_config['project_skill_generators'] = []
+            public_config['skill_blueprints'] = []
             public_config['platforms']['agent_wrappers'] = [
                 wrapper
                 for wrapper in public_config['platforms']['agent_wrappers']
@@ -986,7 +986,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
-            public_config['project_skill_generators'] = []
+            public_config['skill_blueprints'] = []
             local_config = sync.discover_local_assets(target, public_config)
             local_config.update(
                 {
@@ -1052,7 +1052,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
-            public_config['project_skill_generators'] = []
+            public_config['skill_blueprints'] = []
             context = sync.SyncContext(target, source, skill_root, False, [])
 
             sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
@@ -1173,7 +1173,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 self.assertIn('tempfile.gettempdir()', content)
                 self.assertNotIn('.agents/setup-project-agent-models.json', content)
 
-    def test_setup_skill_delegates_generation_and_validation_to_each_contract(self):
+    def test_setup_skill_delegates_generation_and_validation_to_each_blueprint(self):
         content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
         normalized = ' '.join(content.split())
 
@@ -1188,9 +1188,15 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             'change-set-verification',
         ):
             self.assertIn(generated_skill, normalized)
-        self.assertIn('Each contract owns its generation and validation.', normalized)
-        self.assertIn('https://github.com/wenyue/agents/blob/master/agents/rules/', normalized)
-        self.assertIn('https://github.com/wenyue/agents/blob/master/agents/skills/', normalized)
+        self.assertIn('Each blueprint owns its generation and validation.', normalized)
+        self.assertIn(
+            'https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/',
+            normalized,
+        )
+        self.assertIn(
+            'https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/',
+            normalized,
+        )
         self.assertNotIn('references/generation-contracts', normalized)
 
     def test_setup_skill_generates_assets_before_applying_model_config(self):
@@ -1608,7 +1614,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
             public_config['skills'] = []
-            public_config['project_skill_generators'] = []
+            public_config['skill_blueprints'] = []
             public_config['retired_assets'] = {
                 'rules': [],
                 'skills': [],
@@ -1748,16 +1754,19 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                         {'rules': [], 'agent_prompts': []},
                     )
 
-    def test_sync_does_not_create_missing_project_rule_placeholder(self):
+    def test_sync_does_not_create_missing_rule_blueprint_output(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_rules = source / 'agents' / 'rules'
-            source_rules.mkdir(parents=True)
+            source_blueprints = source / 'agents' / 'blueprints' / 'rules'
+            source_blueprints.mkdir(parents=True)
             skill_root.mkdir(parents=True)
-            (source_rules / '20-project-tools.md').write_text('project tools placeholder\n', encoding='utf-8')
+            (source_blueprints / '20-project-tools.md').write_text(
+                'project tools blueprint\n',
+                encoding='utf-8',
+            )
             public_config = {
                 'mirror_delete': True,
                 'rules': [],
@@ -1778,7 +1787,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_skill = source / 'agents' / 'skills' / 'worktree-environment-setup'
+            source_skill = (
+                source / 'agents' / 'blueprints' / 'skills' / 'worktree-environment-setup'
+            )
             legacy_skill = target / '.agents' / 'skills' / 'project-development-workflow'
             source_skill.mkdir(parents=True)
             legacy_skill.mkdir(parents=True)
@@ -1806,7 +1817,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 },
                 'rules': [],
                 'skills': [],
-                'project_skill_generators': [{'name': 'worktree-environment-setup'}],
+                'skill_blueprints': [{'name': 'worktree-environment-setup'}],
                 'agent_prompts': [],
             }
             context = sync.SyncContext(target, source, skill_root, False, [])
@@ -1828,7 +1839,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_skill = source / 'agents' / 'skills' / 'change-set-verification'
+            source_skill = (
+                source / 'agents' / 'blueprints' / 'skills' / 'change-set-verification'
+            )
             legacy_skill = target / '.agents' / 'skills' / 'project-verification'
             source_skill.mkdir(parents=True)
             legacy_skill.mkdir(parents=True)
@@ -1850,7 +1863,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 },
                 'rules': [],
                 'skills': [],
-                'project_skill_generators': [{'name': 'change-set-verification'}],
+                'skill_blueprints': [{'name': 'change-set-verification'}],
                 'agent_prompts': [],
             }
             context = sync.SyncContext(target, source, skill_root, False, [])
@@ -1871,14 +1884,16 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 changes,
             )
 
-    def test_sync_does_not_copy_project_generation_contracts_into_target(self):
+    def test_sync_does_not_copy_project_blueprints_into_target(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_rule = source / 'agents' / 'rules' / '20-project-tools.md'
-            source_skill = source / 'agents' / 'skills' / 'change-set-verification'
+            source_rule = source / 'agents' / 'blueprints' / 'rules' / '20-project-tools.md'
+            source_skill = (
+                source / 'agents' / 'blueprints' / 'skills' / 'change-set-verification'
+            )
             source_setup_skill = source / 'agents' / 'skills' / 'setup-project-agents'
             source_rule.parent.mkdir(parents=True)
             source_skill.mkdir(parents=True)
@@ -1897,8 +1912,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [{'name': 'setup-project-agents'}],
-                'project_rule_generators': [{'file': '20-project-tools.md'}],
-                'project_skill_generators': [{'name': 'change-set-verification'}],
+                'rule_blueprints': [{'file': '20-project-tools.md'}],
+                'skill_blueprints': [{'name': 'change-set-verification'}],
                 'agent_prompts': [],
             }
             context = sync.SyncContext(target, source, skill_root, False, [])
@@ -1926,8 +1941,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config = {
                 'rules': [],
                 'skills': [],
-                'project_rule_generators': [{'file': '20-project-tools.md'}],
-                'project_skill_generators': [{'name': 'change-set-verification'}],
+                'rule_blueprints': [{'file': '20-project-tools.md'}],
+                'skill_blueprints': [{'name': 'change-set-verification'}],
                 'agent_prompts': [],
             }
             context = sync.SyncContext(target, source, skill_root, True, [])
@@ -1955,22 +1970,57 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             (REPO_ROOT / 'agents' / 'skills' / 'project-development-workflow').exists()
         )
 
-    def test_public_config_lists_change_set_verification_generator(self):
+    def test_public_config_lists_skill_blueprints(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
 
-        generator_names = {
-            generator['name'] for generator in public_config['project_skill_generators']
+        blueprint_names = {
+            blueprint['name'] for blueprint in public_config['skill_blueprints']
         }
 
-        self.assertIn('worktree-environment-setup', generator_names)
-        self.assertIn('change-set-verification', generator_names)
+        self.assertIn('worktree-environment-setup', blueprint_names)
+        self.assertIn('change-set-verification', blueprint_names)
 
-    def test_public_config_owns_project_rule_routing(self):
+    def test_public_blueprints_use_a_separate_catalog_namespace(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
 
-        self.assertIn('project_rule_generators', public_config)
+        self.assertNotIn('project_rule_generators', public_config)
+        self.assertNotIn('project_skill_generators', public_config)
+        self.assertIn('rule_blueprints', public_config)
+        self.assertIn('skill_blueprints', public_config)
+
+        for filename in (
+            '20-project-tools.md',
+            '21-project-rules.md',
+            '22-project-structure.md',
+        ):
+            for catalog in ('agents', 'agents-zh'):
+                self.assertTrue(
+                    (REPO_ROOT / catalog / 'blueprints' / 'rules' / filename).is_file()
+                )
+            self.assertFalse((REPO_ROOT / 'agents' / 'rules' / filename).exists())
+            self.assertFalse((REPO_ROOT / 'agents-zh' / 'rules' / filename).exists())
+
+        for name in ('worktree-environment-setup', 'change-set-verification'):
+            for catalog in ('agents', 'agents-zh'):
+                self.assertTrue(
+                    (
+                        REPO_ROOT
+                        / catalog
+                        / 'blueprints'
+                        / 'skills'
+                        / name
+                        / 'SKILL.md'
+                    ).is_file()
+                )
+            self.assertFalse((REPO_ROOT / 'agents' / 'skills' / name).exists())
+            self.assertFalse((REPO_ROOT / 'agents-zh' / 'skills' / name).exists())
+
+    def test_public_config_owns_rule_blueprint_routing(self):
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+
+        self.assertIn('rule_blueprints', public_config)
         self.assertEqual(
-            public_config['project_rule_generators'],
+            public_config['rule_blueprints'],
             [
                 {
                     'file': '20-project-tools.md',
@@ -2137,7 +2187,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                         'skills': [],
                         'agents': [],
                     },
-                    'project_rule_generators': [{'file': '20-project-tools.md'}],
+                    'rule_blueprints': [{'file': '20-project-tools.md'}],
                 }
             )
 
@@ -3214,7 +3264,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
     def test_rule_and_skill_responsibility_references_use_canonical_names(self):
         cases = {
-            REPO_ROOT / 'agents' / 'rules' / '20-project-tools.md': {
+            REPO_ROOT / 'agents' / 'blueprints' / 'rules' / '20-project-tools.md': {
                 'expected': (
                     '`Project Rules`',
                     '`Project Structure`',
@@ -3228,19 +3278,24 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     '`.agents/skills/change-set-verification/`',
                 ),
             },
-            REPO_ROOT / 'agents' / 'rules' / '21-project-rules.md': {
+            REPO_ROOT / 'agents' / 'blueprints' / 'rules' / '21-project-rules.md': {
                 'expected': ('`Project Tools`', '`Project Structure`'),
                 'forbidden': ('`20-project-tools.md`', '`22-project-structure.md`'),
             },
-            REPO_ROOT / 'agents' / 'rules' / '22-project-structure.md': {
+            REPO_ROOT / 'agents' / 'blueprints' / 'rules' / '22-project-structure.md': {
                 'expected': ('`Project Tools`', '`Project Rules`'),
                 'forbidden': ('`20-project-tools.md`', '`21-project-rules.md`'),
             },
-            REPO_ROOT / 'agents' / 'skills' / 'worktree-environment-setup' / 'SKILL.md': {
+            REPO_ROOT
+            / 'agents'
+            / 'blueprints'
+            / 'skills'
+            / 'worktree-environment-setup'
+            / 'SKILL.md': {
                 'expected': ('`Project Tools`',),
                 'forbidden': ('`.agents/rules/20-project-tools.md`',),
             },
-            REPO_ROOT / 'agents-zh' / 'rules' / '20-project-tools.md': {
+            REPO_ROOT / 'agents-zh' / 'blueprints' / 'rules' / '20-project-tools.md': {
                 'expected': (
                     '`Project Rules`',
                     '`Project Structure`',
@@ -3254,15 +3309,20 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     '`.agents/skills/change-set-verification/`',
                 ),
             },
-            REPO_ROOT / 'agents-zh' / 'rules' / '21-project-rules.md': {
+            REPO_ROOT / 'agents-zh' / 'blueprints' / 'rules' / '21-project-rules.md': {
                 'expected': ('`Project Tools`', '`Project Structure`'),
                 'forbidden': ('`20-project-tools.md`', '`22-project-structure.md`'),
             },
-            REPO_ROOT / 'agents-zh' / 'rules' / '22-project-structure.md': {
+            REPO_ROOT / 'agents-zh' / 'blueprints' / 'rules' / '22-project-structure.md': {
                 'expected': ('`Project Tools`', '`Project Rules`'),
                 'forbidden': ('`20-project-tools.md`', '`21-project-rules.md`'),
             },
-            REPO_ROOT / 'agents-zh' / 'skills' / 'worktree-environment-setup' / 'SKILL.md': {
+            REPO_ROOT
+            / 'agents-zh'
+            / 'blueprints'
+            / 'skills'
+            / 'worktree-environment-setup'
+            / 'SKILL.md': {
                 'expected': ('`Project Tools`',),
                 'forbidden': ('`.agents/rules/20-project-tools.md`',),
             },
@@ -3296,7 +3356,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 for filesystem_reference in contract['forbidden']:
                     self.assertNotIn(filesystem_reference, content)
 
-    def test_public_generation_contracts_keep_required_shapes_and_gates(self):
+    def test_public_blueprints_keep_required_contract_shapes_and_gates(self):
         rule_contracts = {
             REPO_ROOT / 'agents': (
                 '## Generation Contract',
@@ -3317,7 +3377,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 '21-project-rules.md',
                 '22-project-structure.md',
             ):
-                path = root / 'rules' / filename
+                path = root / 'blueprints' / 'rules' / filename
                 with self.subTest(path=path.relative_to(REPO_ROOT)):
                     content = path.read_text(encoding='utf-8')
                     positions = [content.index(section) for section in required_sections]
@@ -3349,7 +3409,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         }
         for root, (required_sections, obsolete_combined_gate) in skill_contracts.items():
             for skill_name in ('worktree-environment-setup', 'change-set-verification'):
-                path = root / 'skills' / skill_name / 'SKILL.md'
+                path = root / 'blueprints' / 'skills' / skill_name / 'SKILL.md'
                 with self.subTest(path=path.relative_to(REPO_ROOT)):
                     content = path.read_text(encoding='utf-8')
                     positions = [content.index(section) for section in required_sections]
@@ -3357,7 +3417,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     self.assertNotIn(obsolete_combined_gate, content)
 
         worktree_source = (
-            REPO_ROOT / 'agents' / 'skills' / 'worktree-environment-setup' / 'SKILL.md'
+            REPO_ROOT
+            / 'agents'
+            / 'blueprints'
+            / 'skills'
+            / 'worktree-environment-setup'
+            / 'SKILL.md'
         ).read_text(encoding='utf-8')
         self.assertIn(
             "choose either the target project's established language and runtime or paired",
@@ -3366,6 +3431,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         worktree_mirror = (
             REPO_ROOT
             / 'agents-zh'
+            / 'blueprints'
             / 'skills'
             / 'worktree-environment-setup'
             / 'SKILL.md'
@@ -3418,7 +3484,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_skill = source / 'agents' / 'skills' / 'worktree-environment-setup'
+            source_skill = (
+                source / 'agents' / 'blueprints' / 'skills' / 'worktree-environment-setup'
+            )
             target_skill = target / '.agents' / 'skills' / 'worktree-environment-setup'
             source_skill.mkdir(parents=True)
             target_skill.mkdir(parents=True)
@@ -3450,7 +3518,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [],
-                'project_skill_generators': [{'name': 'worktree-environment-setup'}],
+                'skill_blueprints': [{'name': 'worktree-environment-setup'}],
                 'agent_prompts': [],
             }
             context = sync.SyncContext(target, source, skill_root, False, [])
@@ -3477,7 +3545,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_skill = source / 'agents' / 'skills' / 'change-set-verification'
+            source_skill = (
+                source / 'agents' / 'blueprints' / 'skills' / 'change-set-verification'
+            )
             target_skill = target / '.agents' / 'skills' / 'change-set-verification'
             source_skill.mkdir(parents=True)
             target_references = target_skill / 'references'
@@ -3504,7 +3574,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [],
-                'project_skill_generators': [
+                'skill_blueprints': [
                     {'name': 'worktree-environment-setup'},
                     {'name': 'change-set-verification'},
                 ],
@@ -3528,13 +3598,15 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 changes,
             )
 
-    def test_sync_does_not_copy_change_set_verification_generator_contract(self):
+    def test_sync_does_not_copy_change_set_verification_blueprint(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_skill = source / 'agents' / 'skills' / 'change-set-verification'
+            source_skill = (
+                source / 'agents' / 'blueprints' / 'skills' / 'change-set-verification'
+            )
             source_skill.mkdir(parents=True)
             skill_root.mkdir(parents=True)
             (source_skill / 'SKILL.md').write_text(
@@ -3545,7 +3617,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [],
-                'project_skill_generators': [{'name': 'change-set-verification'}],
+                'skill_blueprints': [{'name': 'change-set-verification'}],
                 'agent_prompts': [],
             }
             context = sync.SyncContext(target, source, skill_root, False, [])
@@ -4266,7 +4338,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             }
             public_config = {
                 'rules': [],
-                'project_rule_generators': [expected],
+                'rule_blueprints': [expected],
                 'agent_prompts': [],
             }
 

@@ -12,7 +12,7 @@ repository-local runtime boundaries.
 - Make public catalog changes in `agents/`; do not use `.agents/` or `agents-zh/` as the source for
   an English public asset.
 - Treat `agents/skills/setup-project-agents/references/public_assets.json` as the owner of public
-  asset inclusion, declared retirements, project-skill generators, wrapper templates, and managed
+  asset inclusion, declared retirements, Rule and Skill blueprints, wrapper templates, and managed
   root-configuration declarations.
 - Keep deterministic synchronization and manifest validation in
   `agents/skills/setup-project-agents/scripts/`. Do not encode target-specific policy in those
@@ -43,12 +43,10 @@ repository-local runtime boundaries.
 
 ## Generation and Installation
 
-- Treat `agents/rules/20-project-tools.md`, `agents/rules/21-project-rules.md`, and
-  `agents/rules/22-project-structure.md` as public generation contracts, not final target rules.
-- Treat `agents/skills/change-set-verification/SKILL.md` as the public generation contract for a
-  target-owned operational skill.
-- Generate complete target-owned rules and skills under `.agents/`; never copy a generation
-  contract into the corresponding target path as the final runtime artifact.
+- Treat `agents/blueprints/rules/` and `agents/blueprints/skills/` as the public sources for
+  target-owned Rule and Skill generation, not as directly installable runtime assets.
+- Generate complete target-owned rules and skills under `.agents/`; never copy a blueprint into the
+  corresponding target path as the final runtime artifact.
 - Preserve `.agents/` as the installation root in public prompts, templates, manifests, scripts,
   and documentation.
 

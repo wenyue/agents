@@ -15,16 +15,16 @@ subagent models and generate the five repository-specific assets declared by thi
 
 ## Managed Assets
 
-Generate these Rules from their public contracts:
+Generate these Rules from their public blueprints:
 
-- [`20-project-tools.md`](https://github.com/wenyue/agents/blob/master/agents/rules/20-project-tools.md)
-- [`21-project-rules.md`](https://github.com/wenyue/agents/blob/master/agents/rules/21-project-rules.md)
-- [`22-project-structure.md`](https://github.com/wenyue/agents/blob/master/agents/rules/22-project-structure.md)
+- [`20-project-tools.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/20-project-tools.md)
+- [`21-project-rules.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/21-project-rules.md)
+- [`22-project-structure.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/22-project-structure.md)
 
-Generate these Skills from their public contracts:
+Generate these Skills from their public blueprints:
 
-- [`worktree-environment-setup`](https://github.com/wenyue/agents/blob/master/agents/skills/worktree-environment-setup/SKILL.md)
-- [`change-set-verification`](https://github.com/wenyue/agents/blob/master/agents/skills/change-set-verification/SKILL.md)
+- [`worktree-environment-setup`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/worktree-environment-setup/SKILL.md)
+- [`change-set-verification`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/change-set-verification/SKILL.md)
 
 ## Reconciliation Workflow
 
@@ -45,10 +45,10 @@ Generate these Skills from their public contracts:
    `model` for Codex, Cursor, and GitHub, plus `model_reasoning_effort` for Codex. Existing wrappers
    are not a value source.
 
-3. Open and execute each public generation contract enumerated under Managed Assets. Generate Rules
+3. Open and execute each public blueprint enumerated under Managed Assets. Generate Rules
    at `.agents/rules/<name>.md` and Skills at `.agents/skills/<name>/`. Use current repository
    evidence; previous content may be used as a reference during generation, but it is not a source
-   of truth. Each contract owns its generation and validation.
+   of truth. Each blueprint owns its generation and validation.
 
 4. Apply the completed model configuration after all generated files exist:
 
@@ -59,7 +59,7 @@ Generate these Skills from their public contracts:
 
 ## Review Gate
 
-Accept only generated assets that satisfy their own public contract and preserve unrelated
+Accept only generated assets that satisfy their public blueprint and preserve unrelated
 target-owned files.
 
 ## Acceptance Gate
@@ -69,16 +69,16 @@ Every enumerated Rule and Skill must be complete, and every required model field
 ## Validation
 
 Run the final check with the same temporary model configuration. The script checks that every
-enumerated output exists and that deterministic configuration has no drift; each generation
-contract owns content validation.
+enumerated output exists and that deterministic configuration has no drift; each blueprint owns
+content validation.
 
 ```sh
 python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py \
   --check --model-config "$MODEL_CONFIG"
 ```
 
-Stop on any script or generation-contract failure. Do not invoke a real model for validation.
+Stop on any script or blueprint failure. Do not invoke a real model for validation.
 
 ## Output
 
-Report the changed managed files and any unresolved model or generation-contract blocker.
+Report the changed managed files and any unresolved model or blueprint blocker.

@@ -162,7 +162,7 @@
       }
     }
   ],
-  "project_rule_generators": [
+  "rule_blueprints": [
     {
       "file": "20-project-tools.md",
       "read_when": "Project tooling, MCP, runtime, or verification",
@@ -229,7 +229,7 @@
       "name": "write-skill"
     }
   ],
-  "project_skill_generators": [
+  "skill_blueprints": [
     {
       "name": "worktree-environment-setup"
     },

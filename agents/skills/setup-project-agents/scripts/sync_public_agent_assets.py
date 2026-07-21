@@ -580,13 +580,13 @@ def _retired_assets(config: dict[str, Any]) -> dict[str, tuple[str, ...]]:
     active = {
         'rules': {
             rule.get('file')
-            for key in ('rules', 'project_rule_generators')
+            for key in ('rules', 'rule_blueprints')
             for rule in _require_items(config, key)
             if isinstance(rule.get('file'), str)
         },
         'skills': {
             skill.get('name')
-            for key in ('skills', 'project_skill_generators')
+            for key in ('skills', 'skill_blueprints')
             for skill in _require_items(config, key)
             if isinstance(skill.get('name'), str)
         },
@@ -1169,18 +1169,18 @@ def discover_local_assets(target_root: Path, public_config: dict[str, Any]) -> d
     rules = []
     rules_root = target_root / '.agents' / 'rules'
     agents_rows = _read_entry_rule_rows(target_root, public_config)
-    generated_rule_metadata = {
+    blueprint_rule_metadata = {
         rule.get('file'): rule
-        for rule in _require_items(public_config, 'project_rule_generators')
+        for rule in _require_items(public_config, 'rule_blueprints')
         if isinstance(rule.get('file'), str)
     }
     if rules_root.exists():
         for rule_path in sorted(rules_root.glob('*.md')):
             if rule_path.name in public_rule_files:
                 continue
-            generated_metadata = generated_rule_metadata.get(rule_path.name)
-            if generated_metadata:
-                rules.append({**generated_metadata})
+            blueprint_metadata = blueprint_rule_metadata.get(rule_path.name)
+            if blueprint_metadata:
+                rules.append({**blueprint_metadata})
                 continue
             metadata = _local_rule_metadata(target_root, rule_path.name, agents_rows)
             rules.append(
@@ -1400,17 +1400,17 @@ def _record_missing_generated_outputs(
 ) -> None:
     if not context.check:
         return
-    for rule in _require_items(public_config, 'project_rule_generators'):
+    for rule in _require_items(public_config, 'rule_blueprints'):
         filename = rule.get('file')
         if not isinstance(filename, str) or not _RULE_FILENAME_PATTERN.fullmatch(filename):
-            raise SyncError('Each project Rule generator requires a safe file name')
+            raise SyncError('Each Rule blueprint requires a safe output file name')
         target = context.target_root / '.agents' / 'rules' / filename
         if not target.is_file():
             _record_file(context, 'missing', target)
-    for skill in _require_items(public_config, 'project_skill_generators'):
+    for skill in _require_items(public_config, 'skill_blueprints'):
         name = skill.get('name')
         if not isinstance(name, str) or not _ASSET_NAME_PATTERN.fullmatch(name):
-            raise SyncError('Each project Skill generator requires a safe name')
+            raise SyncError('Each Skill blueprint requires a safe output name')
         target = context.target_root / '.agents' / 'skills' / name / 'SKILL.md'
         if not target.is_file():
             _record_file(context, 'missing', target)

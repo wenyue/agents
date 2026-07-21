@@ -8,9 +8,10 @@ boundaries.
 ## Repository Areas
 
 - `agents/` owns the complete English public catalog:
-  - `agents/rules/` contains shared rules and target-rule generation contracts.
-  - `agents/skills/` contains public operational skills, orchestration skills, and target-skill
-    generation contracts.
+  - `agents/rules/` contains directly distributed shared rules.
+  - `agents/skills/` contains directly distributed operational and orchestration skills.
+  - `agents/blueprints/` contains Rule and Skill generation contracts that produce target-owned
+    runtime assets.
   - `agents/agents/` contains public agent prompts.
 - `agents-zh/` mirrors only the human-readable Markdown structure of `agents/` for Simplified-Chinese
   readers. It owns no runtime, generation, synchronization, or distribution behavior.
@@ -26,9 +27,8 @@ boundaries.
 
 - Public synchronization reads the manifest and English assets under `agents/`, then installs
   manifest-selected assets into a target repository under `.agents/`.
-- Project-rule and project-skill generation contracts under `agents/` guide creation of complete
-  target-owned `.agents/` files; the contracts themselves are not installed as final generated
-  content.
+- Rule and Skill blueprints under `agents/blueprints/` guide creation of complete target-owned
+  `.agents/` files; the blueprints themselves are not installed as runtime content.
 - Changes do not flow from `.agents/` back into `agents/`.
 - Changes do not flow from `agents-zh/` into `agents/`, `.agents/`, manifests, wrappers, or target
   repositories.

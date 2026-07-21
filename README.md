@@ -1,8 +1,10 @@
 # wenyue/agents
 
-Shared rules, skills, subagents, wrappers, and `AGENTS.md` templates live in `agents/`. They are
-installed into target repositories under `.agents/`; this repository keeps a curated local runtime
-configuration in `.agents/` rather than mirroring the public catalog.
+Shared runtime assets live under `agents/rules/`, `agents/skills/`, and `agents/agents/`. Generative
+Rule and Skill blueprints live under `agents/blueprints/`. Runtime assets are installed into target
+repositories under `.agents/`, while blueprints guide creation of target-owned `.agents/` content;
+this repository keeps a curated local runtime configuration in `.agents/` rather than mirroring the
+public catalog.
 
 ## New Project Setup
 

@@ -14,16 +14,16 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
 
 ## 托管资产
 
-根据以下公共契约生成 Rule：
+根据以下公共蓝图生成 Rule：
 
-- [`20-project-tools.md`](https://github.com/wenyue/agents/blob/master/agents/rules/20-project-tools.md)
-- [`21-project-rules.md`](https://github.com/wenyue/agents/blob/master/agents/rules/21-project-rules.md)
-- [`22-project-structure.md`](https://github.com/wenyue/agents/blob/master/agents/rules/22-project-structure.md)
+- [`20-project-tools.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/20-project-tools.md)
+- [`21-project-rules.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/21-project-rules.md)
+- [`22-project-structure.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/22-project-structure.md)
 
-根据以下公共契约生成 Skill：
+根据以下公共蓝图生成 Skill：
 
-- [`worktree-environment-setup`](https://github.com/wenyue/agents/blob/master/agents/skills/worktree-environment-setup/SKILL.md)
-- [`change-set-verification`](https://github.com/wenyue/agents/blob/master/agents/skills/change-set-verification/SKILL.md)
+- [`worktree-environment-setup`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/worktree-environment-setup/SKILL.md)
+- [`change-set-verification`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/change-set-verification/SKILL.md)
 
 ## 协调流程
 
@@ -42,9 +42,9 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
    Codex、Cursor 和 GitHub 选择 `model`，并为 Codex 选择 `model_reasoning_effort`。现有
    Wrapper 不是取值来源。
 
-3. 依次打开并执行“托管资产”中枚举的公共生成契约。Rule 输出到 `.agents/rules/<name>.md`，Skill
+3. 依次打开并执行“托管资产”中枚举的公共蓝图。Rule 输出到 `.agents/rules/<name>.md`，Skill
    输出到 `.agents/skills/<name>/`。生成内容以目标仓库的当前证据为准；
-   旧内容可在生成过程中作为参考，但不是事实源。生成和验证方式由各契约定义。
+   旧内容可在生成过程中作为参考，但不是事实源。生成和验证方式由各蓝图定义。
 
 4. 所有生成文件存在后，应用填写完成的模型配置：
 
@@ -55,7 +55,7 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
 
 ## 审查关卡
 
-只验收满足自身公共契约的生成资产，并保留无关的目标仓库自有文件。
+只验收满足自身公共蓝图的生成资产，并保留无关的目标仓库自有文件。
 
 ## 验收关卡
 
@@ -64,15 +64,15 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
 ## 验证
 
 使用同一份临时模型配置执行最终检查。脚本检查所有枚举的输出是否存在，以及确定性配置是否存在
-偏差；内容验证由各生成契约负责。
+偏差；内容验证由各蓝图负责。
 
 ```sh
 python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py \
   --check --model-config "$MODEL_CONFIG"
 ```
 
-脚本或生成契约失败时停止。不得调用真实模型进行验证。
+脚本或蓝图失败时停止。不得调用真实模型进行验证。
 
 ## 输出
 
-报告发生变化的托管文件，以及尚未解决的模型或生成契约阻塞项。
+报告发生变化的托管文件，以及尚未解决的模型或蓝图阻塞项。
