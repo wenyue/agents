@@ -4800,6 +4800,23 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             }
             self.assertEqual(checker.run_detector(detector), '6.1.1')
 
+    def test_command_detector_resolves_path_entry_before_python_subprocess(self):
+        checker = self.checker
+        process = mock.Mock()
+        process.stdout = io.BytesIO(b'example version 2.4.1\n')
+        process.wait.return_value = 0
+        resolved = 'C:/npm/example.cmd'
+
+        with mock.patch.object(shutil, 'which', return_value=resolved) as which:
+            with mock.patch.object(checker.subprocess, 'Popen', return_value=process) as popen:
+                self.assertEqual(
+                    checker._run_command(['example', '--version'], 5),
+                    'example version 2.4.1\n',
+                )
+
+        which.assert_called_once_with('example')
+        self.assertEqual(popen.call_args.args[0], [resolved, '--version'])
+
     def test_policy_findings_distinguish_missing_equal_and_unreadable(self):
         policy = {
             'platform': 'test',

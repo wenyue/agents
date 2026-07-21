@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -88,9 +89,13 @@ def _expand(value: str) -> str:
 
 
 def _run_command(command: list[str], timeout: float) -> str | None:
+    expanded = [_expand(argument) for argument in command]
+    resolved = shutil.which(expanded[0])
+    if resolved is not None:
+        expanded[0] = resolved
     try:
         process = subprocess.Popen(
-            [_expand(argument) for argument in command],
+            expanded,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
