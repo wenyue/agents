@@ -1,55 +1,89 @@
 ---
 name: track-worktree-time
-description: Use when a task creates or reuses a linked Git worktree for code changes.
+description: Use when a task creates or reuses a linked Git worktree, or when its elapsed time, token usage, model activity, tool activity, or API-equivalent cost must be reported from stable agent sessions.
 ---
 
 # Track Worktree Task Metrics
 
-Create one minimal task receipt, then derive wall-clock, token, estimated cost, and observed tool
-activity from registered session logs after completion. Do not maintain manual phase transitions.
+Create one task receipt before linked-worktree preparation, then report elapsed time and attributed
+consumption after completion. Treat timing, token/cost, and tool activity as independent evidence:
+one unavailable surface never makes an available surface unavailable. Do not maintain manual phase transitions.
+Metric analysis is post-hoc.
+
+## Quick Decision
+
+| Evidence | Action |
+| --- | --- |
+| New linked-worktree task | Run `start` before preparation and retain the task ID. |
+| Additional attributable session | Run `attach`; use `--entire-session` only for a session created for this task after `start`. |
+| Active schema-2 receipt | Run `report` for a snapshot or `finish` once after the selected completion outcome. |
+| Missing, closed, or schema-1 receipt | Preserve the honest timing limitation, then run `usage` with a stable session ID. |
+| Tokscale unavailable or timed out | Return Codex-log token totals immediately; mark cost unavailable. |
 
 ## Workflow
 
 1. Before worktree preparation, run `start --task "<summary>" --repository "<repository>"
-   --worktree "<intended-worktree>"` and retain the task ID. Codex uses `CODEX_THREAD_ID`; its
-   latest user-message timestamp sets the boundary without storing message content. Otherwise pass
-   stable `--client` and `--session-id` values together.
-2. Run `attach <task-id>` once for every additional attributable session. Use `--entire-session`
-   only when that session was created for this task after `start`; otherwise capture its baseline.
-3. When a participant has no stable session ID, run `gap <task-id> --label "<participant>"
-   --reason "<reason>"`. This makes whole-task attribution partial; never guess by workspace or date.
-4. Use `report <task-id>` only for a non-mutating snapshot. After integration or the selected
-   completion outcome, run `finish <task-id>` and include its post-hoc Markdown report in the final
-   handoff. `finish` closes the boundary, so final-response generation is excluded.
+   --worktree "<intended-worktree>"`. Codex uses `CODEX_THREAD_ID` when available; otherwise pass
+   `--client codex --session-id <id>` together. If neither is available, request the stable session
+   ID instead of inferring the newest log.
+2. Run `attach <task-id>` once for every additional attributable session. For a participant without
+   a stable ID, run `gap <task-id> --label "<participant>" --reason "<reason>"`.
+3. Run `finish <task-id>` after integration or the selected completion outcome and include its
+   Markdown report. `finish` closes the boundary, so final-response generation is excluded.
+4. When reliable elapsed time cannot be recovered, do not create a retroactive receipt. Run the
+   receipt-independent consumption path instead:
 
-On POSIX, prefix commands with `sh .agents/skills/track-worktree-time/scripts/task-metrics.sh`.
-On Windows, use `powershell -File .agents/skills/track-worktree-time/scripts/task-metrics.ps1`.
-Both invoke the deterministic Python 3.11+ `scripts/timing.py` core.
+```powershell
+powershell -ExecutionPolicy Bypass -File .agents/skills/track-worktree-time/scripts/task-metrics.ps1 usage --client codex --session-id <id>
+```
+
+On POSIX, replace the wrapper with
+`sh .agents/skills/track-worktree-time/scripts/task-metrics.sh`. Both wrappers invoke the
+deterministic Python 3.11+ `scripts/timing.py` core.
+
+## Consumption Recovery
+
+`usage` bounds Tokscale scanning to the Codex session log dates and filters the raw
+`--json --group-by client,session,model` result by exact session-ID suffix. It requires no task
+receipt and never turns whole-session consumption into task elapsed time.
+
+If Tokscale fails, `usage` reads only the latest cumulative `token_count` event from that Codex
+session. Return those token categories with source `codex-log`, mark the API-equivalent cost
+unavailable, and keep the elapsed-time result unchanged. When the failure is sandbox-related and
+approval is available, retry the same wrapper once outside the sandbox to recover Tokscale cost;
+do not repeat cold scans.
 
 ## Metric Contract
 
 - `wall-clock` is receipt start-to-finish elapsed time.
-- Tokscale token, cost, and model activity are finish-minus-baseline deltas for explicitly registered
-  client/session/model rows. Match rollout-prefixed IDs only by stable session-ID suffix.
-- `model activity` is summed processing time; `tool activity` classifies completed Codex tool-call
-  intervals post-hoc. They may overlap and are not wall-clock phases. Do not calculate a separate
-  parallel-duration metric.
-- Missing logs, incomplete calls, gaps, and unreconciled snapshots produce concrete unavailable or
-  partial diagnostics. Never infer that an unobserved category did not occur.
-- Label money as Tokscale `estimated API-equivalent cost`, not billed cost.
+- Schema-2 token, cost, and model activity are finish-minus-baseline deltas for explicitly
+  registered sessions. Standalone `usage` is whole-session consumption and must be labeled as such.
+- `model activity` and `tool activity` are summed durations that may overlap wall-clock time.
+- Missing logs, incomplete calls, attribution gaps, and unreconciled snapshots remain explicit.
+- Label money as Tokscale `estimated API-equivalent cost`, never billed cost.
 
-## Privacy and Failure Boundaries
+## Privacy And Output
 
-- Use raw Tokscale `--json --group-by client,session,model`. Never invoke summarizers,
-  `tokscale report` task grouping, `tokscale submit`, or network publication.
-- Read transcripts transiently. Persist only counts, durations, identifiers, and diagnostics—never
-  prompts, responses, commands, or tool output.
-- Tokscale is optional enrichment; failures must not prevent wall-clock completion.
-- `scripts/timing.py` may finish legacy schema-1 ledgers, whose token and cost remain unavailable.
+Read transcripts transiently. Persist only counts, durations, identifiers, and diagnostics; never
+persist prompts, responses, commands, or tool output. Never run Tokscale summarizers, task grouping,
+submission, or network publication.
 
-## Validation and Result
+Report timing, consumption, and tool activity separately. Show exact integers from the script, then
+format user-facing token counts as `万` in Chinese and `k` in English. Always include token source,
+cost availability, registered sessions, attribution gaps, diagnostics, and any recovery used.
 
-Confirm one receipt exists, included sessions were explicitly registered, counters never decrease,
-and partial/unavailable metrics explain why. Report timestamps, wall-clock, registered sessions,
-attribution gaps, token categories, summed model activity, Tokscale version and estimated cost when
-available, observed tool activity, diagnostics, and any recovery.
+## Common Failures
+
+| Failure | Correct handling |
+| --- | --- |
+| “The matching receipt is legacy, so consumption is unavailable.” | Report legacy timing and run `usage` independently. |
+| “`CODEX_THREAD_ID` is empty, so no stable session exists.” | Ask for or accept explicit `--client` and `--session-id`. |
+| “Starting a receipt now will recover earlier elapsed time.” | Do not fabricate a boundary; report timing unavailable and recover consumption. |
+| “Tokscale cost failed, so token usage also failed.” | Return Codex-log tokens and mark only cost unavailable. |
+
+Stop and correct course before claiming metrics unavailable when any of these is true:
+
+- The only missing value is `CODEX_THREAD_ID`; an explicit stable session ID may still be supplied.
+- Elapsed time is unavailable but a stable session ID can still recover consumption.
+- Tokscale failed but the matching Codex log still contains cumulative token events.
+- A retroactive receipt is being considered for work that already happened.

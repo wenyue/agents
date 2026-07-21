@@ -4,6 +4,7 @@ import argparse
 import copy
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -498,6 +499,20 @@ def _tokscale_date(value: datetime) -> str:
     return value.astimezone().date().isoformat()
 
 
+def tokscale_executable(
+    *,
+    os_name: str | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> str:
+    platform = os_name or os.name
+    candidates = ('tokscale.cmd', 'tokscale.exe') if platform == 'nt' else ('tokscale',)
+    for candidate in candidates:
+        resolved = which(candidate)
+        if resolved:
+            return resolved
+    return 'tokscale'
+
+
 def capture_tokscale_snapshot(
     clients: list[str],
     started_at: datetime,
@@ -507,7 +522,7 @@ def capture_tokscale_snapshot(
     snapshots: dict[str, list[dict[str, Any]]] = {}
     for client in sorted(set(clients)):
         command = [
-            'tokscale',
+            tokscale_executable(),
             '--json',
             '--client',
             client,
@@ -564,7 +579,7 @@ def tokscale_cli_version(
 ) -> str | None:
     try:
         completed = runner(
-            ['tokscale', '--version'],
+            [tokscale_executable(), '--version'],
             capture_output=True,
             text=True,
             check=False,
@@ -648,6 +663,87 @@ def _codex_log_paths(codex_home: Path, session_id: str) -> list[Path]:
                 if path.stem == session_id or path.stem.endswith(f'-{session_id}')
             )
     return sorted(set(paths))
+
+
+def codex_session_bounds(
+    session_id: str, codex_home: Path | None = None
+) -> tuple[datetime, datetime] | None:
+    root = codex_home or Path(os.environ.get('CODEX_HOME', Path.home() / '.codex'))
+    earliest = None
+    latest = None
+    for path in _codex_log_paths(root, session_id):
+        try:
+            lines = path.read_text(encoding='utf-8').splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                event = json.loads(line)
+                event_time = _parse_timestamp(str(event['timestamp']))
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError, TimingError):
+                continue
+            if earliest is None or event_time < earliest:
+                earliest = event_time
+            if latest is None or event_time > latest:
+                latest = event_time
+    if earliest is None or latest is None:
+        return None
+    return earliest, latest
+
+
+def read_codex_token_totals(
+    session_id: str, codex_home: Path | None = None
+) -> dict[str, int] | None:
+    root = codex_home or Path(os.environ.get('CODEX_HOME', Path.home() / '.codex'))
+    latest: tuple[datetime, dict[str, Any]] | None = None
+    for path in _codex_log_paths(root, session_id):
+        try:
+            lines = path.read_text(encoding='utf-8').splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            payload = event.get('payload') or {}
+            info = payload.get('info') or {}
+            totals = info.get('total_token_usage')
+            if (
+                event.get('type') != 'event_msg'
+                or payload.get('type') != 'token_count'
+                or not isinstance(totals, dict)
+                or not event.get('timestamp')
+            ):
+                continue
+            try:
+                event_time = _parse_timestamp(str(event['timestamp']))
+            except (TimingError, ValueError):
+                continue
+            if latest is None or event_time > latest[0]:
+                latest = event_time, totals
+    if latest is None:
+        return None
+    raw = latest[1]
+    total_input = _integer(raw.get('input_tokens'), 'input_tokens')
+    cache_read = _integer(raw.get('cached_input_tokens'), 'cached_input_tokens')
+    cache_write = _integer(
+        raw.get('cache_write_input_tokens'), 'cache_write_input_tokens'
+    )
+    total_output = _integer(raw.get('output_tokens'), 'output_tokens')
+    reasoning = _integer(raw.get('reasoning_output_tokens'), 'reasoning_output_tokens')
+    if cache_read + cache_write > total_input:
+        raise TimingError('Codex cached input exceeds total input tokens.')
+    if reasoning > total_output:
+        raise TimingError('Codex reasoning output exceeds total output tokens.')
+    return {
+        'input': total_input - cache_read - cache_write,
+        'cache_read': cache_read,
+        'cache_write': cache_write,
+        'output': total_output - reasoning,
+        'reasoning': reasoning,
+        'total_tokens': total_input + total_output,
+    }
 
 
 def codex_turn_started_at(
@@ -1236,6 +1332,102 @@ def _capture_for_session(
         return [], str(error)
 
 
+def build_session_usage(
+    client: str,
+    session_id: str,
+    captured_at: datetime,
+    *,
+    tokscale_rows: list[dict[str, Any]],
+    snapshot_error: str | None = None,
+    codex_home: Path | None = None,
+) -> dict[str, Any]:
+    matching_rows = [
+        row
+        for row in tokscale_rows
+        if row.get('client') == client
+        and session_id_matches(
+            str(row.get('sessionId', row.get('session_id', ''))), session_id
+        )
+    ]
+    warnings = [snapshot_error] if snapshot_error else []
+    if matching_rows:
+        usage = usage_delta(client, session_id, [], matching_rows)
+        return {
+            'client': client,
+            'session_id': session_id,
+            'captured_at': _serialize_timestamp(captured_at),
+            'status': 'available',
+            'source': 'tokscale',
+            'cost_status': 'available',
+            'rows': usage['rows'],
+            'totals': usage['totals'],
+            'warnings': warnings,
+        }
+    if client == 'codex':
+        log_totals = read_codex_token_totals(session_id, codex_home)
+        if log_totals is not None:
+            totals = _empty_usage_totals()
+            totals.update(log_totals)
+            if not snapshot_error:
+                warnings.append('Tokscale returned no matching session row.')
+            return {
+                'client': client,
+                'session_id': session_id,
+                'captured_at': _serialize_timestamp(captured_at),
+                'status': 'partial',
+                'source': 'codex-log',
+                'cost_status': 'unavailable',
+                'rows': [],
+                'totals': totals,
+                'warnings': warnings,
+            }
+    if not snapshot_error:
+        warnings.append('No matching Tokscale row or Codex token event was found.')
+    return {
+        'client': client,
+        'session_id': session_id,
+        'captured_at': _serialize_timestamp(captured_at),
+        'status': 'unavailable',
+        'source': 'none',
+        'cost_status': 'unavailable',
+        'rows': [],
+        'totals': _empty_usage_totals(),
+        'warnings': warnings,
+    }
+
+
+def render_session_usage_markdown(usage: dict[str, Any]) -> str:
+    totals = usage['totals']
+    lines = [
+        '### Session Usage',
+        '',
+        f"Client: {usage['client']}",
+        f"Session: {usage['session_id']}",
+        f"Captured: {usage['captured_at']}",
+        f"Source: {usage['source']}",
+        '',
+        '| Token category | Count |',
+        '| --- | ---: |',
+        f"| input | {_format_tokens(totals['input'])} |",
+        f"| cached input | {_format_tokens(totals['cache_read'])} |",
+        f"| cache write | {_format_tokens(totals['cache_write'])} |",
+        f"| output | {_format_tokens(totals['output'])} |",
+        f"| reasoning | {_format_tokens(totals['reasoning'])} |",
+        f"| total | {_format_tokens(totals['total_tokens'])} |",
+        '',
+    ]
+    if usage['cost_status'] == 'available':
+        lines.append(
+            f"Estimated API-equivalent cost: ${totals['cost']:.6f} USD."
+        )
+    else:
+        lines.append('Estimated API-equivalent cost: unavailable.')
+    if usage['warnings']:
+        lines.extend(['', 'Warnings:'])
+        lines.extend(f'- {warning}' for warning in usage['warnings'])
+    return '\n'.join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description='Track a worktree task receipt and analyze logs after the task.'
@@ -1260,6 +1452,10 @@ def build_parser() -> argparse.ArgumentParser:
     gap.add_argument('task_id')
     gap.add_argument('--label', required=True)
     gap.add_argument('--reason', required=True)
+
+    usage = subparsers.add_parser('usage')
+    usage.add_argument('--client')
+    usage.add_argument('--session-id')
 
     finish = subparsers.add_parser('finish')
     finish.add_argument('task_id')
@@ -1370,6 +1566,36 @@ def main(argv: list[str] | None = None) -> int:
                 args.state_dir,
             )
             print(f"task_id={state['task_id']} attribution_gap={args.label}")
+        elif args.command == 'usage':
+            captured = _timestamp()
+            client, session_id = detect_current_session(args.client, args.session_id)
+            if not client or not session_id:
+                raise TimingError(
+                    'No supported current session was detected; pass --client and --session-id.'
+                )
+            bounds = (
+                codex_session_bounds(session_id)
+                if client == 'codex'
+                else None
+            )
+            started_at, ended_at = bounds or (captured, captured)
+            rows = []
+            error = None
+            try:
+                snapshots = capture_tokscale_snapshot(
+                    [client], started_at, ended_at
+                )
+                rows = snapshots[client]
+            except TimingError as usage_error:
+                error = str(usage_error)
+            usage_report = build_session_usage(
+                client,
+                session_id,
+                captured,
+                tokscale_rows=rows,
+                snapshot_error=error,
+            )
+            print(render_session_usage_markdown(usage_report))
         elif args.command == 'transition':
             state = transition_task(args.task_id, args.phase, args.state_dir)
             print(f"task_id={state['task_id']} phase={state['active_phase']}")
