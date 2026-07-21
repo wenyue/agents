@@ -18,7 +18,8 @@
 ## 工作树工作流
 
 - 每个创建或复用链接 Git Worktree 进行代码修改的任务都使用 `track-worktree-time`。在创建 Worktree
-  或准备环境之前开始计时，跨重复阶段维护一份累计账本，并在最终交接中包含已对账的完整计时报告。
+  或准备环境之前创建一份任务凭据，登记每个可归因的参与 Agent Session；参与者没有稳定 Session ID
+  时记录归因缺口，并在最终交接中包含已对账的事后指标报告。
 - 在遵守上述 Superpowers 策略的前提下，工作树的创建时机、检测、授权、位置选择和创建过程，
   均由 `superpowers:using-git-worktrees` 负责。
 - 创建工作树后，如果目标仓库提供 `worktree-environment-setup` Skill，应先使用它，再执行

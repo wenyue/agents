@@ -252,7 +252,7 @@
   ],
   "entry_files": [
     {
-      "template": "AGENTS.md",
+      "template": "entry-files/AGENTS.md",
       "path": "AGENTS.md"
     }
   ],
@@ -349,25 +349,25 @@
     },
     "rule_wrappers": [
       {
-        "template": "rule_wrapper.cursor.mdc",
+        "template": "rule-wrappers/cursor.mdc",
         "path": ".cursor/rules/{{rule.name}}.mdc"
       },
       {
-        "template": "rule_wrapper.github.instructions.md",
+        "template": "rule-wrappers/github.instructions.md",
         "path": ".github/instructions/{{rule.name}}.instructions.md"
       }
     ],
     "agent_wrappers": [
       {
-        "template": "agent_wrapper.cursor.md",
+        "template": "agent-wrappers/cursor.md",
         "path": ".cursor/agents/{{agent.name}}.md"
       },
       {
-        "template": "agent_wrapper.codex.toml",
+        "template": "agent-wrappers/codex.toml",
         "path": ".codex/agents/{{agent.name}}.toml"
       },
       {
-        "template": "agent_wrapper.github.agent.md",
+        "template": "agent-wrappers/github.agent.md",
         "path": ".github/agents/{{agent.name}}.agent.md"
       }
     ]

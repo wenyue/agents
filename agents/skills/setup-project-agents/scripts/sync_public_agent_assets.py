@@ -48,12 +48,12 @@ _CODEX_RUNTIME_FIELDS = ('model', 'model_reasoning_effort', 'sandbox_mode')
 _CURSOR_RUNTIME_FIELDS = ('model', 'readonly')
 _GITHUB_RUNTIME_FIELDS = ('model',)
 _AGENT_WRAPPER_MODEL_FIELDS = {
-    'agent_wrapper.codex.toml': (
+    'agent-wrappers/codex.toml': (
         ('codex_model', 'model'),
         ('codex_model_reasoning_effort', 'model_reasoning_effort'),
     ),
-    'agent_wrapper.cursor.md': (('cursor_model', 'model'),),
-    'agent_wrapper.github.agent.md': (('github_model', 'model'),),
+    'agent-wrappers/cursor.md': (('cursor_model', 'model'),),
+    'agent-wrappers/github.agent.md': (('github_model', 'model'),),
 }
 _PUBLIC_AGENT_MODEL_FIELDS = {
     'codex': ('model', 'model_reasoning_effort'),
