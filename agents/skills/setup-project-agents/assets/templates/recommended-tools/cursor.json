@@ -1,0 +1,50 @@
+{
+  "platform": "cursor",
+  "tools": [
+    {
+      "id": "cursor-agent",
+      "name": "Cursor Agent CLI",
+      "target_version": "2026.01.27",
+      "comparison": ">",
+      "detectors": [
+        {
+          "kind": "command-regex",
+          "command": ["agent", "--version"],
+          "pattern": "([0-9]+(?:\\.[0-9]+)+(?:-[0-9A-Za-z.-]+)?)"
+        }
+      ],
+      "install": "Install Cursor Agent CLI from the official Cursor distribution.",
+      "upgrade": "Upgrade Cursor Agent CLI with the official Cursor updater."
+    },
+    {
+      "id": "superpowers",
+      "name": "Superpowers for Cursor",
+      "target_version": "6.0.0",
+      "comparison": ">",
+      "detectors": [
+        {
+          "kind": "json-manifest-glob",
+          "glob": "{home}/.cursor/plugins/cache/*/superpowers/*/package.json",
+          "json_path": "version"
+        }
+      ],
+      "install": "Install the Superpowers plugin from the Cursor marketplace.",
+      "upgrade": "Update the Superpowers plugin in Cursor."
+    },
+    {
+      "id": "codegraph",
+      "name": "CodeGraph",
+      "target_version": "1.4.0",
+      "comparison": ">",
+      "detectors": [
+        {
+          "kind": "command-regex",
+          "command": ["codegraph", "--version"],
+          "pattern": "([0-9]+(?:\\.[0-9]+)+)"
+        }
+      ],
+      "install": "Install CodeGraph and expose the codegraph command to Cursor.",
+      "upgrade": "Upgrade CodeGraph with its installation package manager."
+    }
+  ]
+}

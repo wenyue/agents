@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "name": "setup-project-agents recommended-tool check",
+        "bash": "sh .agents/skills/setup-project-agents/scripts/check_recommended_tools.sh hook --platform copilot",
+        "powershell": ".agents/skills/setup-project-agents/scripts/check_recommended_tools.ps1 hook --platform copilot",
+        "cwd": ".",
+        "timeoutSec": 30
+      }
+    ]
+  }
+}

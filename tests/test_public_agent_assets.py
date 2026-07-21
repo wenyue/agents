@@ -6,6 +6,7 @@ import os
 import json
 import shutil
 import tempfile
+import time
 import tomllib
 import unittest
 import zipfile
@@ -18,10 +19,28 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 REPO_SKILL_ROOT = REPO_ROOT / 'agents' / 'skills' / 'setup-project-agents'
 REPO_REFERENCES = REPO_SKILL_ROOT / 'references'
 REPO_TEMPLATES = REPO_SKILL_ROOT / 'assets' / 'templates'
+RECOMMENDED_TOOL_CHECKER = REPO_SKILL_ROOT / 'scripts' / 'check_recommended_tools.py'
 TRACK_WORKTREE_TIME_ROOT = REPO_ROOT / 'agents' / 'skills' / 'track-worktree-time'
 sys.path.insert(0, str(REPO_SKILL_ROOT / 'scripts'))
 
 import sync_public_agent_assets as sync
+
+
+def copy_repo_templates(destination: Path) -> None:
+    shutil.copytree(REPO_TEMPLATES, destination, dirs_exist_ok=True)
+
+
+def load_recommended_tool_checker_module():
+    spec = importlib.util.spec_from_file_location(
+        'check_recommended_tools',
+        RECOMMENDED_TOOL_CHECKER,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f'Unable to load tool checker: {RECOMMENDED_TOOL_CHECKER}')
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def load_track_worktree_time_module():
@@ -517,6 +536,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             cursor_wrapper.parent.mkdir(parents=True)
             github_wrapper.parent.mkdir(parents=True)
             skill_root.mkdir(parents=True)
+            copy_repo_templates(skill_root / 'assets' / 'templates')
             retired_rule.write_text('project-modified old rule\n', encoding='utf-8')
             cursor_wrapper.write_text('custom cursor wrapper\n', encoding='utf-8')
             github_wrapper.write_text('custom github wrapper\n', encoding='utf-8')
@@ -610,9 +630,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
             (source / 'agents' / 'rules').mkdir(parents=True)
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (source / 'agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = [rule for rule in public_config['rules'] if rule['file'] == '10-base-code.md']
@@ -645,9 +663,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
             (source / 'agents' / 'rules').mkdir(parents=True)
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (source / 'agents' / 'rules' / '00-global-rule-config.md').write_text('rule\n', encoding='utf-8')
             stale_wrapper = target / '.cursor' / 'rules' / '10-base-code.mdc'
             stale_wrapper.parent.mkdir(parents=True)
@@ -677,9 +693,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             templates = skill_root / 'assets' / 'templates'
             source_agents = source / 'agents' / 'agents'
             source_agents.mkdir(parents=True)
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text(
                 'Apply @.agents/skills/change-set-verification/SKILL.md\n',
                 encoding='utf-8',
@@ -720,9 +734,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             templates = skill_root / 'assets' / 'templates'
             source_agents = source / 'agents' / 'agents'
             source_agents.mkdir(parents=True)
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text(
                 'Apply @.agents/skills/change-set-verification/SKILL.md\n',
                 encoding='utf-8',
@@ -782,9 +794,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             templates = skill_root / 'assets' / 'templates'
             source_agents = source / 'agents' / 'agents'
             source_agents.mkdir(parents=True)
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
             existing_wrapper = target / '.codex' / 'agents' / 'change-set-verifier.toml'
             existing_wrapper.parent.mkdir(parents=True)
@@ -826,9 +836,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             templates = skill_root / 'assets' / 'templates'
             source_agents = source / 'agents' / 'agents'
             source_agents.mkdir(parents=True)
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = []
@@ -855,9 +863,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             templates = skill_root / 'assets' / 'templates'
             source_agents = source / 'agents' / 'agents'
             source_agents.mkdir(parents=True)
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
             existing_wrapper = target / '.cursor' / 'agents' / 'change-set-verifier.md'
             existing_wrapper.parent.mkdir(parents=True)
@@ -906,9 +912,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             templates = skill_root / 'assets' / 'templates'
             source_agents = source / 'agents' / 'agents'
             source_agents.mkdir(parents=True)
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
             existing_wrapper = target / '.github' / 'agents' / 'change-set-verifier.agent.md'
             existing_wrapper.parent.mkdir(parents=True)
@@ -958,9 +962,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             templates = skill_root / 'assets' / 'templates'
             source_agents = source / 'agents' / 'agents'
             source_agents.mkdir(parents=True)
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
 
             codex_wrapper = target / '.codex' / 'agents' / 'change-set-verifier.toml'
@@ -1029,7 +1031,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 False,
             )
 
-    def test_sync_reconciles_catalog_declared_root_config_for_agent_discovery(self):
+    def test_sync_reconciles_catalog_declared_config_templates(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'agents'
@@ -1038,9 +1040,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             templates = skill_root / 'assets' / 'templates'
             source_agents = source / 'agents' / 'agents'
             source_agents.mkdir(parents=True)
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
             codex_wrapper = target / '.codex' / 'agents' / 'change-set-verifier.toml'
             codex_wrapper.parent.mkdir(parents=True)
@@ -1061,7 +1061,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 (target / '.codex' / 'config.toml').read_text(encoding='utf-8')
             )
             self.assertIs(codex_config['features']['multi_agent'], True)
-            self.assertFalse((target / '.cursor' / 'mcp.json').exists())
+            self.assertEqual(
+                json.loads((target / '.cursor' / 'mcp.json').read_text(encoding='utf-8')),
+                {'mcpServers': {}},
+            )
 
     def test_setup_skill_delegates_deterministic_configuration_to_sync_script(self):
         content = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
@@ -1092,6 +1095,38 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             with self.subTest(skill_path=skill_path):
                 content = skill_path.read_text(encoding='utf-8')
                 self.assertIn(expected, content)
+
+    def test_setup_skill_documents_template_config_and_tool_only_hooks(self):
+        english = ' '.join((REPO_SKILL_ROOT / 'SKILL.md').read_text().split())
+        chinese = ' '.join(
+            (
+                REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
+            ).read_text().split()
+        )
+        for required in (
+            'Template-owned project configuration',
+            'partial deep merge',
+            'automatically repairs',
+            'never reads or modifies user configuration',
+            'tool-only startup hooks',
+            'strictly greater than',
+            'once per local day and platform across repositories',
+            'never blocks the platform',
+            'check_recommended_tools.py check --platform',
+        ):
+            self.assertIn(required, english)
+        for required in (
+            '模板托管的项目配置',
+            '部分深度合并',
+            '自动修复',
+            '绝不读取或修改用户配置',
+            '仅检查工具的启动 Hook',
+            '严格大于',
+            '跨仓库按本地日期和平台每天只运行一次',
+            '绝不阻断平台继续运行',
+            'check_recommended_tools.py check --platform',
+        ):
+            self.assertIn(required, chinese)
 
     def test_setup_skill_uses_previous_content_only_as_generation_reference(self):
         english = (REPO_SKILL_ROOT / 'SKILL.md').read_text(encoding='utf-8')
@@ -1285,22 +1320,533 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             {'change-set-verifier.md'},
         )
 
-    def test_public_manifest_declares_generic_root_config_locks(self):
+    def test_public_manifest_declares_config_templates(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
-        root_configs = public_config['root_configs']
-        codex_config = next(
-            item for item in root_configs if item['path'] == '.codex/config.toml'
+        self.assertNotIn('root_configs', public_config)
+        self.assertEqual(
+            public_config['config_templates'],
+            [
+                {
+                    'path': '.codex/config.toml',
+                    'template': 'project-config/codex.config.toml',
+                    'format': 'toml',
+                    'merge': 'deep-overwrite',
+                    'validations': [
+                        {
+                            'kind': 'relative-paths-exist',
+                            'objects_path': 'agents',
+                            'field': 'config_file',
+                            'base_path': '.codex',
+                        }
+                    ],
+                },
+                {
+                    'path': '.cursor/cli.json',
+                    'template': 'project-config/cursor.cli.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                },
+                {
+                    'path': '.cursor/mcp.json',
+                    'template': 'project-config/cursor.mcp.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                },
+                {
+                    'path': '.github/copilot/settings.json',
+                    'template': 'project-config/copilot.settings.json',
+                    'format': 'jsonc',
+                    'merge': 'deep-overwrite',
+                },
+                {
+                    'path': '.mcp.json',
+                    'template': 'project-config/copilot.mcp.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                },
+                {
+                    'path': '.github/mcp.json',
+                    'template': 'project-config/copilot.mcp.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                },
+                {
+                    'path': '.vscode/mcp.json',
+                    'template': 'project-config/vscode.mcp.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                },
+                {
+                    'path': '.codex/hooks.json',
+                    'template': 'project-config/codex.hooks.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                    'list_merges': [
+                        {
+                            'path': 'hooks.SessionStart',
+                            'owned_marker': 'setup-project-agents',
+                        }
+                    ],
+                },
+                {
+                    'path': '.cursor/hooks.json',
+                    'template': 'project-config/cursor.hooks.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                    'list_merges': [
+                        {
+                            'path': 'hooks.sessionStart',
+                            'owned_marker': 'setup-project-agents',
+                        }
+                    ],
+                },
+                {
+                    'path': '.github/hooks/project-agent-tool-check.json',
+                    'template': 'project-config/copilot.tool-check.hooks.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                },
+            ],
         )
 
-        self.assertEqual(codex_config['format'], 'toml')
-        self.assertIn(
-            {
-                'path': 'features.multi_agent',
-                'value': True,
-                'when': {'path_glob_exists': '.codex/agents/*.toml'},
-            },
-            codex_config['locked_values'],
+    def test_project_config_templates_contain_team_baseline(self):
+        project_templates = REPO_TEMPLATES / 'project-config'
+        codex = tomllib.loads(
+            (project_templates / 'codex.config.toml').read_text(encoding='utf-8')
         )
+        cursor = json.loads(
+            (project_templates / 'cursor.cli.json').read_text(encoding='utf-8')
+        )
+        copilot = json.loads(
+            (project_templates / 'copilot.settings.json').read_text(encoding='utf-8')
+        )
+
+        self.assertEqual(
+            codex,
+            {
+                'model': 'gpt-5.6',
+                'model_reasoning_effort': 'medium',
+                'plan_mode_reasoning_effort': 'medium',
+                'model_verbosity': 'low',
+                'approval_policy': 'on-request',
+                'approvals_reviewer': 'auto_review',
+                'sandbox_mode': 'workspace-write',
+                'model_auto_compact_token_limit': 64000,
+                'tool_output_token_limit': 12000,
+                'features': {'multi_agent': True, 'hooks': True},
+                'agents': {
+                    'max_threads': 2,
+                    'max_depth': 1,
+                    'interrupt_message': False,
+                },
+            },
+        )
+        self.assertEqual(
+            cursor,
+            {
+                'permissions': {
+                    'allow': ['Read(**)', 'Write(**)', 'Shell(git)', 'Shell(rg)'],
+                    'deny': ['Read(.env*)', 'Read(**/.env*)', 'Shell(rm)'],
+                }
+            },
+        )
+        self.assertEqual(copilot['model'], 'gpt-5.4')
+        self.assertEqual(copilot['effortLevel'], 'medium')
+        self.assertEqual(copilot['contextTier'], 'default')
+        self.assertEqual(
+            copilot['enabledPlugins'],
+            {'superpowers@superpowers-marketplace': True},
+        )
+        self.assertEqual(
+            copilot['extraKnownMarketplaces']['superpowers-marketplace'],
+            {
+                'source': {
+                    'source': 'github',
+                    'repo': 'obra/superpowers-marketplace',
+                }
+            },
+        )
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+        self.assertEqual(
+            public_config['platforms']['agent_defaults'],
+            {
+                'codex': {'sandbox_mode': 'workspace-write'},
+                'cursor': {'readonly': False},
+            },
+        )
+        self.assertNotIn(
+            "'workspace-write'",
+            (REPO_SKILL_ROOT / 'scripts' / 'sync_public_agent_assets.py').read_text(),
+        )
+
+    def test_deep_merge_template_preserves_extra_fields_and_replaces_arrays(self):
+        current = {
+            'model': 'old',
+            'permissions': {'allow': ['old'], 'keep': True},
+            'extra': {'value': 7},
+        }
+        desired = {
+            'model': 'new',
+            'permissions': {'allow': ['new']},
+        }
+
+        merged = sync._deep_merge_template(current, desired)
+
+        self.assertEqual(
+            merged,
+            {
+                'model': 'new',
+                'permissions': {'allow': ['new'], 'keep': True},
+                'extra': {'value': 7},
+            },
+        )
+
+    def test_owned_list_merge_replaces_duplicates_and_preserves_unrelated_entries(self):
+        current = {
+            'hooks': {
+                'sessionStart': [
+                    {'command': 'before'},
+                    {'command': 'old setup-project-agents command'},
+                    {'command': 'middle'},
+                    {'command': 'duplicate setup-project-agents command'},
+                ]
+            }
+        }
+        desired = {
+            'hooks': {
+                'sessionStart': [
+                    {'command': 'new setup-project-agents command'},
+                ]
+            }
+        }
+        rules = [
+            {
+                'path': 'hooks.sessionStart',
+                'owned_marker': 'setup-project-agents',
+            }
+        ]
+
+        merged = sync._deep_merge_template(current, desired, rules)
+
+        self.assertEqual(
+            merged['hooks']['sessionStart'],
+            [
+                {'command': 'before'},
+                {'command': 'new setup-project-agents command'},
+                {'command': 'middle'},
+            ],
+        )
+
+    def test_hook_templates_call_platform_checker_non_blockingly(self):
+        project_templates = REPO_TEMPLATES / 'project-config'
+        codex = json.loads((project_templates / 'codex.hooks.json').read_text())
+        cursor = json.loads((project_templates / 'cursor.hooks.json').read_text())
+        copilot = json.loads(
+            (project_templates / 'copilot.tool-check.hooks.json').read_text()
+        )
+
+        codex_group = codex['hooks']['SessionStart'][0]
+        codex_handler = codex_group['hooks'][0]
+        codex_command = codex_handler['command']
+        cursor_command = cursor['hooks']['sessionStart'][0]['command']
+        copilot_hook = copilot['hooks']['sessionStart'][0]
+        self.assertIn('check_recommended_tools.sh', codex_command)
+        self.assertIn('hook --platform codex', codex_command)
+        self.assertEqual(codex_group['matcher'], 'startup|resume|clear|compact')
+        self.assertIn('check_recommended_tools.ps1', codex_handler['commandWindows'])
+        self.assertEqual(
+            cursor_command,
+            'python .agents/skills/setup-project-agents/scripts/'
+            'check_recommended_tools.py hook --platform cursor',
+        )
+        self.assertIn('check_recommended_tools.sh hook --platform copilot', copilot_hook['bash'])
+        self.assertIn('check_recommended_tools.ps1 hook --platform copilot', copilot_hook['powershell'])
+        for hook in (
+            codex_group,
+            cursor['hooks']['sessionStart'][0],
+            copilot_hook,
+        ):
+            self.assertIn('setup-project-agents', json.dumps(hook))
+
+    def test_checker_wrappers_forward_arguments_to_same_python_script(self):
+        scripts = REPO_SKILL_ROOT / 'scripts'
+        shell = (scripts / 'check_recommended_tools.sh').read_text(encoding='utf-8')
+        powershell = (scripts / 'check_recommended_tools.ps1').read_text(encoding='utf-8')
+
+        self.assertIn('check_recommended_tools.py', shell)
+        self.assertIn('"$@"', shell)
+        self.assertIn('[ "$1" = "hook" ]', shell)
+        self.assertIn('check_recommended_tools.py', powershell)
+        self.assertIn('@args', powershell)
+        self.assertIn('try {', powershell)
+        self.assertIn("$args[0] -eq 'hook'", powershell)
+
+    def test_reconcile_config_templates_updates_toml_and_preserves_unmanaged_text(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            config_path = target / '.codex' / 'config.toml'
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text(
+                '# keep this comment\n'
+                'model = "old"\n'
+                'custom = "keep"\n'
+                '\n'
+                '[features]\n'
+                'multi_agent = false\n'
+                'custom_feature = true\n',
+                encoding='utf-8',
+            )
+            context = sync.SyncContext(target, root / 'source', REPO_SKILL_ROOT, False, [])
+            public_config = {
+                'config_templates': [
+                    {
+                        'path': '.codex/config.toml',
+                        'template': 'project-config/codex.config.toml',
+                        'format': 'toml',
+                        'merge': 'deep-overwrite',
+                    }
+                ]
+            }
+
+            sync._reconcile_config_templates(context, public_config)
+
+            content = config_path.read_text(encoding='utf-8')
+            parsed = tomllib.loads(content)
+            self.assertEqual(parsed['model'], 'gpt-5.6')
+            self.assertEqual(parsed['custom'], 'keep')
+            self.assertIs(parsed['features']['multi_agent'], True)
+            self.assertIs(parsed['features']['custom_feature'], True)
+            self.assertIn('# keep this comment', content)
+
+    def test_reconcile_toml_updates_inline_table_and_preserves_assignment_comments(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            config_path = target / '.codex' / 'config.toml'
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text(
+                '"model" = "old" # keep model comment\n'
+                '"features" = { multi_agent = false, custom_feature = true } # keep feature comment\n',
+                encoding='utf-8',
+            )
+            context = sync.SyncContext(target, root / 'source', REPO_SKILL_ROOT, False, [])
+            public_config = {
+                'config_templates': [
+                    {
+                        'path': '.codex/config.toml',
+                        'template': 'project-config/codex.config.toml',
+                        'format': 'toml',
+                        'merge': 'deep-overwrite',
+                    }
+                ]
+            }
+
+            sync._reconcile_config_templates(context, public_config)
+
+            content = config_path.read_text(encoding='utf-8')
+            parsed = tomllib.loads(content)
+            self.assertEqual(parsed['model'], 'gpt-5.6')
+            self.assertIs(parsed['features']['multi_agent'], True)
+            self.assertIs(parsed['features']['custom_feature'], True)
+            self.assertIn('# keep model comment', content)
+            self.assertIn('# keep feature comment', content)
+
+    def test_reconcile_toml_creates_missing_nested_inline_table(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            skill_root = root / 'skill'
+            config_path = target / 'tool.toml'
+            template_path = skill_root / 'assets' / 'templates' / 'tool.toml'
+            target.mkdir()
+            template_path.parent.mkdir(parents=True)
+            config_path.write_text('outer = { custom = true }\n', encoding='utf-8')
+            template_path.write_text('[outer.inner]\nmanaged = true\n', encoding='utf-8')
+            context = sync.SyncContext(target, root / 'source', skill_root, False, [])
+
+            sync._reconcile_config_templates(
+                context,
+                {
+                    'config_templates': [
+                        {
+                            'path': 'tool.toml',
+                            'template': 'tool.toml',
+                            'format': 'toml',
+                            'merge': 'deep-overwrite',
+                        }
+                    ]
+                },
+            )
+
+            parsed = tomllib.loads(config_path.read_text(encoding='utf-8'))
+            self.assertIs(parsed['outer']['custom'], True)
+            self.assertIs(parsed['outer']['inner']['managed'], True)
+
+    def test_reconcile_config_template_rejects_symlinked_target_components(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            external = root / 'external-user-config'
+            target.mkdir()
+            external.mkdir()
+            (target / '.codex').symlink_to(external, target_is_directory=True)
+            context = sync.SyncContext(target, root / 'source', REPO_SKILL_ROOT, False, [])
+            public_config = {
+                'config_templates': [
+                    {
+                        'path': '.codex/config.toml',
+                        'template': 'project-config/codex.config.toml',
+                        'format': 'toml',
+                        'merge': 'deep-overwrite',
+                    }
+                ]
+            }
+
+            with self.assertRaisesRegex(sync.SyncError, 'symbolic link'):
+                sync._reconcile_config_templates(context, public_config)
+
+            self.assertFalse((external / 'config.toml').exists())
+
+    def test_reconcile_config_template_rejects_symlinked_target_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            external = root / 'user-config.toml'
+            config_path = target / '.codex' / 'config.toml'
+            config_path.parent.mkdir(parents=True)
+            external.write_text('model = "user-value"\n', encoding='utf-8')
+            config_path.symlink_to(external)
+            context = sync.SyncContext(target, root / 'source', REPO_SKILL_ROOT, False, [])
+            public_config = {
+                'config_templates': [
+                    {
+                        'path': '.codex/config.toml',
+                        'template': 'project-config/codex.config.toml',
+                        'format': 'toml',
+                        'merge': 'deep-overwrite',
+                    }
+                ]
+            }
+
+            with self.assertRaisesRegex(sync.SyncError, 'symbolic link'):
+                sync._reconcile_config_templates(context, public_config)
+
+            self.assertEqual(external.read_text(), 'model = "user-value"\n')
+
+    def test_write_bytes_uses_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'config.json'
+            target.write_text('{"old": true}\n', encoding='utf-8')
+            context = sync.SyncContext(root, root / 'source', REPO_SKILL_ROOT, False, [])
+
+            with mock.patch.object(sync.os, 'replace', wraps=sync.os.replace) as replace:
+                sync._write_bytes(context, target, b'{"new": true}\n')
+
+            replace.assert_called_once()
+            self.assertEqual(target.read_bytes(), b'{"new": true}\n')
+            self.assertEqual(
+                list(root.glob('.config.json.*.tmp')),
+                [],
+            )
+
+    def test_reconcile_config_templates_reads_jsonc_and_check_mode_does_not_write(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            config_path = target / '.github' / 'copilot' / 'settings.json'
+            config_path.parent.mkdir(parents=True)
+            original = (
+                '{\n'
+                '  // preserve the custom field value\n'
+                '  "model": "old",\n'
+                '  "custom": {"value": 7},\n'
+                '}\n'
+            )
+            config_path.write_text(original, encoding='utf-8')
+            public_config = {
+                'config_templates': [
+                    {
+                        'path': '.github/copilot/settings.json',
+                        'template': 'project-config/copilot.settings.json',
+                        'format': 'jsonc',
+                        'merge': 'deep-overwrite',
+                    }
+                ]
+            }
+            check_context = sync.SyncContext(
+                target,
+                root / 'source',
+                REPO_SKILL_ROOT,
+                True,
+                [],
+            )
+
+            sync._reconcile_config_templates(check_context, public_config)
+
+            self.assertEqual(config_path.read_text(encoding='utf-8'), original)
+            self.assertIn(
+                sync.Change('updated', '.github/copilot/settings.json'),
+                check_context.changes,
+            )
+
+            apply_context = sync.SyncContext(
+                target,
+                root / 'source',
+                REPO_SKILL_ROOT,
+                False,
+                [],
+            )
+            sync._reconcile_config_templates(apply_context, public_config)
+            parsed = json.loads(config_path.read_text(encoding='utf-8'))
+            self.assertEqual(parsed['model'], 'gpt-5.4')
+            self.assertEqual(parsed['custom'], {'value': 7})
+
+    def test_reconcile_hook_template_preserves_unrelated_hook_and_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            hook_path = target / '.cursor' / 'hooks.json'
+            hook_path.parent.mkdir(parents=True)
+            hook_path.write_text(
+                json.dumps(
+                    {
+                        'version': 1,
+                        'hooks': {
+                            'sessionStart': [
+                                {'command': 'custom-start'},
+                                {'command': 'old setup-project-agents command'},
+                                {'command': 'duplicate setup-project-agents command'},
+                            ],
+                            'stop': [{'command': 'custom-stop'}],
+                        },
+                    }
+                ),
+                encoding='utf-8',
+            )
+            public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+            public_config['config_templates'] = [
+                config
+                for config in public_config['config_templates']
+                if config['path'] == '.cursor/hooks.json'
+            ]
+            first = sync.SyncContext(target, root / 'source', REPO_SKILL_ROOT, False, [])
+
+            sync._reconcile_config_templates(first, public_config)
+
+            parsed = json.loads(hook_path.read_text(encoding='utf-8'))
+            starts = parsed['hooks']['sessionStart']
+            self.assertEqual(starts[0], {'command': 'custom-start'})
+            self.assertEqual(
+                sum('setup-project-agents' in json.dumps(item) for item in starts),
+                1,
+            )
+            self.assertEqual(parsed['hooks']['stop'], [{'command': 'custom-stop'}])
+
+            second = sync.SyncContext(target, root / 'source', REPO_SKILL_ROOT, False, [])
+            sync._reconcile_config_templates(second, public_config)
+            self.assertIn(sync.Change('unchanged', '.cursor/hooks.json'), second.changes)
 
     def test_public_manifest_declares_agents_entry_template(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
@@ -1345,6 +1891,36 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertIn(expected_error, str(error.exception))
 
+    def _assert_native_config_repaired(
+        self,
+        relative_path: str,
+        content: str,
+        required_root: str,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            source = root / 'agents'
+            config_path = target / relative_path
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text(content, encoding='utf-8')
+            source.mkdir(parents=True)
+            public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+            public_config['rules'] = []
+            public_config['skills'] = []
+            public_config['agent_prompts'] = []
+            public_config['platforms'] = {'rule_wrappers': [], 'agent_wrappers': []}
+            context = sync.SyncContext(target, source, REPO_SKILL_ROOT, False, [])
+
+            sync.sync_public_assets(
+                context,
+                public_config,
+                {'rules': [], 'agent_prompts': []},
+            )
+
+            parsed = json.loads(config_path.read_text(encoding='utf-8'))
+            self.assertEqual(parsed[required_root], {})
+
     def test_strict_sync_rejects_invalid_existing_native_platform_config(self):
         self._assert_strict_native_config_error(
             '.codex/config.toml',
@@ -1358,34 +1934,33 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             '[agents.reviewer]\n'
             'description = "Review changes"\n'
             'config_file = "./agents/reviewer.toml"\n',
-            'Codex agent reviewer references missing config file .codex/agents/reviewer.toml',
+            'config_templates[0] object reviewer field config_file references missing path',
         )
 
-    def test_strict_sync_rejects_invalid_copilot_mcp_root_structure(self):
-        self._assert_strict_native_config_error(
+    def test_sync_repairs_copilot_mcp_root_structure(self):
+        self._assert_native_config_repaired(
             '.vscode/mcp.json',
             '{"mcpServers": {}}',
-            'Native platform config .vscode/mcp.json requires a top-level servers object',
+            'servers',
         )
 
-    def test_strict_sync_rejects_invalid_cursor_mcp_root_structure(self):
-        self._assert_strict_native_config_error(
+    def test_sync_repairs_cursor_mcp_root_structure(self):
+        self._assert_native_config_repaired(
             '.cursor/mcp.json',
             '{"servers": {}}',
-            'Native platform config .cursor/mcp.json requires a top-level mcpServers object',
+            'mcpServers',
         )
 
-    def test_strict_sync_rejects_invalid_copilot_cli_mcp_root_structure(self):
+    def test_sync_repairs_copilot_cli_mcp_root_structure(self):
         for relative_path in ('.mcp.json', '.github/mcp.json'):
             with self.subTest(relative_path=relative_path):
-                self._assert_strict_native_config_error(
+                self._assert_native_config_repaired(
                     relative_path,
                     '{"servers": {}}',
-                    f'Native platform config {relative_path} requires a top-level '
-                    'mcpServers object',
+                    'mcpServers',
                 )
 
-    def test_sync_locks_required_codex_root_config_value(self):
+    def test_sync_applies_codex_template_and_preserves_extra_values(self):
         cases = (
             None,
             'model = "project-model"\n[features]\nother = true\nmulti_agent = false\n',
@@ -1426,10 +2001,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     (target / '.codex' / 'config.toml').read_text(encoding='utf-8')
                 )
                 self.assertIs(parsed['features']['multi_agent'], True)
-                if config_content and 'project-model' in config_content:
-                    self.assertEqual(parsed['model'], 'project-model')
-                    if 'other' in config_content:
-                        self.assertIs(parsed['features']['other'], True)
+                self.assertEqual(parsed['model'], 'gpt-5.6')
+                if config_content and 'other' in config_content:
+                    self.assertIs(parsed['features']['other'], True)
 
                 second_context = sync.SyncContext(
                     target,
@@ -1448,42 +2022,40 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     second_context.changes,
                 )
 
-    def test_sync_locks_generic_json_root_config_value(self):
+    def test_sync_applies_generic_json_template(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
             source = root / 'agents'
-            trigger = target / '.tool' / 'agents' / 'reviewer.json'
-            trigger.parent.mkdir(parents=True)
-            trigger.write_text('{}\n', encoding='utf-8')
             config_path = target / '.tool' / 'config.json'
+            config_path.parent.mkdir(parents=True)
             config_path.write_text(
                 '{"feature": {"enabled": false}, "keep": {"value": 7}}\n',
                 encoding='utf-8',
             )
             source.mkdir(parents=True)
+            skill_root = root / 'skill'
+            template_path = skill_root / 'assets' / 'templates' / 'tool.json'
+            template_path.parent.mkdir(parents=True)
+            template_path.write_text(
+                '{"feature": {"enabled": true}}\n',
+                encoding='utf-8',
+            )
             public_config = {
                 'rules': [],
                 'skills': [],
                 'agent_prompts': [],
                 'platforms': {'rule_wrappers': [], 'agent_wrappers': []},
-                'root_configs': [
+                'config_templates': [
                     {
                         'path': '.tool/config.json',
+                        'template': 'tool.json',
                         'format': 'json',
-                        'locked_values': [
-                            {
-                                'path': 'feature.enabled',
-                                'value': True,
-                                'when': {
-                                    'path_glob_exists': '.tool/agents/*.json',
-                                },
-                            }
-                        ],
+                        'merge': 'deep-overwrite',
                     }
                 ],
             }
-            context = sync.SyncContext(target, source, REPO_SKILL_ROOT, False, [])
+            context = sync.SyncContext(target, source, skill_root, False, [])
 
             sync.sync_public_assets(
                 context,
@@ -1495,7 +2067,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             self.assertIs(parsed['feature']['enabled'], True)
             self.assertEqual(parsed['keep'], {'value': 7})
 
-    def test_check_reports_locked_root_config_drift_without_writing(self):
+    def test_check_reports_template_drift_without_writing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -1532,9 +2104,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             stale_wrapper = target / '.github' / 'agents' / 'obsolete-agent.agent.md'
             stale_wrapper.parent.mkdir(parents=True)
             stale_wrapper.write_text('# Custom platform-only agent\n', encoding='utf-8')
@@ -1556,9 +2126,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             stale_wrapper = target / '.github' / 'agents' / 'obsolete-agent.agent.md'
             stale_wrapper.parent.mkdir(parents=True)
             stale_wrapper.write_text(
@@ -1588,9 +2156,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target_agents = target / '.agents' / 'agents'
             source_agents.mkdir(parents=True)
             target_agents.mkdir(parents=True)
-            templates.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (source_agents / 'current-verifier.md').write_text(
                 'current verifier\n',
                 encoding='utf-8',
@@ -1657,7 +2223,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            templates.mkdir(parents=True)
+            copy_repo_templates(templates)
             (templates / 'project_agents.md').write_text(
                 '# Project Agent Entry\n\n{{global_rule_rows}}\n{{base_rule_rows}}\n{{project_rule_rows}}\n',
                 encoding='utf-8',
@@ -1742,7 +2308,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     'skills': [],
                     'agent_prompts': [],
                     'entry_files': [entry_file],
-                    'root_configs': [],
+                    'config_templates': [],
                     'platforms': {'rule_wrappers': [], 'agent_wrappers': []},
                 }
                 context = sync.SyncContext(target, source, skill_root, False, [])
@@ -3695,8 +4261,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             templates.mkdir(parents=True)
             rules_root.mkdir(parents=True)
             cursor_root.mkdir(parents=True)
-            for template in REPO_TEMPLATES.glob('*'):
-                shutil.copy2(template, templates / template.name)
+            copy_repo_templates(templates)
             (rules_root / '20-project-tools.md').write_text('Strength: Mandatory\n', encoding='utf-8')
             (cursor_root / '20-project-tools.mdc').write_text(
                 '---\n'
@@ -4345,6 +4910,366 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             result = sync.discover_local_assets(target, public_config)
 
         self.assertEqual(result['rules'], [expected])
+
+
+class RecommendedToolCheckerTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.checker = load_recommended_tool_checker_module()
+
+    def test_version_comparison_is_strict_and_suffix_tolerant(self):
+        cases = (
+            ('0.144.4', '0.144.0', True),
+            ('0.144.0', '0.144.0', False),
+            ('0.143.99', '0.144.0', False),
+            ('2026.01.28-fd13201', '2026.01.27', True),
+            ('1.0.59+build.7', '1.0.58', True),
+            ('6.0.0-rc.1', '6.0.0', False),
+        )
+        for installed, target, expected in cases:
+            with self.subTest(installed=installed, target=target):
+                self.assertIs(
+                    self.checker.is_strictly_greater(installed, target),
+                    expected,
+                )
+        with self.assertRaises(ValueError):
+            self.checker.parse_version('unknown')
+
+    def test_platform_policies_keep_all_thresholds_out_of_python(self):
+        policies = REPO_TEMPLATES / 'recommended-tools'
+        expected = {
+            'codex': {'codex': '0.144.0', 'superpowers': '6.0.0', 'codegraph': '1.4.0'},
+            'cursor': {
+                'cursor-agent': '2026.01.27',
+                'superpowers': '6.0.0',
+                'codegraph': '1.4.0',
+            },
+            'copilot': {
+                'copilot': '1.0.58',
+                'superpowers': '6.0.0',
+                'codegraph': '1.4.0',
+            },
+        }
+        checker_source = RECOMMENDED_TOOL_CHECKER.read_text(encoding='utf-8')
+        for platform, targets in expected.items():
+            policy = json.loads((policies / f'{platform}.json').read_text(encoding='utf-8'))
+            self.assertEqual(policy['platform'], platform)
+            self.assertEqual(
+                {tool['id']: tool['target_version'] for tool in policy['tools']},
+                targets,
+            )
+            for target in targets.values():
+                self.assertNotIn(target, checker_source)
+
+    def test_command_and_manifest_detectors_are_data_driven(self):
+        checker = self.checker
+        command_detector = {
+            'kind': 'command-regex',
+            'command': ['example', '--version'],
+            'pattern': r'version ([0-9.]+)',
+        }
+        process = mock.Mock()
+        process.stdout = io.BytesIO(b'example version 2.4.1\n')
+        process.wait.return_value = 0
+        with mock.patch.object(checker.subprocess, 'Popen', return_value=process) as popen:
+            self.assertEqual(checker.run_detector(command_detector), '2.4.1')
+        popen.assert_called_once()
+        process.wait.assert_called_once_with(timeout=5)
+        self.assertIs(popen.call_args.kwargs['stderr'], checker.subprocess.STDOUT)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manifest = Path(temp_dir) / 'plugin.json'
+            manifest.write_text('{"metadata": {"version": "6.1.1"}}\n', encoding='utf-8')
+            detector = {
+                'kind': 'json-manifest-glob',
+                'glob': str(manifest),
+                'json_path': 'metadata.version',
+            }
+            self.assertEqual(checker.run_detector(detector), '6.1.1')
+
+    def test_policy_findings_distinguish_missing_equal_and_unreadable(self):
+        policy = {
+            'platform': 'test',
+            'tools': [
+                {
+                    'id': 'missing',
+                    'name': 'Missing Tool',
+                    'target_version': '1.0.0',
+                    'comparison': '>',
+                    'detectors': [{'kind': 'command-regex', 'command': ['missing']}],
+                    'install': 'install missing',
+                    'upgrade': 'upgrade missing',
+                },
+                {
+                    'id': 'equal',
+                    'name': 'Equal Tool',
+                    'target_version': '2.0.0',
+                    'comparison': '>',
+                    'detectors': [{'kind': 'fixed', 'value': '2.0.0'}],
+                    'install': 'install equal',
+                    'upgrade': 'upgrade equal',
+                },
+                {
+                    'id': 'bad',
+                    'name': 'Bad Tool',
+                    'target_version': '3.0.0',
+                    'comparison': '>',
+                    'detectors': [{'kind': 'fixed', 'value': 'unknown'}],
+                    'install': 'install bad',
+                    'upgrade': 'upgrade bad',
+                },
+            ],
+        }
+
+        findings = self.checker.check_policy(policy)
+
+        self.assertEqual(
+            [finding.code for finding in findings],
+            ['tool-missing', 'version-not-greater', 'version-unreadable'],
+        )
+        rendered = self.checker.render_findings(findings)
+        self.assertIn('install missing', rendered)
+        self.assertIn('upgrade equal', rendered)
+        self.assertNotIn('detector', rendered.lower())
+
+    def test_detector_timeout_is_retryable_and_equal_differs_from_lower(self):
+        checker = self.checker
+        tool = {
+            'id': 'example',
+            'name': 'Example Tool',
+            'target_version': '2.0.0',
+            'comparison': '>',
+            'detectors': [{'kind': 'command-regex', 'command': ['example']}],
+            'install': 'install it',
+            'upgrade': 'upgrade it',
+        }
+        timed_out_process = mock.Mock()
+        timed_out_process.stdout = io.BytesIO(b'')
+        timed_out_process.wait.side_effect = (
+            checker.subprocess.TimeoutExpired(['example'], 5),
+            1,
+        )
+        with mock.patch.object(
+            checker.subprocess,
+            'Popen',
+            return_value=timed_out_process,
+        ):
+            timeout = checker.check_policy({'platform': 'test', 'tools': [tool]})
+        equal = checker.check_policy(
+            {
+                'platform': 'test',
+                'tools': [{**tool, 'detectors': [{'kind': 'fixed', 'value': '2.0.0'}]}],
+            }
+        )
+        lower = checker.check_policy(
+            {
+                'platform': 'test',
+                'tools': [{**tool, 'detectors': [{'kind': 'fixed', 'value': '1.9.9'}]}],
+            }
+        )
+
+        self.assertEqual(timeout[0].code, 'detector-error')
+        self.assertIn('equals', equal[0].message)
+        self.assertIn('older', lower[0].message)
+
+    def test_command_detector_terminates_when_output_exceeds_limit(self):
+        checker = self.checker
+        process = mock.Mock()
+        process.stdout = io.BytesIO(b'x' * (checker._MAX_COMMAND_OUTPUT + 1))
+        process.wait.return_value = 0
+        with mock.patch.object(checker.subprocess, 'Popen', return_value=process):
+            with self.assertRaises(checker.DetectorError):
+                checker.run_detector(
+                    {
+                        'kind': 'command-regex',
+                        'command': ['example', '--version'],
+                    }
+                )
+
+        process.kill.assert_called()
+
+    def test_daily_state_is_cross_project_and_independent_per_platform(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cache = root / 'cache'
+            codex_policy = root / 'codex.json'
+            cursor_policy = root / 'cursor.json'
+            codex_policy.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            cursor_policy.write_text('{"platform":"cursor","tools":[]}\n', encoding='utf-8')
+            calls = []
+
+            def evaluator(policy):
+                calls.append(policy['platform'])
+                return []
+
+            today = datetime(2026, 7, 21, 9, tzinfo=timezone.utc)
+            first = checker.run_hook('codex', codex_policy, cache, today, evaluator=evaluator)
+            second = checker.run_hook('codex', codex_policy, cache, today, evaluator=evaluator)
+            cursor = checker.run_hook('cursor', cursor_policy, cache, today, evaluator=evaluator)
+
+            self.assertTrue(first.ran)
+            self.assertFalse(second.ran)
+            self.assertTrue(cursor.ran)
+            self.assertEqual(calls, ['codex', 'cursor'])
+
+    def test_daily_state_reruns_next_day_after_policy_change_and_with_force(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            policy_path = root / 'codex.json'
+            cache = root / 'cache'
+            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            calls = []
+
+            def evaluator(policy):
+                calls.append(policy)
+                return []
+
+            day = datetime(2026, 7, 21, 9)
+            checker.run_hook('codex', policy_path, cache, day, evaluator=evaluator)
+            policy_path.write_text('{"platform":"codex","tools":[],"revision":2}\n', encoding='utf-8')
+            changed = checker.run_hook('codex', policy_path, cache, day, evaluator=evaluator)
+            forced = checker.run_hook(
+                'codex', policy_path, cache, day, force=True, evaluator=evaluator
+            )
+            next_day = checker.run_hook(
+                'codex', policy_path, cache, day + timedelta(days=1), evaluator=evaluator
+            )
+
+            self.assertTrue(changed.ran)
+            self.assertTrue(forced.ran)
+            self.assertTrue(next_day.ran)
+            self.assertEqual(len(calls), 4)
+
+    def test_hook_internal_failure_is_non_blocking_and_not_cached(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            policy_path = root / 'codex.json'
+            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+
+            def fail(_policy):
+                raise RuntimeError('secret detector output')
+
+            first = checker.run_hook('codex', policy_path, root / 'cache', evaluator=fail)
+            second = checker.run_hook('codex', policy_path, root / 'cache', evaluator=fail)
+
+            self.assertTrue(first.ran)
+            self.assertTrue(second.ran)
+            self.assertTrue(first.internal_error)
+            self.assertNotIn(
+                'secret detector output',
+                checker.render_hook_result(first, 'codex'),
+            )
+
+    def test_detector_error_finding_is_not_cached(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            policy_path = root / 'codex.json'
+            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            calls = []
+
+            def detector_error(_policy):
+                calls.append(True)
+                return [
+                    checker.Finding(
+                        'detector-error',
+                        'Example Tool',
+                        'version detection failed',
+                        'Retry later.',
+                    )
+                ]
+
+            first = checker.run_hook(
+                'codex', policy_path, root / 'cache', evaluator=detector_error
+            )
+            second = checker.run_hook(
+                'codex', policy_path, root / 'cache', evaluator=detector_error
+            )
+
+            self.assertTrue(first.ran)
+            self.assertTrue(second.ran)
+            self.assertEqual(len(calls), 2)
+
+    def test_hook_output_uses_each_platform_native_shape(self):
+        checker = self.checker
+        result = checker.HookResult(
+            True,
+            (
+                checker.Finding(
+                    'tool-missing',
+                    'Example Tool',
+                    'is missing',
+                    'Install it.',
+                ),
+            ),
+        )
+
+        codex = json.loads(checker.render_hook_result(result, 'codex'))
+        cursor = json.loads(checker.render_hook_result(result, 'cursor'))
+        copilot = checker.render_hook_result(result, 'copilot')
+
+        self.assertIs(codex['continue'], True)
+        self.assertIn('Example Tool', codex['systemMessage'])
+        self.assertIn('Example Tool', cursor['additional_context'])
+        self.assertIn('Example Tool', copilot)
+        self.assertEqual(
+            checker.render_hook_result(checker.HookResult(False), 'codex'),
+            '',
+        )
+
+    def test_live_lock_suppresses_duplicate_and_stale_lock_is_reclaimed(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cache = root / 'cache'
+            cache.mkdir()
+            policy_path = root / 'codex.json'
+            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            lock = cache / 'codex.lock'
+            lock.write_text('live\n', encoding='utf-8')
+            calls = []
+
+            busy = checker.run_hook(
+                'codex', policy_path, cache, evaluator=lambda policy: calls.append(policy) or []
+            )
+            old = time.time() - 1_000
+            os.utime(lock, (old, old))
+            reclaimed = checker.run_hook(
+                'codex', policy_path, cache, evaluator=lambda policy: calls.append(policy) or []
+            )
+
+            self.assertFalse(busy.ran)
+            self.assertTrue(reclaimed.ran)
+            self.assertEqual(len(calls), 1)
+            self.assertFalse(lock.exists())
+
+    def test_malformed_state_and_unwritable_cache_fail_open(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            policy_path = root / 'codex.json'
+            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            cache = root / 'cache'
+            cache.mkdir()
+            (cache / 'codex.json').write_text('{bad', encoding='utf-8')
+            calls = []
+
+            malformed = checker.run_hook(
+                'codex', policy_path, cache, evaluator=lambda policy: calls.append(policy) or []
+            )
+            cache_file = root / 'not-a-directory'
+            cache_file.write_text('occupied\n', encoding='utf-8')
+            uncached = checker.run_hook(
+                'codex', policy_path, cache_file, evaluator=lambda policy: calls.append(policy) or []
+            )
+
+            self.assertTrue(malformed.ran)
+            self.assertTrue(uncached.ran)
+            self.assertFalse(uncached.internal_error)
+            self.assertEqual(len(calls), 2)
 
 
 class TrackWorktreeTimeTest(unittest.TestCase):

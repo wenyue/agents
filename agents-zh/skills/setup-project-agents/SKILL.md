@@ -7,10 +7,15 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
 
 同步确定性的 Agent 配置，选择 Subagent 模型，并生成本流程声明的五个仓库特有资产。
 
+模板托管的项目配置为所有开发者提供一致的仓库默认值。脚本执行部分深度合并：模板字段覆盖偏差，
+模板未声明的字段保持不变，常规同步会自动修复缺失或过期的托管值。流程绝不读取或修改用户配置。
+
 ## 所有权
 
 - 脚本负责所有受支持平台的确定性配置。
+- 字面量模板负责项目配置值、推荐工具版本门槛及平台原生启动 Hook；Python 只包含通用的协调与检测逻辑。
 - LLM 负责模型选择，以及仓库特有 Rule 和 Skill 的生成。
+- 仅检查工具的启动 Hook 只检查推荐工具及其版本，不检查项目配置或用户配置。
 
 ## 托管资产
 
@@ -53,25 +58,41 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
      --model-config "$MODEL_CONFIG"
    ```
 
+   同一次同步会从可读模板创建或更新 Codex、Cursor 和 Copilot 的项目原生配置及 Hook 文件。
+   不要另外修改用户级配置，也不要移除模板未声明的项目字段。
+
+5. 需要立即获得设置反馈时，对正在使用的每个平台运行不使用每日缓存的推荐工具检查：
+
+   ```sh
+   python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform codex
+   python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform cursor
+   python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py check --platform copilot
+   ```
+
+   只有已安装版本严格大于对应平台策略模板中的目标版本才算通过。平台原生 Hook 会执行相同的完整
+   检查，并且跨仓库按本地日期和平台每天只运行一次。所有发现都只是提示：Hook 给出简洁修复建议，
+   绝不阻断平台继续运行。
+
 ## 审查关卡
 
 只验收满足自身公共蓝图的生成资产，并保留无关的目标仓库自有文件。
 
 ## 验收关卡
 
-所有枚举的 Rule 和 Skill 均应完整，所有必填模型字段均应得到解决。
+所有枚举的 Rule 和 Skill 均应完整，所有必填模型字段均应得到解决，模板托管的项目配置也必须完成
+协调。工具检查发现只产生警告，不构成阻塞。
 
 ## 验证
 
-使用同一份临时模型配置执行最终检查。脚本检查所有枚举的输出是否存在，以及确定性配置是否存在
-偏差；内容验证由各蓝图负责。
+使用同一份临时模型配置执行最终检查。脚本检查所有枚举的输出是否存在，以及确定性配置、模板和
+原生 Hook 注册是否存在偏差；内容验证由各蓝图负责。`--check` 只报告偏差而不写入文件。
 
 ```sh
 python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py \
   --check --model-config "$MODEL_CONFIG"
 ```
 
-脚本或蓝图失败时停止。不得调用真实模型进行验证。
+同步脚本或蓝图失败时停止；推荐工具 `check` 的状态和发现仍然只作提示。不得调用真实模型进行验证。
 
 ## 输出
 

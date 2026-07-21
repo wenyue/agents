@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import fnmatch
 import hashlib
 import json
+import os
 import re
 import shutil
 import sys
@@ -59,7 +61,6 @@ _PUBLIC_AGENT_MODEL_FIELDS = {
     'github': ('model',),
 }
 _CONFIG_KEY_PATTERN = re.compile(r'^[A-Za-z0-9_-]+$')
-_MISSING = object()
 
 
 def _catalog_digest(public_config: dict[str, Any]) -> str:
@@ -202,62 +203,6 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def _validate_codex_agent_config_references(
-    config_path: Path,
-    config: dict[str, Any],
-) -> None:
-    agents = config.get('agents') or {}
-    if not isinstance(agents, dict):
-        raise SyncError('Codex native config agents must be a table')
-    for name, agent in agents.items():
-        if not isinstance(agent, dict) or 'config_file' not in agent:
-            continue
-        config_file = agent['config_file']
-        if not isinstance(config_file, str) or not config_file.strip():
-            raise SyncError(f'Codex agent {name} config_file must be a non-empty string')
-        referenced_path = config_path.parent / config_file
-        if not referenced_path.is_file():
-            display_path = (Path('.codex') / config_file).as_posix()
-            raise SyncError(
-                f'Codex agent {name} references missing config file {display_path}'
-            )
-
-
-def _config_parts(value: Any, label: str) -> tuple[str, ...]:
-    if not isinstance(value, str) or not value:
-        raise SyncError(f'{label} must be a non-empty dotted path')
-    parts = tuple(value.split('.'))
-    if any(not _CONFIG_KEY_PATTERN.fullmatch(part) for part in parts):
-        raise SyncError(f'{label} contains an unsupported key: {value}')
-    return parts
-
-
-def _get_config_value(config: dict[str, Any], parts: tuple[str, ...]) -> Any:
-    current: Any = config
-    for part in parts:
-        if not isinstance(current, dict) or part not in current:
-            return _MISSING
-        current = current[part]
-    return current
-
-
-def _set_json_config_value(
-    config: dict[str, Any],
-    parts: tuple[str, ...],
-    value: Any,
-) -> None:
-    current = config
-    for part in parts[:-1]:
-        child = current.get(part)
-        if child is None:
-            child = {}
-            current[part] = child
-        if not isinstance(child, dict):
-            raise SyncError(f'Cannot lock {".".join(parts)} through non-object key {part}')
-        current = child
-    current[parts[-1]] = value
-
-
 def _toml_scalar(value: Any, label: str) -> str:
     if isinstance(value, bool):
         return 'true' if value else 'false'
@@ -267,7 +212,53 @@ def _toml_scalar(value: Any, label: str) -> str:
         return json.dumps(value, ensure_ascii=False)
     if isinstance(value, list):
         return f'[{", ".join(_toml_scalar(item, label) for item in value)}]'
+    if isinstance(value, dict):
+        entries = []
+        for key, child in value.items():
+            if not isinstance(key, str):
+                raise SyncError(f'{label} uses a non-string TOML key')
+            rendered_key = key if _CONFIG_KEY_PATTERN.fullmatch(key) else json.dumps(key)
+            entries.append(f'{rendered_key} = {_toml_scalar(child, label)}')
+        return f'{{ {", ".join(entries)} }}'
     raise SyncError(f'{label} uses a value that cannot be written to TOML')
+
+
+def _toml_line_comment(line: str) -> tuple[str, str]:
+    quote = ''
+    escaped = False
+    for index, char in enumerate(line):
+        if quote:
+            if escaped:
+                escaped = False
+            elif quote == '"' and char == '\\':
+                escaped = True
+            elif char == quote:
+                quote = ''
+            continue
+        if char in {'"', "'"}:
+            quote = char
+        elif char == '#':
+            assignment = line[:index].rstrip()
+            spacing = line[len(assignment) : index]
+            return assignment, spacing + line[index:]
+    return line.rstrip(), ''
+
+
+def _set_nested_mapping_value(
+    mapping: dict[str, Any],
+    parts: tuple[str, ...],
+    value: Any,
+) -> None:
+    current = mapping
+    for part in parts[:-1]:
+        child = current.get(part)
+        if child is None:
+            child = {}
+            current[part] = child
+        if not isinstance(child, dict):
+            raise SyncError('Cannot update an inline TOML table through a non-table value')
+        current = child
+    current[parts[-1]] = value
 
 
 def _set_toml_config_value(
@@ -288,18 +279,67 @@ def _set_toml_config_value(
             len(lines),
         )
         dotted_key = '.'.join(parts)
-        dotted_assignment = re.compile(rf'^\s*{re.escape(dotted_key)}\s*=')
+        dotted_pattern = r'\s*\.\s*'.join(
+            rf'(?:{re.escape(part)}|"{re.escape(part)}"|\'{re.escape(part)}\')'
+            for part in parts
+        )
+        dotted_assignment = re.compile(rf'^\s*{dotted_pattern}\s*=')
         for index in range(root_end):
             if dotted_assignment.match(lines[index]):
                 indent = lines[index][: len(lines[index]) - len(lines[index].lstrip())]
-                lines[index] = f'{indent}{dotted_key} = {_toml_scalar(value, label)}'
+                _, comment = _toml_line_comment(lines[index])
+                lines[index] = (
+                    f'{indent}{dotted_key} = {_toml_scalar(value, label)}{comment}'
+                )
                 return '\n'.join(lines) + '\n'
-        header = re.compile(rf'^\s*\[{re.escape(section)}\]\s*(?:#.*)?$')
+        section_pattern = r'\s*\.\s*'.join(
+            rf'(?:{re.escape(part)}|"{re.escape(part)}"|\'{re.escape(part)}\')'
+            for part in parts[:-1]
+        )
+        header = re.compile(
+            rf'^\s*\[\s*{section_pattern}\s*\]\s*(?:#.*)?$'
+        )
         section_index = next(
             (index for index, line in enumerate(lines) if header.match(line)),
             None,
         )
         if section_index is None:
+            root_key = parts[0]
+            for index in range(root_end):
+                assignment_text, comment = _toml_line_comment(lines[index])
+                if '=' not in assignment_text:
+                    continue
+                left_hand_side = assignment_text.split('=', 1)[0].strip()
+                root_assignment = re.fullmatch(
+                    rf'(?:{re.escape(root_key)}|"{re.escape(root_key)}"|'
+                    rf"'{re.escape(root_key)}')",
+                    left_hand_side,
+                )
+                if root_assignment is None:
+                    continue
+                try:
+                    parsed_assignment = tomllib.loads(assignment_text)
+                except tomllib.TOMLDecodeError:
+                    continue
+                inline_value = parsed_assignment.get(root_key)
+                if not isinstance(inline_value, dict):
+                    continue
+                updated_inline = copy.deepcopy(inline_value)
+                _set_nested_mapping_value(updated_inline, parts[1:], value)
+                lines[index] = (
+                    f'{left_hand_side} = {_toml_scalar(updated_inline, label)}{comment}'
+                )
+                return '\n'.join(lines) + '\n'
+            dotted_section_assignment = re.compile(
+                rf'^\s*{section_pattern}\s*\.\s*'
+                r'(?:[A-Za-z0-9_-]+|"[^"]+"|\'[^\']+\')\s*='
+            )
+            if any(dotted_section_assignment.match(line) for line in lines[:root_end]):
+                lines.insert(
+                    root_end,
+                    f'{dotted_key} = {_toml_scalar(value, label)}',
+                )
+                return '\n'.join(lines) + '\n'
             if lines and lines[-1].strip():
                 lines.append('')
             lines.extend((f'[{section}]', rendered))
@@ -318,11 +358,14 @@ def _set_toml_config_value(
             (index for index, line in enumerate(lines) if re.match(r'^\s*\[', line)),
             len(lines),
         )
-    assignment = re.compile(rf'^\s*{re.escape(key)}\s*=')
+    assignment = re.compile(
+        rf'^\s*(?:{re.escape(key)}|"{re.escape(key)}"|\'{re.escape(key)}\')\s*='
+    )
     for index in range(section_start, section_end):
         if assignment.match(lines[index]):
             indent = lines[index][: len(lines[index]) - len(lines[index].lstrip())]
-            lines[index] = f'{indent}{rendered}'
+            _, comment = _toml_line_comment(lines[index])
+            lines[index] = f'{indent}{rendered}{comment}'
             return '\n'.join(lines) + '\n'
     insertion = section_end
     while insertion > section_start and not lines[insertion - 1].strip():
@@ -331,7 +374,7 @@ def _set_toml_config_value(
     return '\n'.join(lines) + '\n'
 
 
-def _root_config_condition_applies(
+def _config_template_condition_applies(
     context: SyncContext,
     condition: Any,
     label: str,
@@ -354,99 +397,364 @@ def _root_config_condition_applies(
     )
 
 
-def _parse_root_config(
-    path: Path,
-    relative_path: str,
-    file_format: str,
-) -> tuple[str, dict[str, Any]]:
+def _owned_list_rules(value: Any) -> dict[tuple[str, ...], str]:
+    if value is None:
+        return {}
+    if not isinstance(value, list):
+        raise SyncError('list_merges must be an array')
+    rules: dict[tuple[str, ...], str] = {}
+    for index, item in enumerate(value):
+        label = f'list_merges[{index}]'
+        if not isinstance(item, dict) or set(item) != {'path', 'owned_marker'}:
+            raise SyncError(f'{label} requires only path and owned_marker')
+        path = item['path']
+        marker = item['owned_marker']
+        if not isinstance(path, str) or not path or not isinstance(marker, str) or not marker:
+            raise SyncError(f'{label} path and owned_marker must be non-empty strings')
+        parts = tuple(path.split('.'))
+        if any(not _CONFIG_KEY_PATTERN.fullmatch(part) for part in parts):
+            raise SyncError(f'{label}.path contains an unsupported key')
+        rules[parts] = marker
+    return rules
+
+
+def _contains_marker(value: Any, marker: str) -> bool:
+    if isinstance(value, str):
+        return marker in value
+    if isinstance(value, dict):
+        return any(_contains_marker(child, marker) for child in value.values())
+    if isinstance(value, list):
+        return any(_contains_marker(child, marker) for child in value)
+    return False
+
+
+def _deep_merge_template(
+    current: Any,
+    desired: Any,
+    list_merges: Any = None,
+    _path: tuple[str, ...] = (),
+) -> Any:
+    rules = list_merges if isinstance(list_merges, dict) else _owned_list_rules(list_merges)
+    if isinstance(desired, list) and _path in rules:
+        if current is None:
+            current = []
+        if not isinstance(current, list):
+            raise SyncError('Cannot merge an owned list through a non-list value')
+        marker = rules[_path]
+        if not all(_contains_marker(item, marker) for item in desired):
+            raise SyncError('Every owned template list item must contain its owned marker')
+        first_owned = next(
+            (index for index, item in enumerate(current) if _contains_marker(item, marker)),
+            len(current),
+        )
+        unrelated = [item for item in current if not _contains_marker(item, marker)]
+        insertion = min(first_owned, len(unrelated))
+        return copy.deepcopy(unrelated[:insertion] + desired + unrelated[insertion:])
+    if not isinstance(desired, dict):
+        return copy.deepcopy(desired)
+    if current is None:
+        current = {}
+    if not isinstance(current, dict):
+        raise SyncError('Cannot merge an object template through a non-object value')
+    merged = copy.deepcopy(current)
+    for key, value in desired.items():
+        merged[key] = _deep_merge_template(
+            merged.get(key),
+            value,
+            rules,
+            _path + (key,),
+        )
+    return merged
+
+
+def _strip_jsonc(content: str) -> str:
+    without_comments: list[str] = []
+    index = 0
+    in_string = False
+    escaped = False
+    while index < len(content):
+        char = content[index]
+        if in_string:
+            without_comments.append(char)
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            without_comments.append(char)
+            index += 1
+            continue
+        following = content[index + 1] if index + 1 < len(content) else ''
+        if char == '/' and following == '/':
+            index += 2
+            while index < len(content) and content[index] not in '\r\n':
+                index += 1
+            continue
+        if char == '/' and following == '*':
+            index += 2
+            while index + 1 < len(content) and content[index : index + 2] != '*/':
+                if content[index] in '\r\n':
+                    without_comments.append(content[index])
+                index += 1
+            if index + 1 >= len(content):
+                raise SyncError('Invalid JSONC: unterminated block comment')
+            index += 2
+            continue
+        without_comments.append(char)
+        index += 1
+
+    stripped = ''.join(without_comments)
+    without_trailing_commas: list[str] = []
+    index = 0
+    in_string = False
+    escaped = False
+    while index < len(stripped):
+        char = stripped[index]
+        if in_string:
+            without_trailing_commas.append(char)
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            without_trailing_commas.append(char)
+            index += 1
+            continue
+        if char == ',':
+            following = index + 1
+            while following < len(stripped) and stripped[following].isspace():
+                following += 1
+            if following < len(stripped) and stripped[following] in '}]':
+                index += 1
+                continue
+        without_trailing_commas.append(char)
+        index += 1
+    return ''.join(without_trailing_commas)
+
+
+def _parse_native_config(content: str, file_format: str, label: str) -> dict[str, Any]:
     try:
-        content = path.read_text(encoding='utf-8')
-        value = json.loads(content) if file_format == 'json' else tomllib.loads(content)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, tomllib.TOMLDecodeError) as error:
-        raise SyncError(f'Invalid native platform config {relative_path}: {error}') from error
+        if file_format == 'toml':
+            value = tomllib.loads(content)
+        elif file_format == 'json':
+            value = json.loads(content)
+        elif file_format == 'jsonc':
+            value = json.loads(_strip_jsonc(content))
+        else:
+            raise SyncError(f'{label}.format must be json, jsonc, or toml')
+    except (json.JSONDecodeError, tomllib.TOMLDecodeError) as error:
+        raise SyncError(f'Invalid native platform config {label}: {error}') from error
     if not isinstance(value, dict):
-        raise SyncError(f'Native platform config {relative_path} must contain an object')
-    return content, value
+        raise SyncError(f'Native platform config {label} must contain an object')
+    return value
 
 
-def _reconcile_root_configs(context: SyncContext, public_config: dict[str, Any]) -> None:
-    for index, root_config in enumerate(_require_items(public_config, 'root_configs')):
-        label = f'root_configs[{index}]'
+def _toml_template_leaves(
+    value: dict[str, Any],
+    prefix: tuple[str, ...] = (),
+) -> list[tuple[tuple[str, ...], Any]]:
+    leaves: list[tuple[tuple[str, ...], Any]] = []
+    for key, child in value.items():
+        if not isinstance(key, str) or not _CONFIG_KEY_PATTERN.fullmatch(key):
+            raise SyncError(f'TOML template contains an unsupported key: {key}')
+        parts = prefix + (key,)
+        if isinstance(child, dict):
+            leaves.extend(_toml_template_leaves(child, parts))
+        else:
+            leaves.append((parts, child))
+    return leaves
+
+
+def _render_native_config(
+    original: str,
+    current: dict[str, Any],
+    desired: dict[str, Any],
+    file_format: str,
+    label: str,
+    list_merges: Any = None,
+) -> str:
+    if file_format in {'json', 'jsonc'}:
+        merged = _deep_merge_template(current, desired, list_merges)
+        return json.dumps(merged, indent=2, ensure_ascii=False) + '\n'
+    content = original
+    for parts, value in _toml_template_leaves(desired):
+        content = _set_toml_config_value(content, parts, value, label)
+    _parse_native_config(content, 'toml', label)
+    return content
+
+
+def _mapping_at_path(config: dict[str, Any], dotted_path: str, label: str) -> dict[str, Any]:
+    current: Any = config
+    if not dotted_path:
+        return config
+    for part in dotted_path.split('.'):
+        if not isinstance(current, dict) or part not in current:
+            return {}
+        current = current[part]
+    if not isinstance(current, dict):
+        raise SyncError(f'{label} path {dotted_path} must resolve to an object')
+    return current
+
+
+def _validate_config_template(
+    context: SyncContext,
+    config: dict[str, Any],
+    validations: Any,
+    label: str,
+) -> None:
+    if validations is None:
+        return
+    if not isinstance(validations, list):
+        raise SyncError(f'{label}.validations must be an array')
+    for index, validation in enumerate(validations):
+        validation_label = f'{label}.validations[{index}]'
+        required_fields = {'kind', 'objects_path', 'field', 'base_path'}
+        if not isinstance(validation, dict) or set(validation) != required_fields:
+            raise SyncError(
+                f'{validation_label} requires only {", ".join(sorted(required_fields))}'
+            )
+        if validation['kind'] != 'relative-paths-exist':
+            raise SyncError(f'{validation_label}.kind is unsupported')
+        objects_path = validation['objects_path']
+        field = validation['field']
+        base_path = validation['base_path']
+        if not all(isinstance(value, str) and value for value in (objects_path, field)):
+            raise SyncError(f'{validation_label} paths and field must be non-empty strings')
+        if not isinstance(base_path, str):
+            raise SyncError(f'{validation_label}.base_path must be a string')
+        base_relative = Path(base_path)
+        if base_relative.is_absolute() or '..' in base_relative.parts:
+            raise SyncError(f'{validation_label}.base_path must stay inside the target repository')
+        objects = _mapping_at_path(config, objects_path, validation_label)
+        for object_name, object_value in objects.items():
+            if not isinstance(object_value, dict) or field not in object_value:
+                continue
+            reference = object_value[field]
+            if not isinstance(reference, str) or not reference:
+                raise SyncError(
+                    f'{label} object {object_name} field {field} must be a non-empty string'
+                )
+            relative_reference = Path(reference)
+            if relative_reference.is_absolute():
+                raise SyncError(
+                    f'{label} object {object_name} field {field} must be relative'
+                )
+            candidate = (context.target_root / base_relative / relative_reference).resolve()
+            try:
+                candidate.relative_to(context.target_root.resolve())
+            except ValueError as error:
+                raise SyncError(
+                    f'{label} object {object_name} field {field} escapes the target repository'
+                ) from error
+            if not candidate.is_file():
+                raise SyncError(
+                    f'{label} object {object_name} field {field} references missing path '
+                    f'{candidate.relative_to(context.target_root.resolve())}'
+                )
+
+
+def _safe_config_target(target_root: Path, relative: Path, label: str) -> Path:
+    resolved_root = target_root.resolve()
+    candidate = target_root
+    for part in relative.parts:
+        candidate /= part
+        if candidate.is_symlink():
+            raise SyncError(f'{label}.path crosses a symbolic link: {candidate}')
+    try:
+        candidate.resolve(strict=False).relative_to(resolved_root)
+    except ValueError as error:
+        raise SyncError(f'{label}.path resolves outside the target repository') from error
+    return candidate
+
+
+def _reconcile_config_templates(
+    context: SyncContext,
+    public_config: dict[str, Any],
+) -> None:
+    for index, config_template in enumerate(_require_items(public_config, 'config_templates')):
+        label = f'config_templates[{index}]'
+        if not isinstance(config_template, dict):
+            raise SyncError(f'{label} must be an object')
         unknown_fields = sorted(
-            set(root_config) - {'path', 'format', 'locked_values', 'required_objects'}
+            set(config_template)
+            - {
+                'path',
+                'template',
+                'format',
+                'merge',
+                'when',
+                'validations',
+                'list_merges',
+            }
         )
         if unknown_fields:
             raise SyncError(f'{label} contains unsupported fields: {", ".join(unknown_fields)}')
-        relative_path = root_config.get('path')
+        relative_path = config_template.get('path')
         if not isinstance(relative_path, str) or not relative_path:
             raise SyncError(f'{label}.path must be a non-empty string')
         relative = Path(relative_path)
         if relative.is_absolute() or '..' in relative.parts:
             raise SyncError(f'{label}.path must stay inside the target repository')
-        file_format = root_config.get('format')
-        if file_format not in {'json', 'toml'}:
-            raise SyncError(f'{label}.format must be json or toml')
-        locked_values = root_config.get('locked_values', [])
-        if not isinstance(locked_values, list):
-            raise SyncError(f'{label}.locked_values must be an array')
-        active_locks: list[tuple[tuple[str, ...], Any, str]] = []
-        for lock_index, lock in enumerate(locked_values):
-            lock_label = f'{label}.locked_values[{lock_index}]'
-            if not isinstance(lock, dict) or 'value' not in lock:
-                raise SyncError(f'{lock_label} must contain path and value')
-            unknown_lock_fields = sorted(set(lock) - {'path', 'value', 'when'})
-            if unknown_lock_fields:
-                raise SyncError(
-                    f'{lock_label} contains unsupported fields: '
-                    f'{", ".join(unknown_lock_fields)}'
-                )
-            parts = _config_parts(lock.get('path'), f'{lock_label}.path')
-            if _root_config_condition_applies(context, lock.get('when'), lock_label):
-                active_locks.append((parts, lock['value'], lock_label))
-
-        path = context.target_root / relative
-        if not path.is_file() and not active_locks:
+        template_name = config_template.get('template')
+        if not isinstance(template_name, str) or not template_name:
+            raise SyncError(f'{label}.template must be a non-empty string')
+        template_relative = Path(template_name)
+        if template_relative.is_absolute() or '..' in template_relative.parts:
+            raise SyncError(f'{label}.template must stay inside assets/templates')
+        file_format = config_template.get('format')
+        if file_format not in {'json', 'jsonc', 'toml'}:
+            raise SyncError(f'{label}.format must be json, jsonc, or toml')
+        if config_template.get('merge') != 'deep-overwrite':
+            raise SyncError(f'{label}.merge must be deep-overwrite')
+        if not _config_template_condition_applies(
+            context,
+            config_template.get('when'),
+            label,
+        ):
             continue
-        if path.is_file():
-            content, parsed = _parse_root_config(path, relative_path, file_format)
+
+        template_path = context.skill_root / 'assets' / 'templates' / template_relative
+        try:
+            desired_content = template_path.read_text(encoding='utf-8')
+        except FileNotFoundError as error:
+            raise SyncError(f'Missing config template: {template_path}') from error
+        desired = _parse_native_config(desired_content, file_format, template_name)
+        target = _safe_config_target(context.target_root, relative, label)
+        if target.is_file():
+            try:
+                original = target.read_text(encoding='utf-8')
+            except (OSError, UnicodeDecodeError) as error:
+                raise SyncError(f'Unable to read native platform config {relative_path}: {error}') from error
+            current = _parse_native_config(original, file_format, relative_path)
         else:
-            content = '' if file_format == 'toml' else '{}\n'
-            parsed = {}
-
-        changed = False
-        for parts, value, lock_label in active_locks:
-            if _get_config_value(parsed, parts) == value:
-                continue
-            if file_format == 'json':
-                _set_json_config_value(parsed, parts, value)
-                content = json.dumps(parsed, indent=2, ensure_ascii=False) + '\n'
-            else:
-                content = _set_toml_config_value(content, parts, value, lock_label)
-                try:
-                    parsed = tomllib.loads(content)
-                except tomllib.TOMLDecodeError as error:
-                    raise SyncError(
-                        f'Failed to write locked value {lock_label}: {error}'
-                    ) from error
-            changed = True
-
-        required_objects = root_config.get('required_objects', [])
-        if not isinstance(required_objects, list):
-            raise SyncError(f'{label}.required_objects must be an array')
-        for object_index, object_path in enumerate(required_objects):
-            parts = _config_parts(
-                object_path,
-                f'{label}.required_objects[{object_index}]',
-            )
-            if not isinstance(_get_config_value(parsed, parts), dict):
-                raise SyncError(
-                    f'Native platform config {relative_path} requires a top-level '
-                    f'{object_path} object'
-                )
-        if relative_path == '.codex/config.toml':
-            _validate_codex_agent_config_references(path, parsed)
-        if changed or path.is_file():
-            _write_bytes(context, path, content.encode('utf-8'))
+            original = '' if file_format == 'toml' else '{}\n'
+            current = {}
+        rendered = _render_native_config(
+            original,
+            current,
+            desired,
+            file_format,
+            relative_path,
+            config_template.get('list_merges'),
+        )
+        rendered_config = _parse_native_config(rendered, file_format, relative_path)
+        _validate_config_template(
+            context,
+            rendered_config,
+            config_template.get('validations'),
+            label,
+        )
+        _write_bytes(context, target, rendered.encode('utf-8'))
 
 
 def _source_archive_url(public_config: dict[str, Any]) -> str:
@@ -706,7 +1014,25 @@ def _write_bytes(context: SyncContext, target: Path, content: bytes) -> None:
     action = 'created' if not exists else 'updated'
     if not context.check:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(content)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f'.{target.name}.',
+            suffix='.tmp',
+            dir=target.parent,
+        )
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, 'wb') as output:
+                output.write(content)
+                output.flush()
+                os.fsync(output.fileno())
+            mode = target.stat().st_mode & 0o777 if exists else 0o644
+            os.chmod(temporary, mode)
+            os.replace(temporary, target)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
     _record_file(context, action, target)
 
 
@@ -925,8 +1251,18 @@ def _rule_data(rule: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _agent_data(agent: dict[str, Any]) -> dict[str, Any]:
+def _agent_data(
+    agent: dict[str, Any],
+    agent_defaults: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     name = agent['name']
+    agent_defaults = agent_defaults or {}
+    if not isinstance(agent_defaults, dict):
+        raise SyncError('platforms.agent_defaults must be an object')
+    codex_defaults = agent_defaults.get('codex') or {}
+    cursor_defaults = agent_defaults.get('cursor') or {}
+    if not isinstance(codex_defaults, dict) or not isinstance(cursor_defaults, dict):
+        raise SyncError('platform agent defaults must contain objects')
     codex = agent.get('codex') or {}
     cursor = agent.get('cursor') or {}
     github = agent.get('github') or {}
@@ -936,9 +1272,6 @@ def _agent_data(agent: dict[str, Any]) -> dict[str, Any]:
         raise SyncError(f'Agent cursor config for {name} must be an object')
     if not isinstance(github, dict):
         raise SyncError(f'Agent github config for {name} must be an object')
-    cursor_readonly = cursor.get('readonly', False)
-    if not isinstance(cursor_readonly, bool):
-        raise SyncError(f'Agent cursor config {name}.readonly must be a boolean')
     codex_model = _optional_config_string(codex, 'model', f'Agent codex config {name}')
     codex_model_reasoning_effort = _optional_config_string(
         codex,
@@ -947,6 +1280,9 @@ def _agent_data(agent: dict[str, Any]) -> dict[str, Any]:
     )
     cursor_model = _optional_config_string(cursor, 'model', f'Agent cursor config {name}')
     github_model = _optional_config_string(github, 'model', f'Agent github config {name}')
+    cursor_readonly = cursor.get('readonly', cursor_defaults.get('readonly'))
+    if cursor_readonly is not None and not isinstance(cursor_readonly, bool):
+        raise SyncError(f'Agent cursor config {name}.readonly must be a boolean')
     return {
         'agent': {
             **agent,
@@ -961,7 +1297,7 @@ def _agent_data(agent: dict[str, Any]) -> dict[str, Any]:
             'codex_model_reasoning_effort': codex_model_reasoning_effort,
             'codex_sandbox_mode': _scalar_value(
                 codex.get('sandbox_mode'),
-                'workspace-write',
+                codex_defaults.get('sandbox_mode'),
             ),
             'path': f'.agents/agents/{name}.md',
             'apply_ref': f'.agents/agents/{name}.md',
@@ -1058,6 +1394,7 @@ def _delete_retired_assets(
         raise SyncError('platforms must be an object')
     rule_wrappers = _require_items(platforms, 'rule_wrappers')
     agent_wrappers = _require_items(platforms, 'agent_wrappers')
+    agent_defaults = platforms.get('agent_defaults') or {}
     for filename in retired['rules']:
         rule_data = _rule_data({'file': filename})
         _delete_path(context, context.target_root / '.agents' / 'rules' / filename)
@@ -1070,7 +1407,7 @@ def _delete_retired_assets(
     for name in retired['skills']:
         _delete_path(context, context.target_root / '.agents' / 'skills' / name)
     for name in retired['agents']:
-        agent_data = _agent_data({'name': name})
+        agent_data = _agent_data({'name': name}, agent_defaults)
         _delete_path(context, context.target_root / '.agents' / 'agents' / f'{name}.md')
         for wrapper in agent_wrappers:
             target_pattern = wrapper.get('path')
@@ -1309,6 +1646,7 @@ def _generate_wrappers(
     platforms = public_config.get('platforms') or {}
     rule_wrappers = _require_items(platforms, 'rule_wrappers')
     agent_wrappers = _require_items(platforms, 'agent_wrappers')
+    agent_defaults = platforms.get('agent_defaults') or {}
     all_rules = _require_items(public_config, 'rules') + _require_items(local_config, 'rules')
     all_agents = _require_items(public_config, 'agent_prompts') + _require_items(
         local_config,
@@ -1334,7 +1672,7 @@ def _generate_wrappers(
             github_runtime_overrides.get(agent['name']),
         )
         for wrapper in agent_wrappers:
-            agent_data = _agent_data(effective_agent)
+            agent_data = _agent_data(effective_agent, agent_defaults)
             rendered_target = render_template(
                 wrapper['path'],
                 agent_data,
@@ -1469,7 +1807,7 @@ def sync_public_assets(
         mirror_delete,
         require_agent_runtime,
     )
-    _reconcile_root_configs(context, public_config)
+    _reconcile_config_templates(context, public_config)
     _generate_entry_files(context, public_config, merged_local_config)
     _record_missing_generated_outputs(context, public_config)
     return context.changes

@@ -1,0 +1,16 @@
+{
+  "model": "gpt-5.4",
+  "effortLevel": "medium",
+  "contextTier": "default",
+  "extraKnownMarketplaces": {
+    "superpowers-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers-marketplace"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "superpowers@superpowers-marketplace": true
+  }
+}

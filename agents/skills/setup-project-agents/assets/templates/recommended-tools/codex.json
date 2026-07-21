@@ -1,0 +1,50 @@
+{
+  "platform": "codex",
+  "tools": [
+    {
+      "id": "codex",
+      "name": "Codex CLI",
+      "target_version": "0.144.0",
+      "comparison": ">",
+      "detectors": [
+        {
+          "kind": "command-regex",
+          "command": ["codex", "--version"],
+          "pattern": "([0-9]+(?:\\.[0-9]+)+)"
+        }
+      ],
+      "install": "Install Codex CLI from the official OpenAI distribution.",
+      "upgrade": "Upgrade Codex CLI with the package manager used to install it."
+    },
+    {
+      "id": "superpowers",
+      "name": "Superpowers for Codex",
+      "target_version": "6.0.0",
+      "comparison": ">",
+      "detectors": [
+        {
+          "kind": "json-manifest-glob",
+          "glob": "{home}/.codex/superpowers/package.json",
+          "json_path": "version"
+        }
+      ],
+      "install": "Install Superpowers for Codex from obra/superpowers.",
+      "upgrade": "Update the Codex Superpowers checkout or plugin installation."
+    },
+    {
+      "id": "codegraph",
+      "name": "CodeGraph",
+      "target_version": "1.4.0",
+      "comparison": ">",
+      "detectors": [
+        {
+          "kind": "command-regex",
+          "command": ["codegraph", "--version"],
+          "pattern": "([0-9]+(?:\\.[0-9]+)+)"
+        }
+      ],
+      "install": "Install CodeGraph and expose the codegraph command on PATH.",
+      "upgrade": "Upgrade CodeGraph with its installation package manager."
+    }
+  ]
+}

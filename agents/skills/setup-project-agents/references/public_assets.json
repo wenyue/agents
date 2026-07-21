@@ -256,50 +256,97 @@
       "path": "AGENTS.md"
     }
   ],
-  "root_configs": [
-    {
-      "path": ".cursor/mcp.json",
-      "format": "json",
-      "required_objects": [
-        "mcpServers"
-      ]
-    },
+  "config_templates": [
     {
       "path": ".codex/config.toml",
+      "template": "project-config/codex.config.toml",
       "format": "toml",
-      "locked_values": [
+      "merge": "deep-overwrite",
+      "validations": [
         {
-          "path": "features.multi_agent",
-          "value": true,
-          "when": {
-            "path_glob_exists": ".codex/agents/*.toml"
-          }
+          "kind": "relative-paths-exist",
+          "objects_path": "agents",
+          "field": "config_file",
+          "base_path": ".codex"
         }
       ]
     },
     {
-      "path": ".mcp.json",
+      "path": ".cursor/cli.json",
+      "template": "project-config/cursor.cli.json",
       "format": "json",
-      "required_objects": [
-        "mcpServers"
-      ]
+      "merge": "deep-overwrite"
+    },
+    {
+      "path": ".cursor/mcp.json",
+      "template": "project-config/cursor.mcp.json",
+      "format": "json",
+      "merge": "deep-overwrite"
+    },
+    {
+      "path": ".github/copilot/settings.json",
+      "template": "project-config/copilot.settings.json",
+      "format": "jsonc",
+      "merge": "deep-overwrite"
+    },
+    {
+      "path": ".mcp.json",
+      "template": "project-config/copilot.mcp.json",
+      "format": "json",
+      "merge": "deep-overwrite"
     },
     {
       "path": ".github/mcp.json",
+      "template": "project-config/copilot.mcp.json",
       "format": "json",
-      "required_objects": [
-        "mcpServers"
-      ]
+      "merge": "deep-overwrite"
     },
     {
       "path": ".vscode/mcp.json",
+      "template": "project-config/vscode.mcp.json",
       "format": "json",
-      "required_objects": [
-        "servers"
+      "merge": "deep-overwrite"
+    },
+    {
+      "path": ".codex/hooks.json",
+      "template": "project-config/codex.hooks.json",
+      "format": "json",
+      "merge": "deep-overwrite",
+      "list_merges": [
+        {
+          "path": "hooks.SessionStart",
+          "owned_marker": "setup-project-agents"
+        }
       ]
+    },
+    {
+      "path": ".cursor/hooks.json",
+      "template": "project-config/cursor.hooks.json",
+      "format": "json",
+      "merge": "deep-overwrite",
+      "list_merges": [
+        {
+          "path": "hooks.sessionStart",
+          "owned_marker": "setup-project-agents"
+        }
+      ]
+    },
+    {
+      "path": ".github/hooks/project-agent-tool-check.json",
+      "template": "project-config/copilot.tool-check.hooks.json",
+      "format": "json",
+      "merge": "deep-overwrite"
     }
   ],
   "platforms": {
+    "agent_defaults": {
+      "codex": {
+        "sandbox_mode": "workspace-write"
+      },
+      "cursor": {
+        "readonly": false
+      }
+    },
     "rule_wrappers": [
       {
         "template": "rule_wrapper.cursor.mdc",

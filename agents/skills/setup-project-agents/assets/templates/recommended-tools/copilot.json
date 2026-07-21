@@ -1,0 +1,60 @@
+{
+  "platform": "copilot",
+  "tools": [
+    {
+      "id": "copilot",
+      "name": "GitHub Copilot CLI",
+      "target_version": "1.0.58",
+      "comparison": ">",
+      "detectors": [
+        {
+          "kind": "command-regex",
+          "command": ["copilot", "--version"],
+          "pattern": "([0-9]+(?:\\.[0-9]+)+)"
+        }
+      ],
+      "install": "Install GitHub Copilot CLI from the official GitHub distribution.",
+      "upgrade": "Run copilot update or use the package manager used to install Copilot CLI."
+    },
+    {
+      "id": "superpowers",
+      "name": "Superpowers for GitHub Copilot",
+      "target_version": "6.0.0",
+      "comparison": ">",
+      "detectors": [
+        {
+          "kind": "command-regex",
+          "command": ["copilot", "plugin", "list"],
+          "pattern": "superpowers@[^ ]+ \\(v([0-9]+(?:\\.[0-9]+)+)\\)"
+        },
+        {
+          "kind": "json-manifest-glob",
+          "glob": "{home}/.copilot/installed-plugins/*/superpowers/package.json",
+          "json_path": "version"
+        },
+        {
+          "kind": "json-manifest-glob",
+          "glob": "{home}/.cache/copilot/marketplaces/*/package.json",
+          "json_path": "version"
+        }
+      ],
+      "install": "Install Superpowers from the configured Copilot plugin marketplace.",
+      "upgrade": "Update the Superpowers plugin with GitHub Copilot CLI."
+    },
+    {
+      "id": "codegraph",
+      "name": "CodeGraph",
+      "target_version": "1.4.0",
+      "comparison": ">",
+      "detectors": [
+        {
+          "kind": "command-regex",
+          "command": ["codegraph", "--version"],
+          "pattern": "([0-9]+(?:\\.[0-9]+)+)"
+        }
+      ],
+      "install": "Install CodeGraph and expose the codegraph command to Copilot CLI.",
+      "upgrade": "Upgrade CodeGraph with its installation package manager."
+    }
+  ]
+}
