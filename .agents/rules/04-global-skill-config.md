@@ -3,7 +3,7 @@
 Strength: `Mandatory`
 
 Scope: Subagent delegation, Superpowers activation and execution-plan language, worktree workflow
-ownership and timing, and Git safety.
+ownership, and Git safety.
 
 ## Delegation
 
@@ -17,10 +17,6 @@ ownership and timing, and Git safety.
 
 ## Worktree Workflow
 
-- Use `track-worktree-time` for every task that creates or reuses a linked Git worktree for code
-  changes. Create one task receipt before worktree preparation, attach every attributable
-  participating agent session, record attribution gaps for participants without stable session IDs,
-  and include its reconciled post-hoc metrics report in the final handoff.
 - Subject to the Superpowers policy above, let `superpowers:using-git-worktrees` own worktree
   creation timing, detection, consent, location, and creation.
 - After creating a worktree, use the target repository's `worktree-environment-setup` skill when it

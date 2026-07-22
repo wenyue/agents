@@ -21,7 +21,7 @@ REPO_SKILL_ROOT = REPO_ROOT / 'agents' / 'skills' / 'setup-project-agents'
 REPO_REFERENCES = REPO_SKILL_ROOT / 'references'
 REPO_TEMPLATES = REPO_SKILL_ROOT / 'assets' / 'templates'
 RECOMMENDED_TOOL_CHECKER = REPO_SKILL_ROOT / 'scripts' / 'check_recommended_tools.py'
-TRACK_WORKTREE_TIME_ROOT = REPO_ROOT / 'agents' / 'skills' / 'track-worktree-time'
+REPORT_SESSION_USAGE_ROOT = REPO_ROOT / 'agents' / 'skills' / 'report-session-usage'
 sys.path.insert(0, str(REPO_SKILL_ROOT / 'scripts'))
 
 import sync_public_agent_assets as sync
@@ -40,16 +40,6 @@ def load_recommended_tool_checker_module():
         raise RuntimeError(f'Unable to load tool checker: {RECOMMENDED_TOOL_CHECKER}')
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def load_track_worktree_time_module():
-    script = TRACK_WORKTREE_TIME_ROOT / 'scripts' / 'timing.py'
-    spec = importlib.util.spec_from_file_location('track_worktree_time', script)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f'Unable to load timing script: {script}')
-    module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
@@ -1133,6 +1123,13 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     ],
                 },
                 {
+                    'path': '.codex/config.toml',
+                    'template': 'project-config/codex.dart-mcp.toml',
+                    'format': 'toml',
+                    'merge': 'deep-overwrite',
+                    'when': {'path_glob_exists': '**/pubspec.yaml'},
+                },
+                {
                     'path': '.cursor/cli.json',
                     'template': 'project-config/cursor.cli.json',
                     'format': 'json',
@@ -1189,6 +1186,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'agent-wrappers/cursor.md',
                 'agent-wrappers/github.agent.md',
                 'entry-files/AGENTS.md',
+                'project-config/codex.dart-mcp.toml',
                 'project-config/codex.config.toml',
                 'project-config/codex.hooks.json',
                 'project-config/codex.rules',
@@ -1823,6 +1821,38 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     sync.Change('unchanged', '.codex/config.toml'),
                     second_context.changes,
                 )
+
+    def test_codex_dart_mcp_template_applies_only_to_dart_targets(self):
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+        for has_pubspec in (False, True):
+            with self.subTest(has_pubspec=has_pubspec), tempfile.TemporaryDirectory() as temp_dir:
+                target = Path(temp_dir) / 'target'
+                target.mkdir()
+                if has_pubspec:
+                    (target / 'pubspec.yaml').write_text('name: example\n', encoding='utf-8')
+                context = sync.SyncContext(target, target, REPO_SKILL_ROOT, False, [])
+
+                sync._reconcile_config_templates(context, public_config)
+
+                config = tomllib.loads(
+                    (target / '.codex' / 'config.toml').read_text(encoding='utf-8')
+                )
+                dart = config.get('mcp_servers', {}).get('dart')
+                if has_pubspec:
+                    self.assertEqual(
+                        dart,
+                        {
+                            'command': 'dart',
+                            'args': [
+                                'mcp-server',
+                                '--experimental-mcp-server',
+                                '--force-roots-fallback',
+                            ],
+                            'tool_timeout_sec': 300,
+                        },
+                    )
+                else:
+                    self.assertIsNone(dart)
 
     def test_sync_applies_generic_json_template(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2564,10 +2594,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertIn({'name': 'worktree-integrate'}, public_config['skills'])
 
-    def test_public_config_lists_track_worktree_time_skill(self):
+    def test_public_config_lists_report_session_usage_skill(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
 
-        self.assertIn({'name': 'track-worktree-time'}, public_config['skills'])
+        self.assertIn({'name': 'report-session-usage'}, public_config['skills'])
+        self.assertNotIn({'name': 'report-agent-session-usage'}, public_config['skills'])
+        self.assertNotIn({'name': 'track-worktree-time'}, public_config['skills'])
 
     def test_global_rules_separate_personality_workflow_and_skill_configuration(self):
         source_root = REPO_ROOT / 'agents' / 'rules'
@@ -2670,47 +2702,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 self.assertIn(choice_label, source)
                 self.assertIn(choice_label, mirror)
 
-    def test_global_worktree_rule_requires_post_hoc_task_metrics_report(self):
-        source = (REPO_ROOT / 'agents' / 'rules' / '04-global-skill-config.md').read_text(
-            encoding='utf-8'
-        )
-        mirror = (
-            REPO_ROOT / 'agents-zh' / 'rules' / '04-global-skill-config.md'
-        ).read_text(encoding='utf-8')
-        normalized_source = ' '.join(source.split())
-        normalized_mirror = ' '.join(mirror.split())
-
-        self.assertIn(
-            'Use `track-worktree-time` for every task that creates or reuses a linked Git '
-            'worktree for code changes.',
-            normalized_source,
-        )
-        self.assertIn('one task receipt before worktree preparation', normalized_source)
-        self.assertIn('post-hoc metrics report in the final handoff', normalized_source)
-        self.assertIn('代码修改', normalized_mirror)
-        self.assertIn('任务凭据', normalized_mirror)
-        self.assertIn('事后指标报告', normalized_mirror)
-
-    def test_track_worktree_time_skill_defines_post_hoc_metrics_contract(self):
-        source = (TRACK_WORKTREE_TIME_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-        mirror = (
-            REPO_ROOT / 'agents-zh' / 'skills' / 'track-worktree-time' / 'SKILL.md'
-        ).read_text(encoding='utf-8')
-
-        self.assertIn('task receipt', source)
-        self.assertIn('post-hoc', source)
-        self.assertIn('Tokscale', source)
-        self.assertIn('estimated API-equivalent cost', source)
-        self.assertIn('Do not maintain manual phase transitions', source)
-        self.assertIn('gap <task-id>', source)
-        self.assertIn('scripts/task-metrics.sh', source)
-        self.assertIn('scripts/task-metrics.ps1', source)
-        self.assertIn('scripts/timing.py', source)
-        self.assertIn('任务凭据', mirror)
-        self.assertIn('事后', mirror)
-        self.assertIn('API 等价估算费用', mirror)
-
-        scripts = TRACK_WORKTREE_TIME_ROOT / 'scripts'
+    def test_report_session_usage_skill_keeps_paired_entry_points(self):
+        scripts = REPORT_SESSION_USAGE_ROOT / 'scripts'
         self.assertTrue((scripts / 'task-metrics.sh').is_file())
         self.assertTrue((scripts / 'task-metrics.ps1').is_file())
         powershell = (scripts / 'task-metrics.ps1').read_text(encoding='utf-8')
@@ -5152,633 +5145,6 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             self.assertTrue(uncached.ran)
             self.assertFalse(uncached.internal_error)
             self.assertEqual(len(calls), 2)
-
-
-class TrackWorktreeTimeTest(unittest.TestCase):
-    def setUp(self):
-        self.timing = load_track_worktree_time_module()
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.state_dir = Path(self.temp_dir.name)
-        self.codex_home = self.state_dir / 'codex-home'
-        self.started_at = datetime(2026, 7, 16, 2, 0, tzinfo=timezone.utc)
-
-    def tearDown(self):
-        self.temp_dir.cleanup()
-
-    def at(self, seconds):
-        return self.started_at + timedelta(seconds=seconds)
-
-    def usage_row(
-        self,
-        *,
-        session_id='rollout-2026-session-main',
-        model='gpt-test',
-        provider='openai',
-        input_tokens=0,
-        output=0,
-        reasoning=0,
-        cache_read=0,
-        cache_write=0,
-        cost=0.0,
-        activity_ms=0,
-    ):
-        return {
-            'client': 'codex',
-            'sessionId': session_id,
-            'provider': provider,
-            'model': model,
-            'input': input_tokens,
-            'output': output,
-            'reasoning': reasoning,
-            'cacheRead': cache_read,
-            'cacheWrite': cache_write,
-            'cost': cost,
-            'messageCount': 1,
-            'performance': {
-                'totalDurationMs': activity_ms,
-                'timedTokens': input_tokens + output + reasoning + cache_read + cache_write,
-                'sampleCount': 1,
-                'tokenCoverage': 1,
-            },
-        }
-
-    def log_event(self, seconds, payload):
-        return {
-            'timestamp': self.at(seconds).isoformat().replace('+00:00', 'Z'),
-            'type': 'response_item',
-            'payload': payload,
-        }
-
-    def write_codex_log(self, session_id, *events):
-        root = self.codex_home / 'sessions' / '2026' / '07' / '16'
-        root.mkdir(parents=True, exist_ok=True)
-        path = root / f'rollout-2026-07-16T10-00-00-{session_id}.jsonl'
-        path.write_text(
-            ''.join(json.dumps(event) + '\n' for event in events),
-            encoding='utf-8',
-        )
-        return path
-
-    def test_task_receipt_uses_session_baseline_without_phase_transitions(self):
-        state = self.timing.start_task(
-            task='measured change',
-            repository='/repo',
-            worktree='/repo/.worktrees/task',
-            client='codex',
-            session_id='session-main',
-            baseline_rows=[self.usage_row(input_tokens=10, cost=0.1)],
-            state_dir=self.state_dir,
-            now=self.at(0),
-        )
-
-        self.assertEqual(state['schema_version'], 2)
-        self.assertNotIn('active_phase', state)
-        self.assertEqual(state['worktree'], '/repo/.worktrees/task')
-        self.assertEqual(state['sessions'][0]['session_id'], 'session-main')
-        self.assertEqual(state['sessions'][0]['baseline']['status'], 'available')
-
-    def test_attach_entire_session_counts_from_zero_and_rejects_duplicates(self):
-        state = self.timing.start_task(
-            task='parallel change',
-            repository='/repo',
-            worktree='/worktree',
-            state_dir=self.state_dir,
-            now=self.at(0),
-        )
-        attached = self.timing.attach_session(
-            state['task_id'],
-            client='codex',
-            session_id='session-child',
-            entire_session=True,
-            state_dir=self.state_dir,
-            now=self.at(5),
-        )
-
-        self.assertEqual(attached['sessions'][0]['baseline']['status'], 'zero')
-        with self.assertRaises(self.timing.TimingError):
-            self.timing.attach_session(
-                state['task_id'],
-                client='codex',
-                session_id='session-child',
-                entire_session=True,
-                state_dir=self.state_dir,
-                now=self.at(6),
-            )
-
-    def test_unidentified_participant_makes_whole_task_usage_partial(self):
-        state = self.timing.start_task(
-            task='partially attributed change',
-            repository='/repo',
-            worktree='/worktree',
-            client='codex',
-            session_id='session-main',
-            baseline_rows=[self.usage_row(input_tokens=10)],
-            state_dir=self.state_dir,
-            now=self.at(0),
-        )
-        state = self.timing.record_attribution_gap(
-            state['task_id'],
-            label='reviewer',
-            reason='stable session ID unavailable',
-            state_dir=self.state_dir,
-            now=self.at(5),
-        )
-        self.write_codex_log(
-            'session-main',
-            self.log_event(
-                6,
-                {
-                    'type': 'custom_tool_call',
-                    'call_id': 'review',
-                    'name': 'exec',
-                    'input': 'git diff --check',
-                },
-            ),
-            self.log_event(
-                7,
-                {'type': 'custom_tool_call_output', 'call_id': 'review', 'output': 'OK'},
-            ),
-        )
-
-        completed = self.timing.finish_task(
-            state['task_id'],
-            self.state_dir,
-            now=self.at(30),
-            final_rows_by_client={
-                'codex': [self.usage_row(input_tokens=10)]
-            },
-            codex_home=self.codex_home,
-        )
-        report = self.timing.build_report(completed)
-        markdown = self.timing.render_markdown(report)
-
-        self.assertEqual(report['usage']['status'], 'partial')
-        self.assertEqual(report['tool_activity']['status'], 'partial')
-        self.assertEqual(report['attribution_gap_count'], 1)
-        self.assertIn('reviewer: stable session ID unavailable', markdown)
-
-    def test_usage_delta_matches_rollout_suffix_and_new_models(self):
-        baseline = [
-            self.usage_row(
-                input_tokens=10,
-                output=2,
-                reasoning=1,
-                cache_read=50,
-                cost=0.1,
-                activity_ms=1000,
-            )
-        ]
-        final = [
-            self.usage_row(
-                input_tokens=25,
-                output=7,
-                reasoning=3,
-                cache_read=80,
-                cost=0.4,
-                activity_ms=3500,
-            ),
-            self.usage_row(model='new-model', output=7, cost=0.07, activity_ms=900),
-        ]
-
-        result = self.timing.usage_delta('codex', 'session-main', baseline, final)
-
-        self.assertEqual(result['totals']['input'], 15)
-        self.assertEqual(result['totals']['output'], 12)
-        self.assertEqual(result['totals']['reasoning'], 2)
-        self.assertEqual(result['totals']['cache_read'], 30)
-        self.assertEqual(result['totals']['total_tokens'], 59)
-        self.assertEqual(result['totals']['model_activity_ms'], 3400)
-        self.assertAlmostEqual(result['totals']['cost'], 0.37)
-        self.assertEqual({row['model'] for row in result['rows']}, {'gpt-test', 'new-model'})
-
-    def test_tokscale_snapshot_uses_raw_session_model_json(self):
-        calls = []
-
-        def runner(command, **kwargs):
-            calls.append((command, kwargs))
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=json.dumps({'entries': [self.usage_row()]}),
-                stderr='',
-            )
-
-        result = self.timing.capture_tokscale_snapshot(
-            ['codex'], self.at(0), self.at(30), runner=runner
-        )
-
-        self.assertEqual(result['codex'][0]['sessionId'], 'rollout-2026-session-main')
-        self.assertIn('client,session,model', calls[0][0])
-        self.assertNotIn('report', calls[0][0])
-        self.assertEqual(calls[0][1]['timeout'], 30)
-        self.assertEqual(
-            {key: calls[0][1][key] for key in ('capture_output', 'text', 'check')},
-            {'capture_output': True, 'text': True, 'check': False},
-        )
-
-    def test_tokscale_process_failures_become_timing_errors(self):
-        for failure in (
-            PermissionError('denied'),
-            subprocess.TimeoutExpired(['tokscale'], timeout=30),
-        ):
-            with self.subTest(failure=type(failure).__name__):
-                with self.assertRaises(self.timing.TimingError):
-                    self.timing.capture_tokscale_snapshot(
-                        ['codex'],
-                        self.at(0),
-                        self.at(30),
-                        runner=lambda *args, failure=failure, **kwargs: (_ for _ in ()).throw(failure),
-                    )
-
-    def test_tokscale_version_process_failures_do_not_block_start(self):
-        for failure in (
-            PermissionError('denied'),
-            subprocess.TimeoutExpired(['tokscale'], timeout=30),
-        ):
-            with self.subTest(failure=type(failure).__name__):
-                version = self.timing.tokscale_cli_version(
-                    runner=lambda *args, failure=failure, **kwargs: (_ for _ in ()).throw(failure)
-                )
-                self.assertIsNone(version)
-
-    def test_missing_final_session_row_is_not_reported_as_zero_usage(self):
-        state = self.timing.start_task(
-            task='missing session',
-            repository='/repo',
-            worktree='/worktree',
-            client='codex',
-            session_id='session-main',
-            baseline_rows=[],
-            state_dir=self.state_dir,
-            now=self.at(0),
-        )
-
-        completed = self.timing.finish_task(
-            state['task_id'],
-            self.state_dir,
-            now=self.at(30),
-            final_rows_by_client={'codex': []},
-            codex_home=self.codex_home,
-        )
-
-        report = self.timing.build_report(completed)
-        self.assertEqual(report['usage']['status'], 'unavailable')
-        self.assertTrue(
-            any('final snapshot has no matching row' in warning for warning in report['warnings'])
-        )
-
-    def test_finish_reports_available_session_delta_and_estimated_cost(self):
-        state = self.timing.start_task(
-            task='measured change',
-            repository='/repo',
-            worktree='/worktree',
-            client='codex',
-            session_id='session-main',
-            baseline_rows=[self.usage_row(input_tokens=10, cost=0.1, activity_ms=1000)],
-            state_dir=self.state_dir,
-            now=self.at(0),
-            tokscale_version='tokscale 4.5.3',
-        )
-
-        completed = self.timing.finish_task(
-            state['task_id'],
-            self.state_dir,
-            now=self.at(30),
-            final_rows_by_client={
-                'codex': [
-                    self.usage_row(
-                        input_tokens=25,
-                        output=5,
-                        cost=0.4,
-                        activity_ms=4000,
-                    )
-                ]
-            },
-            codex_home=self.codex_home,
-        )
-        report = self.timing.build_report(completed)
-        markdown = self.timing.render_markdown(report)
-
-        self.assertEqual(report['usage']['status'], 'available')
-        self.assertEqual(report['usage']['totals']['total_tokens'], 20)
-        self.assertEqual(report['usage']['totals']['model_activity_ms'], 3000)
-        self.assertAlmostEqual(report['usage']['totals']['cost'], 0.3)
-        self.assertIn('Tokscale estimated API-equivalent cost: $0.300000 USD.', markdown)
-        self.assertIn('| codex | session-main | gpt-test | 20 | $0.300000 |', markdown)
-        self.assertIn(
-            f"Pricing snapshot: {self.at(30).isoformat(timespec='microseconds')}",
-            markdown,
-        )
-        self.assertIn('Tokscale: tokscale 4.5.3', markdown)
-
-    def test_codex_log_analysis_classifies_completed_tool_intervals(self):
-        self.write_codex_log(
-            'session-main',
-            self.log_event(
-                0,
-                {'type': 'message', 'role': 'user', 'content': 'private task text'},
-            ),
-            self.log_event(
-                1,
-                {
-                    'type': 'custom_tool_call',
-                    'call_id': 'patch',
-                    'name': 'exec',
-                    'input': 'const result = await tools.apply_patch({});',
-                },
-            ),
-            self.log_event(
-                4,
-                {'type': 'custom_tool_call_output', 'call_id': 'patch', 'output': 'done'},
-            ),
-            self.log_event(
-                5,
-                {
-                    'type': 'custom_tool_call',
-                    'call_id': 'tests',
-                    'name': 'exec',
-                    'input': 'python -m unittest discover -s tests',
-                },
-            ),
-            self.log_event(
-                12,
-                {'type': 'custom_tool_call_output', 'call_id': 'tests', 'output': 'OK'},
-            ),
-            self.log_event(
-                13,
-                {
-                    'type': 'function_call',
-                    'call_id': 'wait',
-                    'name': 'wait',
-                    'arguments': '{"timeout_ms":10000}',
-                },
-            ),
-            self.log_event(
-                15,
-                {'type': 'function_call_output', 'call_id': 'wait', 'output': 'done'},
-            ),
-        )
-
-        result = self.timing.analyze_codex_tool_activity(
-            ['session-main'], self.at(0), self.at(20), self.codex_home
-        )
-
-        self.assertEqual(result['durations_microseconds']['code-generation'], 3_000_000)
-        self.assertEqual(result['durations_microseconds']['testing'], 7_000_000)
-        self.assertEqual(result['counts']['code-generation'], 1)
-        self.assertEqual(result['counts']['testing'], 1)
-        self.assertEqual(result['durations_microseconds']['waiting'], 2_000_000)
-        self.assertEqual(result['counts']['waiting'], 1)
-        self.assertEqual(result['warnings'], [])
-        self.assertNotIn('transcript', result)
-
-        self.assertEqual(
-            self.timing.codex_turn_started_at('session-main', self.codex_home),
-            self.at(0),
-        )
-
-    def test_codex_log_lookup_does_not_match_longer_session_ids(self):
-        self.write_codex_log(
-            'session-main',
-            self.log_event(
-                1,
-                {
-                    'type': 'custom_tool_call',
-                    'call_id': 'exact',
-                    'name': 'exec',
-                    'input': 'python -m unittest discover -s tests',
-                },
-            ),
-            self.log_event(
-                2,
-                {'type': 'custom_tool_call_output', 'call_id': 'exact', 'output': 'OK'},
-            ),
-        )
-        self.write_codex_log(
-            'session-main-extra',
-            self.log_event(
-                1,
-                {
-                    'type': 'custom_tool_call',
-                    'call_id': 'wrong-session',
-                    'name': 'exec',
-                    'input': 'python -m unittest discover -s tests',
-                },
-            ),
-            self.log_event(
-                8,
-                {
-                    'type': 'custom_tool_call_output',
-                    'call_id': 'wrong-session',
-                    'output': 'OK',
-                },
-            ),
-        )
-
-        result = self.timing.analyze_codex_tool_activity(
-            ['session-main'], self.at(0), self.at(20), self.codex_home
-        )
-
-        self.assertEqual(result['counts']['testing'], 1)
-        self.assertEqual(result['durations_microseconds']['testing'], 1_000_000)
-
-    def test_incomplete_tool_call_makes_tool_attribution_partial(self):
-        self.write_codex_log(
-            'session-main',
-            self.log_event(
-                1,
-                {
-                    'type': 'custom_tool_call',
-                    'call_id': 'unfinished',
-                    'name': 'exec',
-                    'input': 'python -m unittest discover -s tests',
-                },
-            ),
-        )
-
-        result = self.timing.analyze_codex_tool_activity(
-            ['session-main'], self.at(0), self.at(20), self.codex_home
-        )
-
-        self.assertEqual(result['status'], 'partial')
-        self.assertIn('1 tool call interval(s)', result['warnings'][0])
-
-        state = self.timing.start_task(
-            task='partial tool attribution',
-            repository='/repo',
-            worktree='/worktree',
-            client='codex',
-            session_id='session-main',
-            baseline_rows=[self.usage_row()],
-            state_dir=self.state_dir,
-            now=self.at(0),
-        )
-        completed = self.timing.finish_task(
-            state['task_id'],
-            self.state_dir,
-            now=self.at(20),
-            final_rows_by_client={'codex': [self.usage_row(input_tokens=1)]},
-            codex_home=self.codex_home,
-        )
-        markdown = self.timing.render_markdown(self.timing.build_report(completed))
-        self.assertIn('| Tool attribution | partial |', markdown)
-
-    def test_finish_succeeds_when_tokscale_is_unavailable(self):
-        state = self.timing.start_task(
-            task='offline metrics',
-            repository='/repo',
-            worktree='/worktree',
-            client='codex',
-            session_id='session-main',
-            baseline_error='tokscale executable was not found',
-            state_dir=self.state_dir,
-            now=self.at(0),
-        )
-
-        completed = self.timing.finish_task(
-            state['task_id'],
-            self.state_dir,
-            now=self.at(30),
-            final_rows_by_client={},
-            snapshot_error='tokscale executable was not found',
-            codex_home=self.codex_home,
-        )
-        report = self.timing.build_report(completed)
-        markdown = self.timing.render_markdown(report)
-
-        self.assertEqual(report['usage']['status'], 'unavailable')
-        self.assertEqual(report['wall_clock_microseconds'], 30_000_000)
-        self.assertIn('Tokscale token and cost | unavailable', markdown)
-        self.assertIn('estimated API-equivalent cost', markdown)
-
-    def test_state_uses_system_temp_by_default_and_isolates_tasks(self):
-        self.assertEqual(
-            self.timing.default_state_dir(),
-            Path(tempfile.gettempdir()) / 'codex-worktree-time',
-        )
-        first = self.timing.start_task(
-            task='first',
-            repository='/repo',
-            worktree='/worktree/first',
-            state_dir=self.state_dir,
-            now=self.at(0),
-        )
-        second = self.timing.start_task(
-            task='second',
-            repository='/repo',
-            worktree='/worktree/second',
-            state_dir=self.state_dir,
-            now=self.at(0),
-        )
-
-        self.assertNotEqual(first['task_id'], second['task_id'])
-        self.assertTrue((self.state_dir / f"{first['task_id']}.json").is_file())
-        self.assertTrue((self.state_dir / f"{second['task_id']}.json").is_file())
-
-    def test_mutating_receipt_operations_take_the_task_lock(self):
-        for function in (
-            self.timing.attach_session,
-            self.timing.record_attribution_gap,
-            self.timing.finish_task,
-            self.timing.transition_task,
-        ):
-            with self.subTest(function=function.__name__):
-                self.assertIn('with _task_lock(', inspect.getsource(function))
-
-    def test_task_lock_serializes_a_second_process(self):
-        state = self.timing.start_task(
-            task='concurrent registration',
-            repository='/repo',
-            worktree='/worktree',
-            state_dir=self.state_dir,
-            now=self.at(0),
-        )
-        script = str(TRACK_WORKTREE_TIME_ROOT / 'scripts' / 'timing.py')
-        loader = (
-            "import importlib.util,sys; from pathlib import Path; "
-            "spec=importlib.util.spec_from_file_location('timing',sys.argv[1]); "
-            "m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); "
-        )
-        holder = subprocess.Popen(
-            [
-                sys.executable,
-                '-c',
-                loader
-                + "\nwith m._task_lock(sys.argv[2],Path(sys.argv[3])):"
-                + "\n print('locked',flush=True)"
-                + "\n sys.stdin.readline()",
-                script,
-                state['task_id'],
-                str(self.state_dir),
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            text=True,
-        )
-        contender = None
-        try:
-            self.assertEqual(holder.stdout.readline().strip(), 'locked')
-            contender = subprocess.Popen(
-                [
-                    sys.executable,
-                    '-c',
-                    loader
-                    + "\nprint('ready',flush=True)"
-                    + "\nm.record_attribution_gap(sys.argv[2],'reviewer','unknown',Path(sys.argv[3]))"
-                    + "\nprint('done',flush=True)",
-                    script,
-                    state['task_id'],
-                    str(self.state_dir),
-                ],
-                stdout=subprocess.PIPE,
-                text=True,
-            )
-            self.assertEqual(contender.stdout.readline().strip(), 'ready')
-            with self.assertRaises(subprocess.TimeoutExpired):
-                contender.wait(timeout=0.2)
-            holder.stdin.write('\n')
-            holder.stdin.flush()
-            self.assertEqual(holder.wait(timeout=2), 0)
-            self.assertEqual(contender.wait(timeout=2), 0)
-            self.assertEqual(contender.stdout.readline().strip(), 'done')
-        finally:
-            if holder.poll() is None:
-                holder.kill()
-            if contender is not None and contender.poll() is None:
-                contender.kill()
-            for process in (holder, contender):
-                if process is None:
-                    continue
-                process.wait()
-                for stream in (process.stdin, process.stdout, process.stderr):
-                    if stream is not None:
-                        stream.close()
-
-    def test_schema_one_ledger_can_still_finish_during_upgrade(self):
-        legacy = {
-            'schema_version': 1,
-            'task_id': 'legacy-task',
-            'task': 'upgrade the timing skill',
-            'repository': '/repo',
-            'status': 'running',
-            'started_at': self.at(0).isoformat(),
-            'completed_at': None,
-            'active_phase': 'other',
-            'active_since': self.at(0).isoformat(),
-            'segments': [],
-        }
-        (self.state_dir / 'legacy-task.json').write_text(
-            json.dumps(legacy), encoding='utf-8'
-        )
-
-        completed = self.timing.finish_task(
-            'legacy-task', self.state_dir, now=self.at(10)
-        )
-        report = self.timing.build_report(completed)
-
-        self.assertEqual(report['schema_version'], 1)
-        self.assertEqual(report['phases']['other'], 10_000_000)
-        self.assertEqual(report['total'], 10_000_000)
 
 
 if __name__ == '__main__':

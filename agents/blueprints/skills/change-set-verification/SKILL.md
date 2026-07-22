@@ -11,14 +11,16 @@ change set or implement semantic repairs.
 
 ## Evidence
 
-Inspect the target repository's `Project Tools` rule, broader and more-specific rules, tool
-configuration, manifests, package boundaries, test layout, CI workflows, generated-source policy,
-and repository-owned verification selectors. Establish:
+Inspect the target repository's `Project Tools` rule, broader and more-specific rules, effective
+callable tool surface, tool configuration, manifests, package boundaries, test layout, CI
+workflows, generated-source policy, and repository-owned verification selectors. Establish:
 
 - formatter, fixer, analyzer, linter, test, build, runtime, and diff-integrity surfaces actually
   supported by the repository;
 - the working directory, prerequisites, scope selectors, mutation behavior, output, relative cost,
   and overlap of every candidate command;
+- whether a native or MCP tool preserves the required selector and evidence, whether independent
+  calls can be submitted together, and which owning timeout applies to long-running calls;
 - direct test ownership, generated-source owners, dependency boundaries, and evidence-backed
   change-to-check mappings;
 - risks and tool limitations that require broader verification, plus any trustworthy way to
@@ -37,12 +39,19 @@ Do not invent commands, ownership mappings, or scope support that the evidence d
    ownership gaps, and risk.
 3. Order normalization, non-mutating static checks, directly owned tests, broader checks, and result
    classification so each distinct surface runs only when its evidence is still needed.
-4. Prefer repository-owned selectors. Add a skill-owned script only when repeated deterministic
+4. Choose between repository commands and the effective native or MCP tool surface. Prefer a
+   callable analyzer or test tool when it preserves the required scope and evidence; retain the
+   repository command when the tool would broaden a formatter or fixer mutation, discard a needed
+   selector, or weaken diagnostics.
+5. Group independent calls into one orchestration request when the platform supports it. Configure
+   an evidence-backed owning-tool timeout for a legitimate long-running operation; do not replace a
+   synchronous tool call with a background shell process and repeated short polling.
+6. Prefer repository-owned selectors. Add a skill-owned script only when repeated deterministic
    selection cannot be expressed reliably through existing tools; follow the target skill's own
    project-local script runtime policy.
-5. Keep the core decisions in `SKILL.md`. Add `references/verification-matrix.md` only when multiple
+7. Keep the core decisions in `SKILL.md`. Add `references/verification-matrix.md` only when multiple
    packages, languages, or risk mappings would otherwise obscure the executable workflow.
-6. Read the complete generated directory without relying on the previous target skill or its diff,
+8. Read the complete generated directory without relying on the previous target skill or its diff,
    then revise it until every instruction, command, scope decision, and result has one clear meaning.
 
 ## Generated Skill Contract
@@ -76,6 +85,17 @@ Do not invent commands, ownership mappings, or scope support that the evidence d
    messages. Do not author semantic fixes inside the verifier.
 6. If the implementation owner changes files, treat the result as a new completed checkpoint and
    restart the workflow from current repository state.
+
+### Tool Selection and Orchestration
+
+- Prefer effective native or MCP analyzer and test tools over shell equivalents when they honor the
+  same selected scope, return equivalent diagnostics, and have an adequate configured timeout.
+- Keep narrow repository formatter and fixer commands when the corresponding tool can mutate only
+  a broader root. Tool availability never authorizes widening the selected change set.
+- Submit independent checks together when their results do not depend on one another. Keep
+  normalization, mutation-sensitive checks, and checks that consume generated output sequential.
+- Treat a synchronous native or MCP call as one operation. Wait for its result through that call;
+  do not launch an extra background process or issue repeated short status polls.
 
 ### Verification and Results
 

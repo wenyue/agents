@@ -12,14 +12,14 @@ TIMING_SCRIPT = (
     / 'wenyue_agents'
     / 'agents'
     / 'skills'
-    / 'track-worktree-time'
+    / 'report-session-usage'
     / 'scripts'
     / 'timing.py'
 )
 
 
 def load_timing_module():
-    spec = importlib.util.spec_from_file_location('track_worktree_time_usage', TIMING_SCRIPT)
+    spec = importlib.util.spec_from_file_location('report_session_usage', TIMING_SCRIPT)
     if spec is None or spec.loader is None:
         raise RuntimeError(f'Unable to load timing script: {TIMING_SCRIPT}')
     module = importlib.util.module_from_spec(spec)
@@ -28,7 +28,7 @@ def load_timing_module():
     return module
 
 
-class TrackWorktreeTimeUsageTest(unittest.TestCase):
+class ReportSessionUsageTest(unittest.TestCase):
     def setUp(self):
         self.timing = load_timing_module()
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -97,8 +97,16 @@ class TrackWorktreeTimeUsageTest(unittest.TestCase):
             },
         }
 
-    def test_parser_exposes_receipt_independent_usage_command(self):
-        args = self.timing.build_parser().parse_args(
+    def test_parser_exposes_only_usage_command(self):
+        parser = self.timing.build_parser()
+        command_choices = next(
+            action.choices
+            for action in parser._actions
+            if isinstance(getattr(action, 'choices', None), dict)
+        )
+        self.assertEqual(set(command_choices), {'usage'})
+
+        args = parser.parse_args(
             ['usage', '--client', 'codex', '--session-id', 'session-main']
         )
 
@@ -113,6 +121,27 @@ class TrackWorktreeTimeUsageTest(unittest.TestCase):
         )
 
         self.assertEqual(resolved, 'C:/npm/tokscale.cmd')
+
+    def test_tokscale_snapshot_supports_non_codex_client_without_date_bounds(self):
+        calls = []
+
+        def runner(command, **kwargs):
+            calls.append((command, kwargs))
+            return self.timing.subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps({'entries': []}),
+                stderr='',
+            )
+
+        result = self.timing.capture_tokscale_snapshot(
+            'claude', None, None, runner=runner
+        )
+
+        self.assertEqual(result, [])
+        self.assertIn('claude', calls[0][0])
+        self.assertNotIn('--since', calls[0][0])
+        self.assertNotIn('--until', calls[0][0])
 
     def test_reads_latest_codex_token_totals_without_message_content(self):
         self.write_token_count()
@@ -158,6 +187,23 @@ class TrackWorktreeTimeUsageTest(unittest.TestCase):
         self.assertEqual(result['cost_status'], 'available')
         self.assertEqual(result['totals']['total_tokens'], 120)
         self.assertEqual(result['totals']['cost'], 0.25)
+        self.assertEqual(
+            self.timing.build_session_reply(result),
+            {
+                'scope': 'whole session',
+                'tokens': {
+                    'status': 'available',
+                    'input': 60,
+                    'cache_read': 30,
+                    'cache_write': 10,
+                    'output': 15,
+                    'reasoning': 5,
+                    'total': 120,
+                },
+                'cost': '$0.250000 USD',
+                'problems': [],
+            },
+        )
 
     def test_session_usage_falls_back_to_tokens_when_tokscale_fails(self):
         self.write_token_count()
@@ -176,7 +222,10 @@ class TrackWorktreeTimeUsageTest(unittest.TestCase):
         self.assertEqual(result['cost_status'], 'unavailable')
         self.assertEqual(result['totals']['total_tokens'], 120)
         self.assertIn('Tokscale timed out.', result['warnings'])
-        self.assertIn('Estimated API-equivalent cost: unavailable.', self.timing.render_session_usage_markdown(result))
+        reply = self.timing.build_session_reply(result)
+        self.assertEqual(reply['tokens']['status'], 'partial')
+        self.assertEqual(reply['cost'], 'unavailable')
+        self.assertEqual(reply['problems'], ['Tokscale timed out.'])
 
     def test_session_usage_is_unavailable_only_when_both_sources_fail(self):
         result = self.timing.build_session_usage(
@@ -191,6 +240,19 @@ class TrackWorktreeTimeUsageTest(unittest.TestCase):
         self.assertEqual(result['status'], 'unavailable')
         self.assertEqual(result['cost_status'], 'unavailable')
         self.assertEqual(result['totals']['total_tokens'], 0)
+
+    def test_non_codex_missing_session_reports_only_tokscale_problem(self):
+        result = self.timing.build_session_usage(
+            'claude',
+            'missing-session',
+            self.captured_at,
+            tokscale_rows=[],
+        )
+
+        self.assertEqual(result['status'], 'unavailable')
+        self.assertEqual(
+            result['warnings'], ['No matching Tokscale session row was found.']
+        )
 
 
 if __name__ == '__main__':
