@@ -1390,6 +1390,72 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             {'type', 'name', 'bash', 'powershell', 'cwd', 'timeoutSec'},
         )
 
+    def test_codex_hook_finds_nested_project_checker_from_session_subdirectory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            git_root = Path(temp_dir) / 'monorepo'
+            project_root = git_root / 'services' / 'nested-project'
+            session_cwd = project_root / 'src'
+            checker = (
+                project_root
+                / '.agents'
+                / 'skills'
+                / 'setup-project-agents'
+                / 'scripts'
+                / 'check_recommended_tools.sh'
+            )
+            marker = Path(temp_dir) / 'hook-ran'
+            checker.parent.mkdir(parents=True)
+            checker.write_text(
+                '#!/bin/sh\nprintf success > "$SETUP_PROJECT_AGENTS_TEST_MARKER"\n',
+                encoding='utf-8',
+            )
+            session_cwd.mkdir(parents=True)
+            subprocess.run(
+                ['git', 'init', '--quiet', str(git_root)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            codex = json.loads(
+                (
+                    REPO_TEMPLATES / 'project-config' / 'codex.hooks.json'
+                ).read_text(encoding='utf-8')
+            )
+            command = codex['hooks']['SessionStart'][0]['hooks'][0]['command']
+            environment = os.environ.copy()
+            environment['SETUP_PROJECT_AGENTS_TEST_MARKER'] = str(marker)
+
+            result = subprocess.run(
+                command,
+                cwd=session_cwd,
+                env=environment,
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(marker.read_text(encoding='utf-8'), 'success')
+
+    def test_codex_hook_does_not_fail_when_project_checker_is_absent(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            codex = json.loads(
+                (
+                    REPO_TEMPLATES / 'project-config' / 'codex.hooks.json'
+                ).read_text(encoding='utf-8')
+            )
+            command = codex['hooks']['SessionStart'][0]['hooks'][0]['command']
+
+            result = subprocess.run(
+                command,
+                cwd=temp_dir,
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_reconcile_config_templates_updates_toml_and_preserves_unmanaged_text(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
