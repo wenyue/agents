@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/skills/setup-project-agents/scripts/check_recommended_tools.sh\" hook --platform codex",
-            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$script = Join-Path (git rev-parse --show-toplevel) '.agents/skills/setup-project-agents/scripts/check_recommended_tools.ps1'; & $script hook --platform codex\"",
+            "command": "root=\"$PWD\"; relative='.agents/skills/setup-project-agents/scripts/check_recommended_tools.sh'; while [ \"$root\" != \"/\" ] && [ ! -f \"$root/$relative\" ]; do root=$(dirname -- \"$root\"); done; if [ -f \"$root/$relative\" ]; then sh \"$root/$relative\" hook --platform codex; fi",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$root = (Get-Location).Path; $relative = '.agents\\skills\\setup-project-agents\\scripts\\check_recommended_tools.ps1'; while ($root -and -not (Test-Path -LiteralPath (Join-Path $root $relative))) { $parent = Split-Path -Path $root -Parent; if (-not $parent -or $parent -eq $root) { $root = $null } else { $root = $parent } }; if ($root) { & (Join-Path $root $relative) hook --platform codex }\"",
             "timeout": 30,
             "statusMessage": "Checking setup-project-agents recommended tools"
           }
