@@ -64,6 +64,396 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertIn('must contain a JSON object', str(error.exception))
 
+    def test_load_external_skill_specs_accepts_valid_config_and_unknown_top_level_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config = root / '.agents' / 'config.json'
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                json.dumps(
+                    {
+                        'version': 1,
+                        'project_owned': {'kept': True},
+                        'skills': {
+                            'external': [
+                                {
+                                    'name': 'example',
+                                    'repository': 'owner/repo',
+                                    'ref': 'feature/branch',
+                                    'path': 'skills/example',
+                                }
+                            ]
+                        },
+                    }
+                ),
+                encoding='utf-8',
+            )
+
+            result = sync.load_external_skill_specs(
+                root,
+                {
+                    'skills': [{'name': 'public'}],
+                    'skill_blueprints': [{'name': 'generated'}],
+                },
+            )
+
+        self.assertEqual(
+            result,
+            [
+                sync.ExternalSkillSpec(
+                    name='example',
+                    repository='owner/repo',
+                    ref='feature/branch',
+                    path=sync.PurePosixPath('skills/example'),
+                )
+            ],
+        )
+
+    def test_load_external_skill_specs_returns_empty_when_project_config_is_absent(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = sync.load_external_skill_specs(
+                Path(temp_dir),
+                {'skills': [], 'skill_blueprints': []},
+            )
+
+        self.assertEqual(result, [])
+
+    def test_load_external_skill_specs_rejects_invalid_contracts(self):
+        invalid_cases = [
+            ({'version': 2}, 'version must be 1'),
+            (
+                {
+                    'version': 1,
+                    'skills': {
+                        'external': [
+                            {
+                                'name': 'bad/name',
+                                'repository': 'owner/repo',
+                                'ref': 'main',
+                                'path': 'skills/example',
+                            }
+                        ]
+                    },
+                },
+                'invalid name',
+            ),
+            (
+                {
+                    'version': 1,
+                    'skills': {
+                        'external': [
+                            {
+                                'name': 'example',
+                                'repository': 'https://github.com/owner/repo',
+                                'ref': 'main',
+                                'path': 'skills/example',
+                            }
+                        ]
+                    },
+                },
+                'repository must use owner/repo',
+            ),
+            (
+                {
+                    'version': 1,
+                    'skills': {
+                        'external': [
+                            {
+                                'name': 'example',
+                                'repository': 'owner/repo',
+                                'ref': 'main',
+                                'path': '../example',
+                            }
+                        ]
+                    },
+                },
+                'safe relative path',
+            ),
+        ]
+        for document, message in invalid_cases:
+            with self.subTest(message=message), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                config = root / '.agents' / 'config.json'
+                config.parent.mkdir(parents=True)
+                config.write_text(json.dumps(document), encoding='utf-8')
+                with self.assertRaisesRegex(sync.SyncError, message):
+                    sync.load_external_skill_specs(
+                        root,
+                        {'skills': [], 'skill_blueprints': []},
+                    )
+
+    def test_load_external_skill_specs_rejects_duplicate_and_reserved_names(self):
+        entry = {
+            'name': 'shared',
+            'repository': 'owner/repo',
+            'ref': 'main',
+            'path': 'skills/shared',
+        }
+        documents = [
+            ({'skills': [{'name': 'shared'}], 'skill_blueprints': []}, [entry]),
+            ({'skills': [], 'skill_blueprints': [{'name': 'shared'}]}, [entry]),
+            ({'skills': [], 'skill_blueprints': []}, [entry, entry]),
+        ]
+        for public_config, external in documents:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                config = root / '.agents' / 'config.json'
+                config.parent.mkdir(parents=True)
+                config.write_text(
+                    json.dumps({'version': 1, 'skills': {'external': external}}),
+                    encoding='utf-8',
+                )
+                with self.assertRaisesRegex(sync.SyncError, 'external skill name'):
+                    sync.load_external_skill_specs(root, public_config)
+
+    def test_preflight_external_skills_downloads_each_repository_ref_once(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            calls = []
+
+            def fetch(repository, ref):
+                calls.append((repository, ref))
+                temporary = Path(tempfile.mkdtemp(dir=root))
+                repo = temporary / 'repo'
+                for name in ('one', 'two'):
+                    skill = repo / 'skills' / name
+                    skill.mkdir(parents=True)
+                    (skill / 'SKILL.md').write_text(
+                        f'# {name}\n',
+                        encoding='utf-8',
+                    )
+                return repo, temporary
+
+            specs = [
+                sync.ExternalSkillSpec(
+                    name,
+                    'owner/repo',
+                    'main',
+                    sync.PurePosixPath(f'skills/{name}'),
+                )
+                for name in ('one', 'two')
+            ]
+            with mock.patch.object(
+                sync,
+                '_fetch_external_repository',
+                side_effect=fetch,
+            ):
+                preflight = sync.preflight_external_skills(target, specs)
+            try:
+                self.assertEqual(calls, [('owner/repo', 'main')])
+                self.assertEqual(set(preflight.ready), {'one', 'two'})
+                self.assertEqual(preflight.warnings, [])
+            finally:
+                sync.cleanup_external_skill_preflight(preflight)
+
+    def test_preflight_external_skills_fails_before_writes_when_new_skill_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            spec = sync.ExternalSkillSpec(
+                'missing',
+                'owner/repo',
+                'main',
+                sync.PurePosixPath('skills/missing'),
+            )
+            with mock.patch.object(
+                sync,
+                '_fetch_external_repository',
+                side_effect=sync.SyncError('offline'),
+            ), self.assertRaisesRegex(sync.SyncError, 'missing.*offline'):
+                sync.preflight_external_skills(target, [spec])
+
+    def test_preflight_external_skills_retains_installed_skill_on_update_failure(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            installed = target / '.agents' / 'skills' / 'installed'
+            installed.mkdir(parents=True)
+            (installed / 'SKILL.md').write_text('# old\n', encoding='utf-8')
+            spec = sync.ExternalSkillSpec(
+                'installed',
+                'owner/repo',
+                'main',
+                sync.PurePosixPath('skills/installed'),
+            )
+            with mock.patch.object(
+                sync,
+                '_fetch_external_repository',
+                side_effect=sync.SyncError('offline'),
+            ):
+                preflight = sync.preflight_external_skills(target, [spec])
+
+            self.assertEqual(preflight.ready, {})
+            self.assertEqual(
+                preflight.warnings,
+                [sync.ExternalSkillWarning('installed', 'offline')],
+            )
+
+    def test_extract_safe_archive_rejects_escape_and_symbolic_link_entries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cases = []
+
+            escape_archive = root / 'escape.zip'
+            with zipfile.ZipFile(escape_archive, 'w') as archive:
+                archive.writestr('../escape.txt', 'escape')
+            cases.append(escape_archive)
+
+            backslash_archive = root / 'backslash.zip'
+            with zipfile.ZipFile(backslash_archive, 'w') as archive:
+                archive.writestr('repo\\..\\escape.txt', 'escape')
+            cases.append(backslash_archive)
+
+            symlink_archive = root / 'symlink.zip'
+            symlink = zipfile.ZipInfo('repo/link')
+            symlink.create_system = 3
+            symlink.external_attr = (sync.stat.S_IFLNK | 0o777) << 16
+            with zipfile.ZipFile(symlink_archive, 'w') as archive:
+                archive.writestr(symlink, '../../outside')
+            cases.append(symlink_archive)
+
+            for index, archive_path in enumerate(cases):
+                with self.subTest(archive=archive_path.name), self.assertRaisesRegex(
+                    sync.SyncError,
+                    'Unsafe archive entry',
+                ):
+                    sync._extract_safe_archive(
+                        archive_path,
+                        root / f'extract-{index}',
+                    )
+
+    def test_sync_external_skills_replaces_complete_directory_and_symlink(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            source = root / 'source'
+            skill = source / 'skill'
+            skill.mkdir(parents=True)
+            (skill / 'SKILL.md').write_text('# new\n', encoding='utf-8')
+            (skill / 'scripts').mkdir()
+            (skill / 'scripts' / 'run.py').write_text(
+                'print("new")\n',
+                encoding='utf-8',
+            )
+            old_source = root / 'old'
+            old_source.mkdir()
+            (old_source / 'SKILL.md').write_text('# old\n', encoding='utf-8')
+            destination = target / '.agents' / 'skills' / 'example'
+            destination.parent.mkdir(parents=True)
+            try:
+                destination.symlink_to(old_source, target_is_directory=True)
+            except OSError:
+                self.skipTest('Directory symlinks are unavailable')
+            context = sync.SyncContext(
+                target,
+                root / 'public',
+                REPO_SKILL_ROOT,
+                False,
+                [],
+            )
+            preflight = sync.ExternalSkillPreflight({'example': skill}, [], [])
+
+            warnings = sync.sync_external_skills(context, preflight)
+
+            self.assertEqual(warnings, [])
+            self.assertFalse(destination.is_symlink())
+            self.assertEqual((destination / 'SKILL.md').read_text(), '# new\n')
+            self.assertTrue((destination / 'scripts' / 'run.py').is_file())
+            self.assertIn(
+                sync.Change('updated', '.agents/skills/example'),
+                context.changes,
+            )
+
+    def test_sync_external_skills_removes_upstream_deleted_files(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            source = root / 'source'
+            source.mkdir()
+            (source / 'SKILL.md').write_text('# current\n', encoding='utf-8')
+            destination = target / '.agents' / 'skills' / 'example'
+            destination.mkdir(parents=True)
+            (destination / 'SKILL.md').write_text('# old\n', encoding='utf-8')
+            (destination / 'obsolete.txt').write_text(
+                'obsolete\n',
+                encoding='utf-8',
+            )
+            context = sync.SyncContext(
+                target,
+                root / 'public',
+                REPO_SKILL_ROOT,
+                False,
+                [],
+            )
+
+            sync.sync_external_skills(
+                context,
+                sync.ExternalSkillPreflight({'example': source}, [], []),
+            )
+
+            self.assertFalse((destination / 'obsolete.txt').exists())
+
+    def test_removed_external_declaration_does_not_delete_or_report_skill(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            destination = root / '.agents' / 'skills' / 'kept'
+            destination.mkdir(parents=True)
+            (destination / 'SKILL.md').write_text('# kept\n', encoding='utf-8')
+            context = sync.SyncContext(
+                root,
+                root / 'public',
+                REPO_SKILL_ROOT,
+                False,
+                [],
+            )
+
+            warnings = sync.sync_external_skills(
+                context,
+                sync.ExternalSkillPreflight({}, [], []),
+            )
+
+            self.assertEqual(warnings, [])
+            self.assertTrue((destination / 'SKILL.md').is_file())
+            self.assertEqual(context.changes, [])
+
+    def test_sync_external_skills_restores_old_target_when_replace_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            source = root / 'source'
+            source.mkdir()
+            (source / 'SKILL.md').write_text('# new\n', encoding='utf-8')
+            destination = target / '.agents' / 'skills' / 'example'
+            destination.mkdir(parents=True)
+            (destination / 'SKILL.md').write_text('# old\n', encoding='utf-8')
+            context = sync.SyncContext(
+                target,
+                root / 'public',
+                REPO_SKILL_ROOT,
+                False,
+                [],
+            )
+            original_replace = sync.os.replace
+
+            def fail_new_install(source_path, target_path):
+                if Path(source_path).name == 'new' and Path(target_path) == destination:
+                    raise OSError('replace failed')
+                return original_replace(source_path, target_path)
+
+            with mock.patch.object(
+                sync.os,
+                'replace',
+                side_effect=fail_new_install,
+            ):
+                warnings = sync.sync_external_skills(
+                    context,
+                    sync.ExternalSkillPreflight({'example': source}, [], []),
+                )
+
+            self.assertEqual((destination / 'SKILL.md').read_text(), '# old\n')
+            self.assertEqual(len(warnings), 1)
+            self.assertEqual(warnings[0].name, 'example')
+            self.assertFalse(any(destination.parent.glob('.example.*')))
+
     def test_model_request_describes_each_subagent_and_requested_model_fields(self):
         public_config = {
             'agent_prompts': [
@@ -1109,6 +1499,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             public_config['config_templates'],
             [
                 {
+                    'path': '.agents/config.json',
+                    'template': 'project-config/agents.config.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                },
+                {
                     'path': '.codex/config.toml',
                     'template': 'project-config/codex.config.toml',
                     'format': 'toml',
@@ -1174,6 +1570,50 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             ],
         )
 
+    def test_public_manifest_owns_agents_project_config_version(self):
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+        declarations = [
+            entry
+            for entry in public_config['config_templates']
+            if entry['path'] == '.agents/config.json'
+        ]
+
+        self.assertEqual(
+            declarations,
+            [
+                {
+                    'path': '.agents/config.json',
+                    'template': 'project-config/agents.config.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                }
+            ],
+        )
+        self.assertEqual(
+            json.loads(
+                (REPO_TEMPLATES / 'project-config' / 'agents.config.json').read_text(
+                    encoding='utf-8'
+                )
+            ),
+            {
+                '$schema': (
+                    'skills/setup-project-agents/references/'
+                    'project-config.schema.json'
+                ),
+                'version': 1,
+            },
+        )
+
+    def test_project_config_schema_describes_external_skills(self):
+        schema = json.loads(
+            (REPO_REFERENCES / 'project-config.schema.json').read_text(encoding='utf-8')
+        )
+
+        self.assertEqual(schema['properties']['version'], {'const': 1})
+        item = schema['properties']['skills']['properties']['external']['items']
+        self.assertEqual(item['required'], ['name', 'repository', 'ref', 'path'])
+        self.assertFalse(item['additionalProperties'])
+
     def test_template_assets_are_grouped_by_responsibility(self):
         self.assertEqual(
             {
@@ -1186,6 +1626,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'agent-wrappers/cursor.md',
                 'agent-wrappers/github.agent.md',
                 'entry-files/AGENTS.md',
+                'project-config/agents.config.json',
                 'project-config/codex.dart-mcp.toml',
                 'project-config/codex.config.toml',
                 'project-config/codex.hooks.json',
@@ -1676,6 +2117,56 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             self.assertEqual(parsed['model'], 'old')
             self.assertEqual(parsed['custom'], {'value': 7})
 
+    def test_agents_project_config_template_preserves_project_owned_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            config = target / '.agents' / 'config.json'
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                json.dumps(
+                    {
+                        'version': 0,
+                        'skills': {
+                            'external': [
+                                {
+                                    'name': 'example',
+                                    'repository': 'owner/repo',
+                                    'ref': 'main',
+                                    'path': 'skills/example',
+                                }
+                            ]
+                        },
+                        'project_owned': {'kept': True},
+                    }
+                ),
+                encoding='utf-8',
+            )
+            context = sync.SyncContext(
+                target,
+                root / 'source',
+                REPO_SKILL_ROOT,
+                False,
+                [],
+            )
+            public_config = {
+                'config_templates': [
+                    {
+                        'path': '.agents/config.json',
+                        'template': 'project-config/agents.config.json',
+                        'format': 'json',
+                        'merge': 'deep-overwrite',
+                    }
+                ]
+            }
+
+            sync._reconcile_config_templates(context, public_config)
+
+            result = json.loads(config.read_text(encoding='utf-8'))
+            self.assertEqual(result['version'], 1)
+            self.assertEqual(result['skills']['external'][0]['name'], 'example')
+            self.assertEqual(result['project_owned'], {'kept': True})
+
     def test_reconcile_hook_template_preserves_unrelated_hook_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1820,7 +2311,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             '[agents.reviewer]\n'
             'description = "Review changes"\n'
             'config_file = "./agents/reviewer.toml"\n',
-            'config_templates[0] object reviewer field config_file references missing path',
+            'config_templates[1] object reviewer field config_file references missing path',
         )
 
     def test_sync_applies_codex_template_and_preserves_extra_values(self):
@@ -4340,6 +4831,154 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             self.assertEqual(supplied_local_config['codex_agent_runtime_overrides'], {})
             self.assertEqual(supplied_local_config['cursor_agent_runtime_overrides'], {})
             self.assertEqual(supplied_local_config['github_agent_runtime_overrides'], {})
+
+    def test_main_preflights_external_skills_before_public_writes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            request_path = root / 'models.json'
+            public_config = {'rules': [], 'skills': [], 'agent_prompts': []}
+            local_config = {
+                'rules': [],
+                'agent_prompts': [],
+                'codex_agent_runtime_overrides': {},
+                'cursor_agent_runtime_overrides': {},
+                'github_agent_runtime_overrides': {},
+            }
+            preflight = sync.ExternalSkillPreflight({}, [], [])
+            order = []
+
+            def preflight_skills(*_args):
+                order.append('preflight')
+                return preflight
+
+            def sync_assets(*_args, **_kwargs):
+                order.append('public')
+                return []
+
+            with mock.patch.object(
+                sync,
+                'load_json',
+                return_value=public_config,
+            ), mock.patch.object(
+                sync,
+                'resolve_source',
+                return_value=root / 'source',
+            ), mock.patch.object(
+                sync,
+                'discover_local_assets',
+                return_value=local_config,
+            ), mock.patch.object(
+                sync,
+                'load_external_skill_specs',
+                return_value=[],
+            ), mock.patch.object(
+                sync,
+                'preflight_external_skills',
+                side_effect=preflight_skills,
+            ), mock.patch.object(
+                sync,
+                'sync_public_assets',
+                side_effect=sync_assets,
+            ), mock.patch.object(
+                sync,
+                'sync_external_skills',
+                return_value=[],
+            ), mock.patch.object(
+                sync.Path,
+                'cwd',
+                return_value=target,
+            ):
+                exit_code = sync.main(['--model-request', str(request_path)])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(order, ['preflight', 'public'])
+
+    def test_main_update_warning_succeeds_normally_but_fails_check(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            request_path = root / 'models.json'
+            model_path = root / 'completed-models.json'
+            model_path.write_text('{}\n', encoding='utf-8')
+            public_config = {'rules': [], 'skills': [], 'agent_prompts': []}
+            local_config = {
+                'rules': [],
+                'agent_prompts': [],
+                'codex_agent_runtime_overrides': {},
+                'cursor_agent_runtime_overrides': {},
+                'github_agent_runtime_overrides': {},
+            }
+            warning = sync.ExternalSkillWarning(
+                'sentry-debug-issue',
+                'network unavailable',
+            )
+
+            def run_main(arguments):
+                stdout = io.StringIO()
+                with mock.patch.object(
+                    sync,
+                    'load_json',
+                    return_value=public_config,
+                ), mock.patch.object(
+                    sync,
+                    'resolve_source',
+                    return_value=root / 'source',
+                ), mock.patch.object(
+                    sync,
+                    'discover_local_assets',
+                    return_value=local_config,
+                ), mock.patch.object(
+                    sync,
+                    'load_model_config',
+                    return_value={
+                        'codex_agent_runtime_overrides': {},
+                        'cursor_agent_runtime_overrides': {},
+                        'github_agent_runtime_overrides': {},
+                    },
+                ), mock.patch.object(
+                    sync,
+                    'load_external_skill_specs',
+                    return_value=[],
+                ), mock.patch.object(
+                    sync,
+                    'preflight_external_skills',
+                    return_value=sync.ExternalSkillPreflight({}, [], []),
+                ), mock.patch.object(
+                    sync,
+                    'sync_public_assets',
+                    return_value=[],
+                ), mock.patch.object(
+                    sync,
+                    'sync_external_skills',
+                    return_value=[warning],
+                ), mock.patch.object(
+                    sync.Path,
+                    'cwd',
+                    return_value=target,
+                ), contextlib.redirect_stdout(stdout):
+                    exit_code = sync.main(arguments)
+                return exit_code, stdout.getvalue()
+
+            normal_exit, normal_output = run_main(
+                ['--model-request', str(request_path)]
+            )
+            check_exit, check_output = run_main(
+                ['--check', '--model-config', str(model_path)]
+            )
+
+        self.assertEqual(normal_exit, 0)
+        self.assertEqual(check_exit, 1)
+        self.assertIn(
+            'WARNING: sentry-debug-issue: network unavailable',
+            normal_output,
+        )
+        self.assertIn(
+            'WARNING: sentry-debug-issue: network unavailable',
+            check_output,
+        )
 
     def test_main_uses_downloaded_manifest_instead_of_installed_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:

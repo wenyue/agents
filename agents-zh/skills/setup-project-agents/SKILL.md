@@ -14,6 +14,8 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
 
 - 脚本负责所有受支持平台的确定性配置。
 - 字面量模板负责项目配置值及平台原生启动 Hook；Python 只包含通用的协调逻辑。
+- 目标仓库在 `.agents/config.json` 中负责声明第三方 Skill；脚本负责获取并协调每个已声明的
+  Skill。
 - LLM 负责模型选择，以及仓库特有 Rule 和 Skill 的生成。
 - 每个启动 Hook 每天只检查一次当前平台的推荐工具，不读取项目配置或用户配置。发现问题时，Agent
   先停止当前任务并询问是否安装；用户回复后即可继续。
@@ -31,6 +33,34 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
 - [`worktree-environment-setup`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/worktree-environment-setup/SKILL.md)
 - [`change-set-verification`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/change-set-verification/SKILL.md)
 
+## 项目第三方 Skill
+
+仓库可以在 `.agents/config.json` 中声明第三方 Skill：
+
+```json
+{
+  "version": 1,
+  "skills": {
+    "external": [
+      {
+        "name": "example-skill",
+        "repository": "owner/repository",
+        "ref": "main",
+        "path": "skills/example-skill"
+      }
+    ]
+  }
+}
+```
+
+每项声明负责完整的 `.agents/skills/<name>/` 目录。同步时，脚本会从指定的 GitHub 仓库、
+ref 和路径整体替换该目录，包括覆盖本地修改、删除上游已经移除的文件。删除声明不会删除已经
+安装的目录。
+
+写入任何公共资产或第三方 Skill 前，脚本会先下载并验证所有声明的来源。如果某个来源失败，且
+目标仓库没有可用的旧版本，同步会在应用任何变更前终止。如果已安装可用的旧版本，脚本会保留
+旧版本、继续同步其余内容并报告 warning；`--check` 会报告同一 warning，并以状态码 1 退出。
+
 ## 协调流程
 
 1. 在目标仓库根目录解析系统临时目录中的模型配置路径，并在整个流程中保留该路径：
@@ -42,7 +72,7 @@ description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
    ```
 
    脚本会获取 `https://github.com/wenyue/agents/archive/refs/heads/master.zip`，同步公共目录声明的
-   所有平台，并写出模型请求。
+   所有平台，预检项目第三方 Skill，并写出模型请求。
 
 2. 填写 `$MODEL_CONFIG` 中的全部模型字段。根据每个 Subagent 的 `required_intelligence`，为
    Codex、Cursor 和 GitHub 选择 `model`，并为 Codex 选择 `model_reasoning_effort`。现有

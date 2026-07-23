@@ -18,6 +18,8 @@ values. It never reads or modifies user configuration.
 - The script owns deterministic configuration for every supported platform.
 - Literal templates own project configuration values and native startup-hook entries; Python
   contains only generic reconciliation logic.
+- The target repository owns third-party Skill declarations in `.agents/config.json`; the script
+  owns fetching and reconciling each declared Skill.
 - The LLM owns model selection and repository-specific Rule and Skill generation.
 - Each startup hook checks only the current platform's recommended tools once per day without
   reading project or user configuration. On findings, the agent stops the current task and asks
@@ -36,6 +38,36 @@ Generate these Skills from their public blueprints:
 - [`worktree-environment-setup`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/worktree-environment-setup/SKILL.md)
 - [`change-set-verification`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/change-set-verification/SKILL.md)
 
+## Project External Skills
+
+A repository may declare third-party Skills in `.agents/config.json`:
+
+```json
+{
+  "version": 1,
+  "skills": {
+    "external": [
+      {
+        "name": "example-skill",
+        "repository": "owner/repository",
+        "ref": "main",
+        "path": "skills/example-skill"
+      }
+    ]
+  }
+}
+```
+
+Each declaration owns the complete `.agents/skills/<name>/` directory. Synchronization replaces
+that directory from the selected GitHub repository, ref, and path, including overwriting local
+changes and removing files deleted upstream. Removing a declaration does not delete an installed
+directory.
+
+The script downloads and validates every declared source before writing public or external assets.
+If a source fails and the target has no valid installed copy, synchronization stops without applying
+changes. If a valid copy is already installed, the script keeps it, continues the remaining
+synchronization, and reports a warning; `--check` reports the same warning and exits with status 1.
+
 ## Reconciliation Workflow
 
 1. From the target repository root, resolve one model-config path in the system temporary directory
@@ -49,7 +81,7 @@ Generate these Skills from their public blueprints:
 
    The script fetches
    `https://github.com/wenyue/agents/archive/refs/heads/master.zip`, synchronizes every
-   catalog-declared platform, and writes the model request.
+   catalog-declared platform, preflights the project external Skills, and writes the model request.
 
 2. Fill every model field in `$MODEL_CONFIG`. Use each subagent's `required_intelligence` to select
    `model` for Codex, Cursor, and GitHub, plus `model_reasoning_effort` for Codex. Existing wrappers

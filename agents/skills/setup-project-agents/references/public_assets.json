@@ -264,6 +264,12 @@
   ],
   "config_templates": [
     {
+      "path": ".agents/config.json",
+      "template": "project-config/agents.config.json",
+      "format": "json",
+      "merge": "deep-overwrite"
+    },
+    {
       "path": ".codex/config.toml",
       "template": "project-config/codex.config.toml",
       "format": "toml",

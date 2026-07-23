@@ -9,13 +9,15 @@ import json
 import os
 import re
 import shutil
+import stat
 import sys
 import tempfile
 import tomllib
+import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -36,6 +38,27 @@ class SyncContext:
     skill_root: Path
     check: bool
     changes: list[Change]
+
+
+@dataclass(frozen=True)
+class ExternalSkillSpec:
+    name: str
+    repository: str
+    ref: str
+    path: PurePosixPath
+
+
+@dataclass(frozen=True)
+class ExternalSkillWarning:
+    name: str
+    message: str
+
+
+@dataclass
+class ExternalSkillPreflight:
+    ready: dict[str, Path]
+    warnings: list[ExternalSkillWarning]
+    temporary_roots: list[Path]
 
 
 _TEMPLATE_PATTERN = re.compile(r'{{\s*([a-zA-Z0-9_.]+)\s*}}')
@@ -61,6 +84,7 @@ _PUBLIC_AGENT_MODEL_FIELDS = {
     'github': ('model',),
 }
 _CONFIG_KEY_PATTERN = re.compile(r'^[A-Za-z0-9_-]+$')
+_GITHUB_REPOSITORY_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 
 
 def _catalog_digest(public_config: dict[str, Any]) -> str:
@@ -559,6 +583,61 @@ def _parse_native_config(content: str, file_format: str, label: str) -> dict[str
     return value
 
 
+def _external_skill_items(project_config: dict[str, Any]) -> list[dict[str, Any]]:
+    skills = project_config.get('skills', {})
+    if not isinstance(skills, dict):
+        raise SyncError('.agents/config.json skills must be an object')
+    return _require_items(skills, 'external')
+
+
+def load_external_skill_specs(
+    target_root: Path,
+    public_config: dict[str, Any],
+) -> list[ExternalSkillSpec]:
+    config_path = target_root / '.agents' / 'config.json'
+    if not config_path.is_file():
+        return []
+    project_config = load_json(config_path)
+    if project_config.get('version') != 1:
+        raise SyncError('.agents/config.json version must be 1')
+    reserved = {
+        entry.get('name')
+        for key in ('skills', 'skill_blueprints')
+        for entry in _require_items(public_config, key)
+        if isinstance(entry.get('name'), str)
+    }
+    seen: set[str] = set()
+    result: list[ExternalSkillSpec] = []
+    for index, item in enumerate(_external_skill_items(project_config)):
+        label = f'.agents/config.json skills.external[{index}]'
+        _reject_unknown_fields(item, {'name', 'repository', 'ref', 'path'}, label)
+        name = item.get('name')
+        repository = item.get('repository')
+        ref = item.get('ref')
+        raw_path = item.get('path')
+        if not isinstance(name, str) or not _ASSET_NAME_PATTERN.fullmatch(name):
+            raise SyncError(f'{label} has an invalid name')
+        if name in reserved or name in seen:
+            raise SyncError(f'Duplicate or reserved external skill name: {name}')
+        if (
+            not isinstance(repository, str)
+            or not _GITHUB_REPOSITORY_PATTERN.fullmatch(repository)
+        ):
+            raise SyncError(f'{label} repository must use owner/repo')
+        if not isinstance(ref, str) or not ref.strip():
+            raise SyncError(f'{label} ref must be a non-empty branch')
+        if not isinstance(raw_path, str) or '\\' in raw_path:
+            raise SyncError(f'{label} path must be a safe relative path')
+        path = PurePosixPath(raw_path)
+        if path.is_absolute() or not path.parts or any(
+            part in {'', '.', '..'} for part in path.parts
+        ):
+            raise SyncError(f'{label} path must be a safe relative path')
+        seen.add(name)
+        result.append(ExternalSkillSpec(name, repository, ref.strip(), path))
+    return result
+
+
 def _toml_template_leaves(
     value: dict[str, Any],
     prefix: tuple[str, ...] = (),
@@ -816,6 +895,108 @@ def resolve_source(public_config: dict[str, Any]) -> Path:
     return _fetch_archive_source(public_config)
 
 
+def _external_archive_url(repository: str, ref: str) -> str:
+    encoded_ref = urllib.parse.quote(ref, safe='')
+    return f'https://github.com/{repository}/archive/refs/heads/{encoded_ref}.zip'
+
+
+def _extract_safe_archive(archive_path: Path, extract_root: Path) -> None:
+    with zipfile.ZipFile(archive_path) as archive:
+        for item in archive.infolist():
+            path = PurePosixPath(item.filename)
+            mode = (item.external_attr >> 16) & 0o170000
+            if (
+                '\\' in item.filename
+                or path.is_absolute()
+                or '..' in path.parts
+                or mode == stat.S_IFLNK
+            ):
+                raise SyncError(f'Unsafe archive entry: {item.filename}')
+        archive.extractall(extract_root)
+
+
+def _fetch_external_repository(repository: str, ref: str) -> tuple[Path, Path]:
+    temporary = Path(tempfile.mkdtemp(prefix='setup-project-skill-'))
+    archive_path = temporary / 'source.zip'
+    extract_root = temporary / 'extract'
+    url = _external_archive_url(repository, ref)
+    try:
+        urllib.request.urlretrieve(url, archive_path)
+        _extract_safe_archive(archive_path, extract_root)
+        roots = [path for path in extract_root.iterdir() if path.is_dir()]
+        if len(roots) != 1:
+            raise SyncError(f'GitHub archive must contain one repository root: {url}')
+        return roots[0], temporary
+    except (OSError, zipfile.BadZipFile, SyncError) as error:
+        shutil.rmtree(temporary, ignore_errors=True)
+        if isinstance(error, SyncError):
+            raise
+        raise SyncError(f'Failed to fetch external skill source {url}: {error}') from error
+
+
+def _external_skill_installed(target_root: Path, name: str) -> bool:
+    target = target_root / '.agents' / 'skills' / name
+    return target.exists() and (target / 'SKILL.md').is_file()
+
+
+def _external_skill_source(repo_root: Path, spec: ExternalSkillSpec) -> Path:
+    source = repo_root.joinpath(*spec.path.parts)
+    current = repo_root
+    for part in spec.path.parts:
+        current = current / part
+        if current.is_symlink():
+            raise SyncError(f'External skill {spec.name} path contains a symbolic link')
+    if not source.is_dir() or not (source / 'SKILL.md').is_file():
+        raise SyncError(f'External skill {spec.name} is missing SKILL.md at {spec.path}')
+    try:
+        source.resolve().relative_to(repo_root.resolve())
+    except ValueError as error:
+        raise SyncError(f'External skill {spec.name} escapes its repository') from error
+    return source
+
+
+def preflight_external_skills(
+    target_root: Path,
+    specs: list[ExternalSkillSpec],
+) -> ExternalSkillPreflight:
+    grouped: dict[tuple[str, str], list[ExternalSkillSpec]] = {}
+    for spec in specs:
+        grouped.setdefault((spec.repository, spec.ref), []).append(spec)
+    ready: dict[str, Path] = {}
+    warnings: list[ExternalSkillWarning] = []
+    temporary_roots: list[Path] = []
+    fatal: list[str] = []
+    for (repository, ref), group in grouped.items():
+        try:
+            repo_root, temporary = _fetch_external_repository(repository, ref)
+            temporary_roots.append(temporary)
+        except SyncError as error:
+            for spec in group:
+                if _external_skill_installed(target_root, spec.name):
+                    warnings.append(ExternalSkillWarning(spec.name, str(error)))
+                else:
+                    fatal.append(f'{spec.name}: {error}')
+            continue
+        for spec in group:
+            try:
+                ready[spec.name] = _external_skill_source(repo_root, spec)
+            except SyncError as error:
+                if _external_skill_installed(target_root, spec.name):
+                    warnings.append(ExternalSkillWarning(spec.name, str(error)))
+                else:
+                    fatal.append(f'{spec.name}: {error}')
+    preflight = ExternalSkillPreflight(ready, warnings, temporary_roots)
+    if fatal:
+        cleanup_external_skill_preflight(preflight)
+        raise SyncError('Missing required external skills:\n' + '\n'.join(fatal))
+    return preflight
+
+
+def cleanup_external_skill_preflight(preflight: ExternalSkillPreflight) -> None:
+    for path in preflight.temporary_roots:
+        shutil.rmtree(path, ignore_errors=True)
+
+
 def _require_items(config: dict[str, Any], key: str) -> list[dict[str, Any]]:
     value = config.get(key, [])
     if not isinstance(value, list):
@@ -1043,6 +1224,80 @@ def _relative(path: Path, root: Path) -> str:
 
 def _record_file(context: SyncContext, action: str, path: Path) -> None:
     context.changes.append(Change(action, _relative(path, context.target_root)))
+
+
+def _directory_snapshot(root: Path) -> dict[str, bytes]:
+    if not root.is_dir():
+        return {}
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob('*')
+        if path.is_file()
+    }
+
+
+def _remove_tree_or_link(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink(missing_ok=True)
+    elif path.exists():
+        shutil.rmtree(path)
+
+
+def _replace_external_skill(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    transaction = Path(
+        tempfile.mkdtemp(prefix=f'.{target.name}.', dir=target.parent)
+    )
+    staged = transaction / 'new'
+    backup = transaction / 'old'
+    had_old = target.exists() or target.is_symlink()
+    try:
+        shutil.copytree(source, staged)
+        if had_old:
+            os.replace(target, backup)
+        try:
+            os.replace(staged, target)
+        except OSError:
+            if had_old and backup.exists():
+                os.replace(backup, target)
+            raise
+        _remove_tree_or_link(backup)
+    finally:
+        _remove_tree_or_link(staged)
+        _remove_tree_or_link(transaction)
+
+
+def sync_external_skills(
+    context: SyncContext,
+    preflight: ExternalSkillPreflight,
+) -> list[ExternalSkillWarning]:
+    warnings = list(preflight.warnings)
+    for name, source in preflight.ready.items():
+        target = context.target_root / '.agents' / 'skills' / name
+        installed = target.exists() and (target / 'SKILL.md').is_file()
+        unchanged = (
+            installed
+            and not target.is_symlink()
+            and _directory_snapshot(source) == _directory_snapshot(target)
+        )
+        if unchanged:
+            _record_file(context, 'unchanged', target)
+            continue
+        action = 'updated' if installed or target.is_symlink() else 'created'
+        if context.check:
+            _record_file(context, action, target)
+            continue
+        try:
+            _replace_external_skill(source, target)
+        except OSError as error:
+            if installed:
+                warnings.append(ExternalSkillWarning(name, str(error)))
+                continue
+            raise SyncError(
+                f'Failed to install required external skill {name}: {error}'
+            ) from error
+        _record_file(context, action, target)
+    return warnings
 
 
 def _write_bytes(context: SyncContext, target: Path, content: bytes) -> None:
@@ -1884,6 +2139,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     target_root = Path.cwd()
     installed_skill_root = Path(__file__).resolve().parents[1]
+    changes: list[Change] = []
+    warnings: list[ExternalSkillWarning] = []
+    preflight: ExternalSkillPreflight | None = None
     try:
         installed_config = load_json(
             installed_skill_root / 'references' / 'public_assets.json'
@@ -1895,6 +2153,8 @@ def main(argv: list[str] | None = None) -> int:
         public_config = load_json(
             source_skill_root / 'references' / 'public_assets.json'
         )
+        external_specs = load_external_skill_specs(target_root, public_config)
+        preflight = preflight_external_skills(target_root, external_specs)
         local_config = discover_local_assets(target_root, public_config)
         if args.model_config:
             local_config = {
@@ -1914,6 +2174,7 @@ def main(argv: list[str] | None = None) -> int:
             local_config,
             require_agent_runtime=bool(args.model_config),
         )
+        warnings = sync_external_skills(context, preflight)
         if args.model_request:
             request_path = Path(args.model_request)
             try:
@@ -1931,8 +2192,15 @@ def main(argv: list[str] | None = None) -> int:
     except SyncError as error:
         print(f'ERROR: {error}')
         return 2
+    finally:
+        if preflight is not None:
+            cleanup_external_skill_preflight(preflight)
     for change in changes:
         print(f'{change.action} {change.path}')
+    for warning in warnings:
+        print(f'WARNING: {warning.name}: {warning.message}')
+    if args.check and warnings:
+        return 1
     if args.check and any(
         change.action in {'created', 'updated', 'deleted', 'missing'}
         for change in changes
