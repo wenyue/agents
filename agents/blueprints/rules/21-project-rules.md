@@ -7,9 +7,12 @@ domain conventions, generated-source policy, and lifecycle invariants.
 
 ## Generation Contract
 
-Produce a complete target-owned `Project Rules` rule from stable repository evidence. State the
-project-specific behavior implementation and review agents must preserve, including verified
-exceptions to broader rules; omit generic guidance and patterns that carry no enforceable meaning.
+Produce a complete target-owned `Project Rules` rule from stable repository evidence. Include only
+project-specific behavior an agent must know before implementation because ordinary tooling does
+not reliably detect violations, does not make the required correction clear, or detects them only
+after broad or costly repair is required. Preserve verified exceptions to broader rules; omit
+generic guidance and mechanical constraints that tooling reliably detects and agents can repair
+locally at low cost.
 
 ## Evidence
 
@@ -24,18 +27,22 @@ exceptions to broader rules; omit generic guidance and patterns that carry no en
 - Inspect naming, terminology, localization sources, and user-visible copy where consistent usage
   or enforcement establishes a real project contract.
 - Resolve conflicts in favor of the narrowest authoritative source. Treat unsupported convention,
-  historical residue, and personal preference as omissions rather than policy.
+  historical residue, personal preference, and lint detail with an obvious low-cost correction as
+  omissions rather than policy.
 
 ## Content
 
-- State public API, route, event, payload, serialization, and compatibility constraints at the
-  level needed to implement or review changes safely.
-- State project-specific framework behavior and explain how project analyzers, custom lints, or
-  formatter results affect implementation decisions.
+- State public API, route, event, payload, serialization, and compatibility constraints when
+  violating them crosses a consumer or compatibility boundary that tooling does not reliably
+  protect.
+- Let the owning formatter, analyzer, or linter describe ordinary mechanical violations whose
+  diagnostics identify a local, low-cost correction. Mention a diagnostic only when its meaning
+  affects architecture, ownership, accepted exceptions, or another non-local decision.
 - Name the semantic source for generated outputs and external schemas, the regeneration obligation,
   and the files or regions that must not be edited by hand.
 - State domain vocabulary, naming, identifiers, prefixes, localization, and user-visible copy rules
-  only when they constrain valid changes.
+  only when they constrain valid changes and tooling does not reliably identify a local, low-cost
+  correction.
 - State persistence compatibility, migrations, state ownership, lifecycle transitions,
   cancellation, concurrency, and cleanup invariants where the repository defines them.
 - Express each verified exception to a broader rule with its exact scope and condition. Do not
@@ -49,6 +56,6 @@ exceptions to broader rules; omit generic guidance and patterns that carry no en
 - Keep directory responsibility, file placement, module layout, and dependency direction in
   `Project Structure`.
 - For generated outputs, this rule owns semantic source and edit boundaries; `Project Tools` owns
-  how to invoke the generator.
+  how to invoke or discover the generator.
 - Exclude generic language style already covered by base rules, speculative architecture,
   undocumented preferences, and duplicated facts whose authoritative owner is elsewhere.

@@ -111,7 +111,7 @@
       "strength": "Default",
       "section": "base",
       "cursor": {
-        "description": "[default] C++ style and conventions for native plugin and host code",
+        "description": "[default] C++ ownership, interfaces, failure contracts, and concurrency",
         "globs": "**/*.cc,**/*.h",
         "alwaysApply": false
       },
@@ -125,7 +125,7 @@
       "strength": "Default",
       "section": "base",
       "cursor": {
-        "description": "[default] Project-neutral Dart and Flutter application defaults",
+        "description": "[default] Dart and Flutter ownership, state, lifecycle, UI, and analysis",
         "globs": "**/*.dart",
         "alwaysApply": false
       },
@@ -139,7 +139,7 @@
       "strength": "Default",
       "section": "base",
       "cursor": {
-        "description": "[default] Go style, package boundaries, errors, testing, and concurrency",
+        "description": "[default] Go package ownership, errors, context, concurrency, and logging",
         "globs": "**/*.go",
         "alwaysApply": false
       },

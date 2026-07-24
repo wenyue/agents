@@ -7,20 +7,22 @@ verification surfaces, integrations, and tool-to-skill handoffs.
 
 ## Generation Contract
 
-Produce a complete target-owned `Project Tools` rule from current repository evidence. State only
-facts and constraints an agent needs to select, invoke, or preserve the repository's real tooling;
-do not turn the target rule into an inventory of everything installed on one machine.
+Produce a complete target-owned `Project Tools` rule from current repository evidence. Include only
+facts and constraints an agent must know before acting because the correct choice is non-obvious,
+easy to misuse, expensive to rediscover, or costly to repair. Leave ordinary discoverable detail
+with its owning configuration, script, or command help; do not create a tool inventory.
 
 ## Evidence
 
 - Inspect package and workspace manifests, lock files, toolchain pins, repository scripts, task
   runners, CI workflows, and tool configuration.
-- Confirm commands from their owning script, configuration, or current help output. Establish the
-  required working directory, prerequisites, supported scope, mutation behavior, outputs, and cost.
-- Inspect runtime entry points, service configuration, environment templates, credential boundaries,
-  ports, data locations, startup dependencies, and health or readiness checks.
+- Confirm consequential commands from their owning script, configuration, or current help output.
+  Establish the working directory, prerequisites, supported scope, mutation behavior, outputs, and
+  material cost.
+- Inspect runtime entry points, service configuration, environment templates, credential
+  boundaries, ports, startup dependencies, and health or readiness checks.
 - Inspect generator configuration and repository-owned verification or setup selectors without
-  copying the policy owned by generated files or project skills.
+  copying policy owned by generated files or project skills.
 - Inspect project-owned MCP and native agent-platform configuration. Reconcile names and intent
   across supported platforms while preserving each platform's native schema.
 - Treat absent, conflicting, or machine-local evidence as unresolved. Do not convert it into a
@@ -28,24 +30,28 @@ do not turn the target rule into an inventory of everything installed on one mac
 
 ## Content
 
-- State the supported runtimes, package managers, workspace topology, toolchain pins, and working
-  directories that materially affect command execution.
-- Organize commands by outcome, such as setup, development, generation, formatting, repair,
-  analysis, lint, test, build, packaging, and publication. For every recorded command, make its
-  prerequisites, scope, mutation behavior, outputs, and material cost or side effects clear.
+- Record a runtime, package-manager, workspace, toolchain, or working-directory constraint only when
+  it materially changes command selection or failure behavior. Point to the owning pin or manifest
+  instead of copying a value that agents can safely read there.
+- Record a small verified set of canonical commands for repository-owned outcomes that agents must
+  invoke directly, such as setup, development, verification, build, packaging, or publication.
+  State the required working directory and any non-obvious prerequisites or selectors.
+- For other commands, name the owning surface and the decision it owns. Include an exact invocation
+  only when its mutations, outputs, or material cost are not safely discoverable there.
 - Distinguish non-mutating checks from formatters, fixers, generators, installers, publishers, and
-  other state-changing tools. Record safe scope selectors and dry-run modes only when verified.
-- Describe required runtime services and integrations with their purpose, owning configuration,
-  startup dependencies, ports or endpoints, environment and credential needs, and readiness check.
-- Describe project-owned MCP servers and native agent integrations only when they are part of the
-  repository's supported tool surface.
-- Record generator entry points, their source inputs, and their outputs. Leave semantic ownership
-  and hand-edit restrictions to `Project Rules`.
-- Record repository-owned setup and verification selectors that `worktree-environment-setup` or
-  `change-set-verification` can invoke. Leave workflow timing, ordering, broadening, and result
-  policy to those skills.
-- When the repository does not declare a tool or capability, say so only when that absence prevents
-  agents from inventing a consequential command or workflow.
+  other state-changing tools when confusing them would create meaningful risk or broad changes.
+  Record verified scope selectors and dry-run modes for consequential state-changing tools.
+- Describe a runtime service, integration, MCP server, or native agent surface only when an agent
+  must connect to, preserve, or validate it and the required behavior is not obvious from live
+  configuration.
+- Record each consequential generator's owner and either its exact invocation or a reliable
+  discovery path, together with its inputs and outputs. Do not let agents improvise generator
+  arguments or substitute a broad update workflow for a narrow generation task.
+- Make repository-owned setup and verification selectors directly invocable by
+  `worktree-environment-setup` or `change-set-verification`. Leave workflow timing, ordering,
+  broadening, and result policy to those skills.
+- State that a tool or capability is absent only when doing so prevents a consequential invented
+  command or workflow.
 
 ## Boundaries
 

@@ -8,8 +8,9 @@ dependency direction, and shared infrastructure locations.
 ## Generation Contract
 
 Produce a complete target-owned `Project Structure` rule from observed repository organization and
-verified dependency boundaries. Include only locations and relationships that help an agent place
-work correctly or avoid an invalid dependency; do not narrate the directory tree.
+verified dependency boundaries. Include the smallest responsibility map that lets an agent place
+work correctly, find the right owner, and avoid invalid dependencies; do not narrate the directory
+tree.
 
 ## Evidence
 
@@ -26,18 +27,21 @@ work correctly or avoid an invalid dependency; do not narrate the directory tree
 
 ## Content
 
-- Describe only top-level areas, packages, modules, and composition roots whose responsibility is
-  not obvious or whose boundary affects future placement.
+- Describe top-level application modules, other areas, packages, and composition roots only when
+  their ownership is non-obvious or selecting the wrong owner would affect placement or dependency
+  decisions. Give each selected entry one concise ownership description; do not enumerate internal
+  directories or APIs.
 - State where new feature code, shared code, tests, assets, configuration, scripts, generated
   sources, infrastructure, and documentation belong when the repository establishes those owners.
-- State allowed and forbidden dependency directions, the scope to which they apply, and the
-  architectural boundary they protect.
+- State allowed and forbidden dependency directions, their scope, and the architectural boundary
+  they protect. Reference the authoritative configuration for exact tiers or exclusions instead of
+  duplicating drift-prone values.
 - Distinguish reusable shared locations from feature-owned helpers so that convenience does not
   erase ownership.
 - Name real enforcement mechanisms and authoritative configurations, but leave their invocation to
   `Project Tools`.
-- Keep the final map selective and responsibility-ordered. Omit locations that add no placement,
-  ownership, or dependency decision.
+- Keep the final map concise and responsibility-ordered. Omit locations that add no placement,
+  ownership, discovery, or dependency decision.
 
 ## Boundaries
 
