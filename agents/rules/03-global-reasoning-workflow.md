@@ -52,6 +52,11 @@ outcomes across tasks.
   context.
 - Keep the action within the requested scope. Present a broader option and its material trade-offs
   before expanding that scope.
+- When supported, batch already-known, independent read-only calls from the same stage into one
+  orchestration call and run them concurrently. In JavaScript, use `Promise.allSettled` when partial
+  results remain useful; use `Promise.all` when every result is required.
+- Keep dependent, state-changing, approval, and wait calls sequential. Do not broaden scope merely
+  to create a batch.
 - Reuse established patterns and ownership boundaries. Introduce new structure only when the current
   requirement needs it.
 - When a workaround is necessary, contain it and make its limitation clear.

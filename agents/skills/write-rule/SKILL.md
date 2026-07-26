@@ -72,6 +72,11 @@ Every requirement must have one clear interpretation. Make its subject, scope, c
 and expected behavior explicit wherever they affect meaning. Do not broaden, narrow, weaken,
 strengthen, or otherwise reinterpret it without new evidence or explicit user approval.
 
+Include a fact, configuration value, or implementation detail only when the agent needs it to
+decide or perform an action, interpret evidence, satisfy a prerequisite, handle a failure, or report
+the result. If none of those purposes needs the information, omit it. When awareness of an automatic
+behavior matters but its exact configuration does not, state only the behavior.
+
 Prefer the desired state, observable conditions, and ownership over procedural narration. Give the
 implementing agent freedom when several approaches are valid; prescribe ordered steps when sequence
 affects correctness or safety. Use concise examples only to disambiguate behavior.

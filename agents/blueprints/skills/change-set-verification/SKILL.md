@@ -74,9 +74,10 @@ Do not invent commands, ownership mappings, or scope support that the evidence d
 ### Normalization and Repair
 
 1. When the project supports it, format the selected project-owned source scope.
-2. Run each approved automatic fixer at most once on its minimum supported selected scope. Do not
-   duplicate analyzer or lint work when one tool already owns the same surface. Accept mechanical
-   repairs within that selected scope, but do not broaden solely to discover or repair older issues.
+2. Run an approved automatic fixer only for a known fixable analyzer or lint diagnostic, a
+   framework or API migration, or user-requested mechanical cleanup. Run it at most once on its
+   minimum supported selected scope. Accept mechanical repairs within that selected scope, but do
+   not broaden solely to discover or repair older issues.
 3. Add every formatter- or fixer-modified file to the selected change set. Stop if a tool changes
    generated, third-party, unrelated, or otherwise non-owned files.
 4. Reformat fixer-modified source when required, then run the minimum supported non-mutating static

@@ -78,6 +78,11 @@ stop or completion conditions, and expected result explicit wherever they affect
 broaden, narrow, weaken, strengthen, or otherwise reinterpret it without new evidence or explicit
 user approval.
 
+Include a fact, configuration value, or implementation detail only when the agent needs it to
+decide or perform an action, interpret evidence, satisfy a prerequisite, handle a failure, or report
+the result. If none of those purposes needs the information, omit it. When awareness of an automatic
+behavior matters but its exact configuration does not, state only the behavior.
+
 Prefer the desired outcome, relevant facts, and decision boundaries over procedural narration. Give
 the implementing agent freedom when several approaches are valid; prescribe ordered steps when
 sequence affects correctness or safety. Use a script when repeated deterministic behavior is more

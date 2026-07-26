@@ -4187,6 +4187,55 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn(source_exception, ' '.join(public_write_skill.split()))
         self.assertIn(mirror_exception, ' '.join(mirror_write_skill.split()))
 
+    def test_write_authoring_skills_omit_non_actionable_configuration(self):
+        source_contract = (
+            'Include a fact, configuration value, or implementation detail only when the agent '
+            'needs it to decide or perform an action, interpret evidence, satisfy a prerequisite, '
+            'handle a failure, or report the result. If none of those purposes needs the '
+            'information, omit it. When awareness of an automatic behavior matters but its exact '
+            'configuration does not, state only the behavior.'
+        )
+        mirror_contract = (
+            '只有当 Agent 需要某项事实、配置值或实现细节来决定或执行动作、解释证据、'
+            '满足前置条件、处理失败或报告结果时，才把它写进成品。以上用途都不需要'
+            '这项信息时就省略；如果只需知道某个自动行为存在，而不需要知道它的具体'
+            '配置，只写这个行为。'
+        )
+
+        for skill_name in ('write-rule', 'write-skill'):
+            for path in (
+                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
+            ):
+                with self.subTest(path=path.relative_to(REPO_ROOT)):
+                    content = ' '.join(path.read_text(encoding='utf-8').split())
+                    self.assertEqual(content.count(source_contract), 1)
+
+            mirror_path = REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md'
+            with self.subTest(path=mirror_path.relative_to(REPO_ROOT)):
+                mirror = ''.join(mirror_path.read_text(encoding='utf-8').split())
+                self.assertEqual(mirror.count(''.join(mirror_contract.split())), 1)
+
+    def test_change_set_verifier_defers_fixer_policy_to_owning_skill(self):
+        source = (
+            REPO_ROOT / 'agents' / 'agents' / 'change-set-verifier.md'
+        ).read_text(encoding='utf-8')
+        mirror = (
+            REPO_ROOT / 'agents-zh' / 'agents' / 'change-set-verifier.md'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn(
+            'Normalize only the selected project-owned scope and include every tool-modified '
+            'file in verification.',
+            ' '.join(source.split()),
+        )
+        self.assertNotIn('automatic fixes', source)
+        self.assertIn(
+            ''.join('只规范化选定的项目自有范围，并将工具改动的所有文件纳入验证。'.split()),
+            ''.join(mirror.split()),
+        )
+        self.assertNotIn('自动修复', mirror)
+
     def test_rule_and_skill_responsibility_references_use_canonical_names(self):
         cases = {
             REPO_ROOT / 'agents' / 'blueprints' / 'rules' / '20-project-tools.md': {
