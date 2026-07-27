@@ -590,26 +590,15 @@ def _external_skill_items(project_config: dict[str, Any]) -> list[dict[str, Any]
     return _require_items(skills, 'external')
 
 
-def load_external_skill_specs(
-    target_root: Path,
-    public_config: dict[str, Any],
-) -> list[ExternalSkillSpec]:
-    config_path = target_root / '.agents' / 'config.json'
-    if not config_path.is_file():
-        return []
-    project_config = load_json(config_path)
-    if project_config.get('version') != 1:
-        raise SyncError('.agents/config.json version must be 1')
-    reserved = {
-        entry.get('name')
-        for key in ('skills', 'skill_blueprints')
-        for entry in _require_items(public_config, key)
-        if isinstance(entry.get('name'), str)
-    }
-    seen: set[str] = set()
-    result: list[ExternalSkillSpec] = []
-    for index, item in enumerate(_external_skill_items(project_config)):
-        label = f'.agents/config.json skills.external[{index}]'
+def _append_external_skill_specs(
+    result: list[ExternalSkillSpec],
+    items: list[dict[str, Any]],
+    label_prefix: str,
+    reserved: set[str],
+    seen: set[str],
+) -> None:
+    for index, item in enumerate(items):
+        label = f'{label_prefix}[{index}]'
         _reject_unknown_fields(item, {'name', 'repository', 'ref', 'path'}, label)
         name = item.get('name')
         repository = item.get('repository')
@@ -635,6 +624,40 @@ def load_external_skill_specs(
             raise SyncError(f'{label} path must be a safe relative path')
         seen.add(name)
         result.append(ExternalSkillSpec(name, repository, ref.strip(), path))
+
+
+def load_external_skill_specs(
+    target_root: Path,
+    public_config: dict[str, Any],
+) -> list[ExternalSkillSpec]:
+    reserved = {
+        entry.get('name')
+        for key in ('skills', 'skill_blueprints')
+        for entry in _require_items(public_config, key)
+        if isinstance(entry.get('name'), str)
+    }
+    seen: set[str] = set()
+    result: list[ExternalSkillSpec] = []
+    _append_external_skill_specs(
+        result,
+        _require_items(public_config, 'external_skills'),
+        'external_skills',
+        reserved,
+        seen,
+    )
+    config_path = target_root / '.agents' / 'config.json'
+    if not config_path.is_file():
+        return result
+    project_config = load_json(config_path)
+    if project_config.get('version') != 1:
+        raise SyncError('.agents/config.json version must be 1')
+    _append_external_skill_specs(
+        result,
+        _external_skill_items(project_config),
+        '.agents/config.json skills.external',
+        reserved,
+        seen,
+    )
     return result
 
 
@@ -1114,7 +1137,7 @@ def _retired_assets(config: dict[str, Any]) -> dict[str, tuple[str, ...]]:
         },
         'skills': {
             skill.get('name')
-            for key in ('skills', 'skill_blueprints')
+            for key in ('skills', 'skill_blueprints', 'external_skills')
             for skill in _require_items(config, key)
             if isinstance(skill.get('name'), str)
         },

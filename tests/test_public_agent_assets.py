@@ -94,12 +94,26 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 {
                     'skills': [{'name': 'public'}],
                     'skill_blueprints': [{'name': 'generated'}],
+                    'external_skills': [
+                        {
+                            'name': 'bundle',
+                            'repository': 'bundle/repo',
+                            'ref': 'main',
+                            'path': 'skills/bundle',
+                        }
+                    ],
                 },
             )
 
         self.assertEqual(
             result,
             [
+                sync.ExternalSkillSpec(
+                    name='bundle',
+                    repository='bundle/repo',
+                    ref='main',
+                    path=sync.PurePosixPath('skills/bundle'),
+                ),
                 sync.ExternalSkillSpec(
                     name='example',
                     repository='owner/repo',
@@ -109,14 +123,35 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             ],
         )
 
-    def test_load_external_skill_specs_returns_empty_when_project_config_is_absent(self):
+    def test_load_external_skill_specs_returns_public_skills_when_project_config_is_absent(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             result = sync.load_external_skill_specs(
                 Path(temp_dir),
-                {'skills': [], 'skill_blueprints': []},
+                {
+                    'skills': [],
+                    'skill_blueprints': [],
+                    'external_skills': [
+                        {
+                            'name': 'debug-mode',
+                            'repository': 'doraemonkeys/claude-code-debug-mode',
+                            'ref': 'master',
+                            'path': 'debug-mode',
+                        }
+                    ],
+                },
             )
 
-        self.assertEqual(result, [])
+        self.assertEqual(
+            result,
+            [
+                sync.ExternalSkillSpec(
+                    name='debug-mode',
+                    repository='doraemonkeys/claude-code-debug-mode',
+                    ref='master',
+                    path=sync.PurePosixPath('debug-mode'),
+                )
+            ],
+        )
 
     def test_load_external_skill_specs_rejects_invalid_contracts(self):
         invalid_cases = [
@@ -192,6 +227,22 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         documents = [
             ({'skills': [{'name': 'shared'}], 'skill_blueprints': []}, [entry]),
             ({'skills': [], 'skill_blueprints': [{'name': 'shared'}]}, [entry]),
+            (
+                {
+                    'skills': [],
+                    'skill_blueprints': [],
+                    'external_skills': [entry],
+                },
+                [entry],
+            ),
+            (
+                {
+                    'skills': [],
+                    'skill_blueprints': [],
+                    'external_skills': [entry, entry],
+                },
+                [],
+            ),
             ({'skills': [], 'skill_blueprints': []}, [entry, entry]),
         ]
         for public_config, external in documents:
@@ -205,6 +256,34 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 )
                 with self.assertRaisesRegex(sync.SyncError, 'external skill name'):
                     sync.load_external_skill_specs(root, public_config)
+
+    def test_retired_assets_rejects_public_external_skill_overlap(self):
+        public_config = {
+            'retired_assets': {
+                'rules': [],
+                'skills': ['shared'],
+                'agents': [],
+            },
+            'rules': [],
+            'rule_blueprints': [],
+            'skills': [],
+            'skill_blueprints': [],
+            'external_skills': [
+                {
+                    'name': 'shared',
+                    'repository': 'owner/repo',
+                    'ref': 'main',
+                    'path': 'skills/shared',
+                }
+            ],
+            'agent_prompts': [],
+        }
+
+        with self.assertRaisesRegex(
+            sync.SyncError,
+            'Assets cannot be active and retired in skills: shared',
+        ):
+            sync._retired_assets(public_config)
 
     def test_preflight_external_skills_downloads_each_repository_ref_once(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1507,12 +1586,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     'template': 'project-config/agents.config.json',
                     'format': 'json',
                     'merge': 'deep-overwrite',
-                    'list_merges': [
-                        {
-                            'path': 'skills.external',
-                            'owned_marker': 'debug-mode',
-                        }
-                    ],
                 },
                 {
                     'path': '.codex/config.toml',
@@ -1596,12 +1669,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     'template': 'project-config/agents.config.json',
                     'format': 'json',
                     'merge': 'deep-overwrite',
-                    'list_merges': [
-                        {
-                            'path': 'skills.external',
-                            'owned_marker': 'debug-mode',
-                        }
-                    ],
                 }
             ],
         )
@@ -1617,16 +1684,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     'project-config.schema.json'
                 ),
                 'version': 1,
-                'skills': {
-                    'external': [
-                        {
-                            'name': 'debug-mode',
-                            'repository': 'doraemonkeys/claude-code-debug-mode',
-                            'ref': 'master',
-                            'path': 'debug-mode',
-                        }
-                    ]
-                },
             },
         )
 
@@ -2143,26 +2200,14 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             self.assertEqual(parsed['model'], 'old')
             self.assertEqual(parsed['custom'], {'value': 7})
 
-    def test_project_config_declares_debug_mode_as_external_skill(self):
+    def test_project_config_does_not_declare_public_external_skills(self):
         project_config = json.loads(
             (REPO_TEMPLATES / 'project-config' / 'agents.config.json').read_text(
                 encoding='utf-8'
             )
         )
 
-        self.assertEqual(
-            project_config.get('skills'),
-            {
-                'external': [
-                    {
-                        'name': 'debug-mode',
-                        'repository': 'doraemonkeys/claude-code-debug-mode',
-                        'ref': 'master',
-                        'path': 'debug-mode',
-                    }
-                ]
-            },
-        )
+        self.assertNotIn('skills', project_config)
 
     def test_agents_project_config_template_preserves_project_owned_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2181,12 +2226,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                                     'repository': 'owner/repo',
                                     'ref': 'main',
                                     'path': 'skills/example',
-                                },
-                                {
-                                    'name': 'debug-mode',
-                                    'repository': 'old/debug-mode',
-                                    'ref': 'stale',
-                                    'path': 'old-debug-mode',
                                 },
                             ]
                         },
@@ -2225,12 +2264,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                         'ref': 'main',
                         'path': 'skills/example',
                     },
-                    {
-                        'name': 'debug-mode',
-                        'repository': 'doraemonkeys/claude-code-debug-mode',
-                        'ref': 'master',
-                        'path': 'debug-mode',
-                    },
                 ],
             )
             self.assertEqual(result['project_owned'], {'kept': True})
@@ -2238,16 +2271,16 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 sync.load_external_skill_specs(target, public_config),
                 [
                     sync.ExternalSkillSpec(
-                        name='example',
-                        repository='owner/repo',
-                        ref='main',
-                        path=sync.PurePosixPath('skills/example'),
-                    ),
-                    sync.ExternalSkillSpec(
                         name='debug-mode',
                         repository='doraemonkeys/claude-code-debug-mode',
                         ref='master',
                         path=sync.PurePosixPath('debug-mode'),
+                    ),
+                    sync.ExternalSkillSpec(
+                        name='example',
+                        repository='owner/repo',
+                        ref='main',
+                        path=sync.PurePosixPath('skills/example'),
                     ),
                 ],
             )
@@ -3169,7 +3202,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     '03-global-skill-config.md',
                 ],
                 'skills': [
-                    'debug-mode',
                     'update-project-rules',
                     'project-development-workflow',
                     'project-verification',
@@ -3180,7 +3212,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         for retired_name in (
             '03-global-engineering-workflow.md',
             '03-global-skill-config.md',
-            'debug-mode',
             'update-project-rules',
             'project-development-workflow',
             'project-verification',
@@ -3245,17 +3276,51 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertNotIn({'name': 'report-agent-session-usage'}, public_config['skills'])
         self.assertNotIn({'name': 'track-worktree-time'}, public_config['skills'])
 
-    def test_debug_mode_is_retired_from_public_catalog_content(self):
+    def test_debug_mode_is_external_and_not_vendored(self):
         public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
 
         self.assertNotIn({'name': 'debug-mode'}, public_config['skills'])
-        self.assertIn('debug-mode', public_config['retired_assets']['skills'])
+        self.assertNotIn('debug-mode', public_config['retired_assets']['skills'])
+        self.assertEqual(
+            public_config.get('external_skills'),
+            [
+                {
+                    'name': 'debug-mode',
+                    'repository': 'doraemonkeys/claude-code-debug-mode',
+                    'ref': 'master',
+                    'path': 'debug-mode',
+                }
+            ],
+        )
         self.assertFalse(
             (REPO_ROOT / 'agents' / 'skills' / 'debug-mode' / 'SKILL.md').exists()
         )
         self.assertFalse(
             (REPO_ROOT / 'agents-zh' / 'skills' / 'debug-mode' / 'SKILL.md').exists()
         )
+
+    def test_setup_project_agents_docs_keep_only_external_skill_decision_boundary(self):
+        english = (
+            REPO_ROOT / 'agents' / 'skills' / 'setup-project-agents' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+        chinese = (
+            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+
+        self.assertNotIn('## Public Bundle External Skills', english)
+        self.assertIn('Public bundle external Skills are installed automatically.', english)
+        self.assertIn(
+            'do not repeat public bundle declarations',
+            english,
+        )
+        self.assertNotIn('## 公共包第三方 Skill', chinese)
+        self.assertIn('公共包第三方 Skill 会自动安装。', chinese)
+        self.assertIn(
+            '不要重复声明公共包 Skill',
+            chinese,
+        )
+        self.assertNotIn('preflights the public and project external Skills', english)
+        self.assertNotIn('预检公共及项目第三方 Skill', chinese)
 
     def test_global_rules_separate_personality_workflow_and_skill_configuration(self):
         source_root = REPO_ROOT / 'agents' / 'rules'
@@ -5000,7 +5065,19 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             target.mkdir()
             request_path = root / 'models.json'
-            public_config = {'rules': [], 'skills': [], 'agent_prompts': []}
+            public_config = {
+                'rules': [],
+                'skills': [],
+                'agent_prompts': [],
+                'external_skills': [
+                    {
+                        'name': 'debug-mode',
+                        'repository': 'doraemonkeys/claude-code-debug-mode',
+                        'ref': 'master',
+                        'path': 'debug-mode',
+                    }
+                ],
+            }
             local_config = {
                 'rules': [],
                 'agent_prompts': [],
@@ -5010,9 +5087,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             }
             preflight = sync.ExternalSkillPreflight({}, [], [])
             order = []
+            loaded_specs = []
 
-            def preflight_skills(*_args):
+            def preflight_skills(_target_root, specs):
                 order.append('preflight')
+                loaded_specs.extend(specs)
                 return preflight
 
             def sync_assets(*_args, **_kwargs):
@@ -5031,10 +5110,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 sync,
                 'discover_local_assets',
                 return_value=local_config,
-            ), mock.patch.object(
-                sync,
-                'load_external_skill_specs',
-                return_value=[],
             ), mock.patch.object(
                 sync,
                 'preflight_external_skills',
@@ -5056,6 +5131,17 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(order, ['preflight', 'public'])
+        self.assertEqual(
+            loaded_specs,
+            [
+                sync.ExternalSkillSpec(
+                    name='debug-mode',
+                    repository='doraemonkeys/claude-code-debug-mode',
+                    ref='master',
+                    path=sync.PurePosixPath('debug-mode'),
+                )
+            ],
+        )
 
     def test_main_update_warning_succeeds_normally_but_fails_check(self):
         with tempfile.TemporaryDirectory() as temp_dir:

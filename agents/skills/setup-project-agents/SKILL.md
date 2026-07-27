@@ -18,8 +18,9 @@ values. User configuration remains outside this workflow.
 - The script owns deterministic configuration for every supported platform.
 - Literal templates own project configuration values and native startup-hook entries; Python
   contains only generic reconciliation logic.
-- The target repository owns third-party Skill declarations in `.agents/config.json`; the script
-  owns fetching and reconciling each declared Skill.
+- The public manifest owns bundle-required third-party Skill declarations.
+- The target repository owns optional third-party Skill declarations in `.agents/config.json`; the
+  script owns fetching and reconciling every public and project declaration.
 - The LLM owns model selection and repository-specific Rule and Skill generation.
 - Each startup hook checks only the current platform's recommended tools once per day without
   reading project or user configuration. On findings, the agent stops the current task and asks
@@ -40,7 +41,8 @@ Generate these Skills from their public blueprints:
 
 ## Project External Skills
 
-A repository may declare third-party Skills in `.agents/config.json`:
+Public bundle external Skills are installed automatically. A repository may declare only additional
+project-selected Skills in `.agents/config.json`; do not repeat public bundle declarations:
 
 ```json
 {
@@ -58,14 +60,14 @@ A repository may declare third-party Skills in `.agents/config.json`:
 }
 ```
 
-Each declaration owns the complete `.agents/skills/<name>/` directory. Synchronization replaces
-that directory from the selected GitHub repository, ref, and path, including overwriting local
-changes and removing files deleted upstream. Removing a declaration does not delete an installed
-directory.
+Each public or project declaration owns the complete `.agents/skills/<name>/` directory.
+Synchronization replaces that directory from the selected GitHub repository, ref, and path,
+including overwriting local changes and removing files deleted upstream. Removing a project
+declaration does not delete an installed directory.
 
-The script downloads and validates every declared source before writing public or external assets.
-If a source fails and the target has no valid installed copy, synchronization stops without applying
-changes. If a valid copy is already installed, the script keeps it, continues the remaining
+The script downloads and validates every public and project source before writing public or external
+assets. If a source fails and the target has no valid installed copy, synchronization stops without
+applying changes. If a valid copy is already installed, the script keeps it, continues the remaining
 synchronization, and reports a warning; `--check` reports the same warning and exits with status 1.
 
 ## Reconciliation Workflow
@@ -81,7 +83,7 @@ synchronization, and reports a warning; `--check` reports the same warning and e
 
    The script fetches
    `https://github.com/wenyue/agents/archive/refs/heads/master.zip`, synchronizes every
-   catalog-declared platform, preflights the project external Skills, and writes the model request.
+   catalog-declared platform, and writes the model request.
 
 2. Fill every model field in `$MODEL_CONFIG`. Use each subagent's `required_intelligence` to select
    `model` for Codex, Cursor, and GitHub, plus `model_reasoning_effort` for Codex. Existing wrappers

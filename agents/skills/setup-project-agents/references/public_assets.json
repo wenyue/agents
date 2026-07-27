@@ -16,7 +16,6 @@
       "03-global-skill-config.md"
     ],
     "skills": [
-      "debug-mode",
       "update-project-rules",
       "project-development-workflow",
       "project-verification"
@@ -26,6 +25,14 @@
       "verifier"
     ]
   },
+  "external_skills": [
+    {
+      "name": "debug-mode",
+      "repository": "doraemonkeys/claude-code-debug-mode",
+      "ref": "master",
+      "path": "debug-mode"
+    }
+  ],
   "rules": [
     {
       "file": "00-global-rule-config.md",
@@ -265,13 +272,7 @@
       "path": ".agents/config.json",
       "template": "project-config/agents.config.json",
       "format": "json",
-      "merge": "deep-overwrite",
-      "list_merges": [
-        {
-          "path": "skills.external",
-          "owned_marker": "debug-mode"
-        }
-      ]
+      "merge": "deep-overwrite"
     },
     {
       "path": ".codex/config.toml",
