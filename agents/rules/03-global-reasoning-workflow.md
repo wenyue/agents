@@ -57,6 +57,9 @@ outcomes across tasks.
   results remain useful; use `Promise.all` when every result is required.
 - Keep dependent, state-changing, approval, and wait calls sequential. Do not broaden scope merely
   to create a batch.
+- Minimize model-visible polling. For long-running work, prefer one 30–60-second wait over repeated
+  short waits when supported. After an unchanged wait, query status only when it can change the
+  next action; otherwise wait again or do useful independent work.
 - Reuse established patterns and ownership boundaries. Introduce new structure only when the current
   requirement needs it.
 - When a workaround is necessary, contain it and make its limitation clear.
