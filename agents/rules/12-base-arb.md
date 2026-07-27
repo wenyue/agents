@@ -7,12 +7,11 @@ Scope: ARB source ownership, localization key grammar, metadata, ordering, and g
 ## Source Files
 
 - Use the configured Flutter `gen-l10n` template ARB as the source of truth for keys and metadata.
-- Follow the application's locale-resolution and fallback configuration when a translation is
-  missing; do not assume a specific fallback ARB.
+- Resolve missing translations through the application's configured locale and fallback behavior.
 - Add a matching `@key` metadata entry for every source key.
 - Use the repository-owned localization workflow to order keys when one exists; otherwise keep each
   key and its adjacent `@key` metadata entry in alphabetical order.
-- Do not edit generated localization output.
+- Edit the source ARB and regenerate whenever localization output must change.
 
 ## Key Grammar
 

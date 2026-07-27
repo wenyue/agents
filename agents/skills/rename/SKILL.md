@@ -32,7 +32,8 @@ Classify every match before editing:
 - serialization keys, protocol fields, database columns, config keys, and other external contracts;
 - unrelated same-name symbols in different scopes.
 
-Do not treat a textual match as proof that it belongs to the rename.
+Require declaration, type, call-site, configuration, or other semantic evidence before treating a
+textual match as part of the rename.
 
 ## Compatibility Boundary
 
@@ -41,10 +42,10 @@ Do not treat a textual match as proof that it belongs to the rename.
 - For public APIs or external contracts, state the impact and obtain the compatibility decision
   before editing when the request does not already provide one.
 - Add a deprecated alias only when compatibility is required and the project supports a migration
-  path. Do not create aliases by default.
+  path.
 - Leave serialization, protocol, persistence, and config names unchanged unless they are explicitly
   inside the approved rename scope.
-- Edit the source owner of generated files and regenerate; never hand-edit generated output.
+- Change generated names through their source owner and regenerate the output.
 
 ## Workflow
 

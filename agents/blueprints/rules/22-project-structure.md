@@ -9,8 +9,8 @@ dependency direction, and shared infrastructure locations.
 
 Produce a complete target-owned `Project Structure` rule from observed repository organization and
 verified dependency boundaries. Include the smallest responsibility map that lets an agent place
-work correctly, find the right owner, and avoid invalid dependencies; do not narrate the directory
-tree.
+work correctly, find the right owner, and avoid invalid dependencies. Organize it as a decision map
+rather than a directory-tree narrative.
 
 ## Evidence
 
@@ -29,8 +29,7 @@ tree.
 
 - Describe top-level application modules, other areas, packages, and composition roots only when
   their ownership is non-obvious or selecting the wrong owner would affect placement or dependency
-  decisions. Give each selected entry one concise ownership description; do not enumerate internal
-  directories or APIs.
+  decisions. Give each selected entry one concise ownership description.
 - State where new feature code, shared code, tests, assets, configuration, scripts, generated
   sources, infrastructure, and documentation belong when the repository establishes those owners.
 - State allowed and forbidden dependency directions, their scope, and the architectural boundary
@@ -51,5 +50,5 @@ tree.
   behavior, and lint interpretation in `Project Rules`.
 - Exclude generic architecture advice, speculative future structure, temporary layout, and
   directory-by-directory inventory.
-- Do not duplicate an ownership or dependency statement across sections or rules. When another
-  artifact is authoritative, reference that owner instead of restating its contents.
+- Keep each ownership or dependency statement in one authoritative section or rule, and reference
+  that owner from other artifacts.

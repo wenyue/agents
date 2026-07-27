@@ -10,9 +10,9 @@ tooling boundaries.
 - Run repository-owned scripts from the repository root with Python 3.11 or newer.
 - The Python scripts use the standard library, including `tomllib`; the repository declares no
   dependency installation or environment preparation step.
-- The repository declares no package manager, formatter, automatic fixer, analyzer, linter, build
-  command, packaging command, runtime service, port, credential, or health check. Do not invent or
-  substitute any of them.
+- Treat package managers, formatters, automatic fixers, analyzers, linters, build and packaging
+  commands, runtime services, ports, credentials, and health checks as unavailable until repository
+  evidence declares them.
 
 ## Verification Commands
 
@@ -23,7 +23,7 @@ Use these repository-supported checks:
 | Public catalog, synchronization, ownership, mirror, wrapper, and timing contracts | `python -m unittest discover -s tests -p 'test_*.py'` | Repository-wide, non-fixing test suite with no declared narrower selector |
 | Diff whitespace and conflict-marker integrity | `git diff --check` | Non-mutating check of the current working-tree diff |
 
-Run both commands for a completed change set. Do not treat one as a substitute for the other.
+Run both commands for every completed change set; together they form the required verification.
 
 ## Public Sync Tooling
 
@@ -35,13 +35,13 @@ Run both commands for a completed change set. Do not treat one as a substitute f
 - A normal sync invocation mutates the target repository; `--check` reports target drift without
   writing target files. Neither invocation is a formatter, fixer, or replacement for this
   repository's test command.
-- Do not run the sync tool merely to make this repository's `.agents/` directory match `agents/`.
-  The local runtime is intentionally curated and independently owned.
+- Run the sync tool against target repositories that consume the public catalog. Keep this
+  repository's intentionally curated `.agents/` runtime under its independent owner.
 
 ## Boundaries
 
 - Completed change verification belongs to `change-set-verification`.
-- The repository has no setup procedure, so do not create or invoke a project-local
-  `worktree-environment-setup` skill without new repository evidence.
+- Treat project-local worktree environment setup as unavailable until new repository evidence
+  establishes a real setup procedure.
 - Keep public-source ownership and mirror policy in `Project Rules`.
 - Keep directory responsibilities and dependency direction in `Project Structure`.

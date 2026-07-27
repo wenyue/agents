@@ -28,7 +28,7 @@ workflows, generated-source policy, and repository-owned verification selectors.
 - files and diagnostics the verifier may repair mechanically versus semantic work that must return
   to the implementation owner.
 
-Do not invent commands, ownership mappings, or scope support that the evidence does not prove.
+Require evidence for every command, ownership mapping, and supported scope.
 
 ## Authoring Workflow
 
@@ -44,8 +44,8 @@ Do not invent commands, ownership mappings, or scope support that the evidence d
    repository command when the tool would broaden a formatter or fixer mutation, discard a needed
    selector, or weaken diagnostics.
 5. Group independent calls into one orchestration request when the platform supports it. Configure
-   an evidence-backed owning-tool timeout for a legitimate long-running operation; do not replace a
-   synchronous tool call with a background shell process and repeated short polling.
+   an evidence-backed owning-tool timeout for a legitimate long-running operation, and keep a
+   synchronous tool call under its owning wait mechanism.
 6. Prefer repository-owned selectors. Add a skill-owned script only when repeated deterministic
    selection cannot be expressed reliably through existing tools; follow the target skill's own
    project-local script runtime policy.
@@ -58,8 +58,8 @@ Do not invent commands, ownership mappings, or scope support that the evidence d
 
 ### Trigger and Scope
 
-- Run at a completed implementation checkpoint, before handoff. Do not interrupt active editing,
-  debugging, or an incomplete fix cycle.
+- Run only at a completed implementation checkpoint before handoff; active editing, debugging, and
+  incomplete fix cycles continue until the next completed checkpoint.
 - Identify the coherent intended change set from task context and repository state. Preserve the
   existing `HEAD`, index, unrelated staged or unstaged work, and untracked files.
 - Resolve production code, tests, configuration, generated-source owners, and supporting files that
@@ -67,9 +67,9 @@ Do not invent commands, ownership mappings, or scope support that the evidence d
 - Start with the minimum sufficient scope. Broaden only when dependencies, shared contracts,
   generated interfaces, fixer mutations, tool limitations, or unknown ownership make the narrower
   result unreliable.
-- Treat missing test ownership as a gap to resolve or a reason to broaden, never as proof that tests
-  are unnecessary.
-- Never edit generated output, third-party code, or files outside the selected project-owned scope.
+- Treat missing test ownership as a gap to resolve or a reason to broaden.
+- Restrict mutation to selected project-owned source files; change generated output through its
+  owner and leave third-party or out-of-scope files unchanged.
 
 ### Normalization and Repair
 
@@ -83,7 +83,7 @@ Do not invent commands, ownership mappings, or scope support that the evidence d
 4. Reformat fixer-modified source when required, then run the minimum supported non-mutating static
    checks.
 5. Return remaining semantic diagnostics to the implementation owner with exact locations and
-   messages. Do not author semantic fixes inside the verifier.
+   messages; semantic fixes remain with that owner.
 6. If the implementation owner changes files, treat the result as a new completed checkpoint and
    restart the workflow from current repository state.
 
@@ -92,11 +92,11 @@ Do not invent commands, ownership mappings, or scope support that the evidence d
 - Prefer effective native or MCP analyzer and test tools over shell equivalents when they honor the
   same selected scope, return equivalent diagnostics, and have an adequate configured timeout.
 - Keep narrow repository formatter and fixer commands when the corresponding tool can mutate only
-  a broader root. Tool availability never authorizes widening the selected change set.
+  a broader root. Preserve the selected change set when choosing between tools.
 - Submit independent checks together when their results do not depend on one another. Keep
   normalization, mutation-sensitive checks, and checks that consume generated output sequential.
 - Treat a synchronous native or MCP call as one operation. Wait for its result through that call;
-  do not launch an extra background process or issue repeated short status polls.
+  keep background processes and repeated short status polls outside this workflow.
 
 ### Verification and Results
 
@@ -111,9 +111,9 @@ Do not invent commands, ownership mappings, or scope support that the evidence d
 - Report every modified file, formatter and fixer invocation, repeated check, remaining diagnostic,
   and verification gap.
 - Return one overall result: `passed`, `semantic_fix_required`, `failed`, or `inconclusive`.
-- Do not report `passed` while any required surface failed or remains inconclusive.
+- Report `passed` only when every required surface passed.
 - When an out-of-scope failure may predate the change, compare only that failing surface with a
-  trustworthy baseline. Do not run a full baseline suite solely for classification.
+  trustworthy baseline, using no broader baseline work than classification requires.
 
 ### Stop and Failure Behavior
 

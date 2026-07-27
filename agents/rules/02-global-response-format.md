@@ -38,7 +38,7 @@ Preferred order:
 
 - When present, `🎯` comes first and contains only the goal statement.
 - Use `⚠️` only for meaningful information and keep it to three items or fewer.
-- Do not use `✅` and `❌` together in the same result.
+- When reporting a result, choose exactly one of `✅` or `❌`.
 - `🤖` is terminal. Stop after asking for input.
 
 ## Work Reports

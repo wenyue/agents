@@ -8,16 +8,16 @@ tooling.
 ## Code Shape
 
 - Keep code direct, scopes narrow, and the success path shallow.
-- Keep public APIs product-driven. Do not export names, add interfaces, or introduce seams only for
-  tests or speculative reuse.
+- Keep public APIs product-driven; meet test needs without exporting names, adding interfaces, or
+  introducing seams solely for tests or speculative reuse.
 - Extract a helper or private type only when it names a real concept, clarifies data flow, or removes
   meaningful complexity.
-- Do not add `init()` functions. Initialize explicitly from constructors, `main`, or package-owned
-  setup functions.
+- Initialize explicitly from constructors, `main`, or package-owned setup functions instead of
+  adding `init()` functions.
 
 ## Errors
 
-- Check every returned error; do not discard errors with the blank identifier.
+- Check every returned error and bind it to a named value rather than the blank identifier.
 - Use `value, ok := x.(T)` when a type assertion can fail; use `x.(T)` only when a visible invariant
   guarantees the type.
 - Wrap errors that cross package boundaries with useful context and `%w`; inspect them with
@@ -35,8 +35,8 @@ tooling.
 
 ## Logging
 
-- Use the logger conventions of the owning package. Do not introduce `fmt.Print*` or the standard
-  `log` package for runtime output.
+- Use the logger conventions of the owning package for runtime output instead of introducing
+  `fmt.Print*` or the standard `log` package.
 - Make log messages name the operation and include values needed to diagnose failure.
 
 ## Tool Ownership

@@ -25,8 +25,8 @@ variables, credentials, local services, and readiness checks. Establish:
 - responsibilities owned by worktree creation, machine provisioning, baseline verification,
   implementation, synchronization, integration, or cleanup instead of environment setup.
 
-Do not invent a cross-platform promise, command, prerequisite, or readiness check that target
-evidence does not support.
+Require target evidence for every cross-platform promise, command, prerequisite, and readiness
+check.
 
 ## Authoring Workflow
 
@@ -48,12 +48,13 @@ evidence does not support.
   target repository. The body must state the environment result and the point at which setup ends.
 - Detect and reject the primary checkout before installing dependencies, generating files,
   changing services, or performing any other setup mutation. Resolve paths from the discovered
-  repository or skill root, never from the caller's current directory.
+  repository or skill root rather than the caller's current directory.
 - Execute only evidence-backed, locked, and repository-owned preparation. Keep expensive, optional,
   platform-specific, or task-specific branches out of the default path unless every new worktree
   requires them.
 - Make every owned command sequence stop on failure and safe to rerun after partial completion.
-  Do not silently substitute an unverified command or degraded result.
+  Stop when the verified command is unavailable instead of substituting a command or degraded
+  result.
 - Verify readiness through real project configuration, required outputs, and tool or service
   behavior. Version probes alone are insufficient when functional readiness can be checked.
 - Include `## Failure Recovery`. Report the failed step, exact command or condition, exit status
@@ -82,7 +83,7 @@ ready state. Exercise an optional branch only when the target contract declares 
 accepted capability.
 
 Validate a project-matched script with the project's established runtime. For paired entry points,
-run only the current host's entry point and do not claim the other host was executed. Record exact
+run only the current host's entry point and report the other as not run. Record exact
 commands, observed mutations, readiness evidence, stop-path evidence, and anything not run. Any
 unexpected mutation, unsupported prerequisite, or unverified ready state fails acceptance.
 

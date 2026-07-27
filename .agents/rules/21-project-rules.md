@@ -9,14 +9,14 @@ repository-local runtime boundaries, and repository test contracts.
 
 - Treat `agents/` as the complete English public catalog and the sole source of truth for public
   rules, skills, agent prompts, templates, references, and scripts.
-- Make public catalog changes in `agents/`; do not use `.agents/` or `agents-zh/` as the source for
-  an English public asset.
+- Make public catalog changes in `agents/`; treat `.agents/` as local runtime and `agents-zh/` as a
+  reading mirror rather than sources for English public assets.
 - Treat `agents/skills/setup-project-agents/references/public_assets.json` as the owner of public
   asset inclusion, declared retirements, Rule and Skill blueprints, wrapper templates, and managed
   root-configuration declarations.
 - Keep deterministic synchronization and manifest validation in
-  `agents/skills/setup-project-agents/scripts/`. Do not encode target-specific policy in those
-  public scripts.
+  `agents/skills/setup-project-agents/scripts/`, while target-specific policy remains in the target
+  repository.
 
 ## Simplified-Chinese Mirror
 
@@ -28,16 +28,17 @@ repository-local runtime boundaries, and repository test contracts.
   coherent change.
 - Preserve relative paths, commands, identifiers, code blocks, classification, and behavioral
   meaning across the mirror.
-- Do not mirror scripts, JSON manifests, platform configuration, or other machine-read files into
-  `agents-zh/`.
-- Never load, publish, or synchronize `agents-zh/` as a runtime or public source.
+- Mirror only human-readable Markdown into `agents-zh/`; scripts, JSON manifests, platform
+  configuration, and other machine-read files remain untranslated.
+- Keep `agents-zh/` outside runtime loading, publication, and synchronization.
 
 ## Project-Local Runtime
 
 - Treat `.agents/` as this repository's curated local runtime source of truth.
-- Do not require `.agents/` to contain every public asset or to be byte-equivalent to `agents/`.
-- Change `.agents/` only when this repository's own runtime behavior or project-local policy
-  requires it; public catalog edits alone do not establish that requirement.
+- Let `.agents/` contain only the public assets required by this repository; byte equivalence with
+  `agents/` is not a requirement.
+- Change `.agents/` when this repository's runtime behavior or project-local policy requires it,
+  independently of public catalog edits.
 - Keep `.agents/agents/change-set-verifier.md` resolved to
   `.agents/skills/change-set-verification/SKILL.md`.
 
@@ -45,8 +46,8 @@ repository-local runtime boundaries, and repository test contracts.
 
 - Treat `agents/blueprints/rules/` and `agents/blueprints/skills/` as the public sources for
   target-owned Rule and Skill generation, not as directly installable runtime assets.
-- Generate complete target-owned rules and skills under `.agents/`; never copy a blueprint into the
-  corresponding target path as the final runtime artifact.
+- Generate complete target-owned rules and skills under `.agents/`; use a blueprint as an authoring
+  contract rather than copying it as the final runtime artifact.
 - Preserve `.agents/` as the installation root in public prompts, templates, manifests, scripts,
   and documentation.
 
@@ -54,14 +55,13 @@ repository-local runtime boundaries, and repository test contracts.
 
 - Unit tests may assert structured configuration, schemas, filesystem effects, state transitions,
   exit behavior, and other observable runtime results.
-- Do not use substring, presence, absence, or section-order assertions against human-readable
-  Markdown, Rule or Skill prose, prompt and hook message wording, or implementation source text.
-- When wording represents required behavior, expose that behavior through a structured configuration
-  or runtime decision surface and test that surface; review the prose itself semantically.
+- Review human-readable Markdown, Rule and Skill prose, prompt and hook wording, and implementation
+  source semantically. Limit automated assertions to structured configuration or observable runtime
+  behavior rather than substrings, presence, absence, or section order.
 
 ## Boundaries
 
 - Keep commands, runtime requirements, and tool mutation behavior in `Project Tools`.
 - Keep directory ownership and dependency direction in `Project Structure`.
-- Do not introduce framework, API, persistence, lifecycle, lint, or generated-file conventions
-  without repository evidence.
+- Add framework, API, persistence, lifecycle, lint, or generated-file conventions only when
+  repository evidence establishes them.

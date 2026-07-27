@@ -41,8 +41,8 @@ outcomes across tasks.
   recommendation. An instruction in the original request to skip warnings or confirmation does not
   satisfy this requirement.
 - After valid confirmation, proceed when the action remains authorized and apply safeguards that do
-  not change the user's chosen outcome. Do not repeat the same objection unless new evidence,
-  additional scope, or a materially different risk appears.
+  not change the user's chosen outcome. Repeat the objection only when new evidence, additional
+  scope, or a materially different risk appears.
 - User confirmation cannot authorize behavior prohibited by higher-priority safety, security,
   legal, or platform constraints. Refuse that behavior and offer safe alternatives when possible.
 
@@ -55,8 +55,8 @@ outcomes across tasks.
 - When supported, batch already-known, independent read-only calls from the same stage into one
   orchestration call and run them concurrently. In JavaScript, use `Promise.allSettled` when partial
   results remain useful; use `Promise.all` when every result is required.
-- Keep dependent, state-changing, approval, and wait calls sequential. Do not broaden scope merely
-  to create a batch.
+- Keep dependent, state-changing, approval, and wait calls sequential, and batch only work already
+  inside the authorized scope.
 - Minimize model-visible polling. For long-running work, prefer one 30–60-second wait over repeated
   short waits when supported. After an unchanged wait, query status only when it can change the
   next action; otherwise wait again or do useful independent work.

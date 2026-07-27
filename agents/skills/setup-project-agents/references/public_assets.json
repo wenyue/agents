@@ -16,6 +16,7 @@
       "03-global-skill-config.md"
     ],
     "skills": [
+      "debug-mode",
       "update-project-rules",
       "project-development-workflow",
       "project-verification"
@@ -202,9 +203,6 @@
   ],
   "skills": [
     {
-      "name": "debug-mode"
-    },
-    {
       "name": "refactor-code"
     },
     {
@@ -267,7 +265,13 @@
       "path": ".agents/config.json",
       "template": "project-config/agents.config.json",
       "format": "json",
-      "merge": "deep-overwrite"
+      "merge": "deep-overwrite",
+      "list_merges": [
+        {
+          "path": "skills.external",
+          "owned_marker": "debug-mode"
+        }
+      ]
     },
     {
       "path": ".codex/config.toml",

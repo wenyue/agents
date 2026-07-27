@@ -15,7 +15,7 @@ only when the user explicitly requests a committed local integration.
 - **Commit mode:** Fast-forward the base branch only after an explicit request and only when task
   paths do not overlap base-local changes.
 
-Never turn an ambiguous request into commit mode.
+Use review mode whenever the request does not explicitly select commit mode.
 
 ## Task Branch Preparation
 
@@ -23,7 +23,7 @@ Never turn an ambiguous request into commit mode.
 2. Confirm task verification passed. Classify staged, unstaged, and untracked task-worktree changes;
    include confirmed task-owned work and stop on ambiguous ownership.
 3. Discover the base checkout and branch with `git worktree list --porcelain` and the Git common
-   directory. Do not assume `main` or `master`; stop when the intended base is ambiguous.
+   directory. Stop when that evidence does not identify one intended base.
 4. Consolidate task work relative to its merge base into exactly one business commit.
 5. Rebase that commit onto the current base HEAD. Auto-resolve only task-scoped, unambiguous,
    verifiable conflicts; otherwise abort the rebase and ask for direction.
@@ -34,7 +34,8 @@ Never turn an ambiguous request into commit mode.
 
 1. Record the base branch, HEAD, index tree, staged changes, unstaged changes, and untracked files.
 2. Compute the final task paths and back them up outside the repository. Record file types and paths
-   that were originally absent in a manifest. Do not stash.
+   that were originally absent in a manifest. Preserve local state through the snapshot and external
+   backup rather than a stash.
 3. Immediately before transfer, compare the base branch and HEAD with the snapshot. If either moved,
    rebase the task commit again and refresh the snapshot, affected paths, and backup.
 
@@ -42,7 +43,7 @@ Never turn an ambiguous request into commit mode.
 
 1. Keep the base HEAD and index unchanged.
 2. For task paths without base-local changes, check the transfer first, then update only the working
-   tree. Do not use a checkout, apply, or restore mode that writes the index.
+   tree through a mode that leaves the index unchanged.
 3. For overlapping text paths, three-way merge the task commit parent, current base working file,
    and task result in temporary files. A shared pathname alone is not a conflict.
 4. Resolve autonomously only when the result is unambiguous, task-scoped, and verifiable.
@@ -80,8 +81,8 @@ their locations so the user can inspect and recover the source independently.
 
 ## Prohibited Operations
 
-Never push, pull, force-update, stash, reset, clean, or create a merge commit as part of this skill.
-For PR, keep-branch, or discard outcomes, hand off to
+This skill has no authority to push, pull, force-update, stash, reset, clean, or create a merge
+commit. For PR, keep-branch, or discard outcomes, hand off to
 `superpowers:finishing-a-development-branch`.
 
 ## Result

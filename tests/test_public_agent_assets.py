@@ -1483,7 +1483,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             expected_rules,
         )
         self.assertEqual(
-            {path.name for path in (local_root / 'skills').iterdir()},
+            {
+                path.name
+                for path in (local_root / 'skills').iterdir()
+                if path.name != '.skillshare-manifest.json' and not path.is_symlink()
+            },
             expected_skills,
         )
         local_agents = local_root / 'agents'
@@ -1503,6 +1507,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     'template': 'project-config/agents.config.json',
                     'format': 'json',
                     'merge': 'deep-overwrite',
+                    'list_merges': [
+                        {
+                            'path': 'skills.external',
+                            'owned_marker': 'debug-mode',
+                        }
+                    ],
                 },
                 {
                     'path': '.codex/config.toml',
@@ -1586,6 +1596,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     'template': 'project-config/agents.config.json',
                     'format': 'json',
                     'merge': 'deep-overwrite',
+                    'list_merges': [
+                        {
+                            'path': 'skills.external',
+                            'owned_marker': 'debug-mode',
+                        }
+                    ],
                 }
             ],
         )
@@ -1601,6 +1617,16 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     'project-config.schema.json'
                 ),
                 'version': 1,
+                'skills': {
+                    'external': [
+                        {
+                            'name': 'debug-mode',
+                            'repository': 'doraemonkeys/claude-code-debug-mode',
+                            'ref': 'master',
+                            'path': 'debug-mode',
+                        }
+                    ]
+                },
             },
         )
 
@@ -2117,6 +2143,27 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             self.assertEqual(parsed['model'], 'old')
             self.assertEqual(parsed['custom'], {'value': 7})
 
+    def test_project_config_declares_debug_mode_as_external_skill(self):
+        project_config = json.loads(
+            (REPO_TEMPLATES / 'project-config' / 'agents.config.json').read_text(
+                encoding='utf-8'
+            )
+        )
+
+        self.assertEqual(
+            project_config.get('skills'),
+            {
+                'external': [
+                    {
+                        'name': 'debug-mode',
+                        'repository': 'doraemonkeys/claude-code-debug-mode',
+                        'ref': 'master',
+                        'path': 'debug-mode',
+                    }
+                ]
+            },
+        )
+
     def test_agents_project_config_template_preserves_project_owned_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -2134,7 +2181,13 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                                     'repository': 'owner/repo',
                                     'ref': 'main',
                                     'path': 'skills/example',
-                                }
+                                },
+                                {
+                                    'name': 'debug-mode',
+                                    'repository': 'old/debug-mode',
+                                    'ref': 'stale',
+                                    'path': 'old-debug-mode',
+                                },
                             ]
                         },
                         'project_owned': {'kept': True},
@@ -2149,23 +2202,55 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 False,
                 [],
             )
-            public_config = {
-                'config_templates': [
-                    {
-                        'path': '.agents/config.json',
-                        'template': 'project-config/agents.config.json',
-                        'format': 'json',
-                        'merge': 'deep-overwrite',
-                    }
-                ]
-            }
+            public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+            agents_config_template = next(
+                item
+                for item in public_config['config_templates']
+                if item['path'] == '.agents/config.json'
+            )
 
-            sync._reconcile_config_templates(context, public_config)
+            sync._reconcile_config_templates(
+                context,
+                {'config_templates': [agents_config_template]},
+            )
 
             result = json.loads(config.read_text(encoding='utf-8'))
             self.assertEqual(result['version'], 1)
-            self.assertEqual(result['skills']['external'][0]['name'], 'example')
+            self.assertEqual(
+                result['skills']['external'],
+                [
+                    {
+                        'name': 'example',
+                        'repository': 'owner/repo',
+                        'ref': 'main',
+                        'path': 'skills/example',
+                    },
+                    {
+                        'name': 'debug-mode',
+                        'repository': 'doraemonkeys/claude-code-debug-mode',
+                        'ref': 'master',
+                        'path': 'debug-mode',
+                    },
+                ],
+            )
             self.assertEqual(result['project_owned'], {'kept': True})
+            self.assertEqual(
+                sync.load_external_skill_specs(target, public_config),
+                [
+                    sync.ExternalSkillSpec(
+                        name='example',
+                        repository='owner/repo',
+                        ref='main',
+                        path=sync.PurePosixPath('skills/example'),
+                    ),
+                    sync.ExternalSkillSpec(
+                        name='debug-mode',
+                        repository='doraemonkeys/claude-code-debug-mode',
+                        ref='master',
+                        path=sync.PurePosixPath('debug-mode'),
+                    ),
+                ],
+            )
 
     def test_reconcile_hook_template_preserves_unrelated_hook_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3084,6 +3169,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     '03-global-skill-config.md',
                 ],
                 'skills': [
+                    'debug-mode',
                     'update-project-rules',
                     'project-development-workflow',
                     'project-verification',
@@ -3094,6 +3180,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         for retired_name in (
             '03-global-engineering-workflow.md',
             '03-global-skill-config.md',
+            'debug-mode',
             'update-project-rules',
             'project-development-workflow',
             'project-verification',
@@ -3157,6 +3244,18 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertIn({'name': 'report-session-usage'}, public_config['skills'])
         self.assertNotIn({'name': 'report-agent-session-usage'}, public_config['skills'])
         self.assertNotIn({'name': 'track-worktree-time'}, public_config['skills'])
+
+    def test_debug_mode_is_retired_from_public_catalog_content(self):
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+
+        self.assertNotIn({'name': 'debug-mode'}, public_config['skills'])
+        self.assertIn('debug-mode', public_config['retired_assets']['skills'])
+        self.assertFalse(
+            (REPO_ROOT / 'agents' / 'skills' / 'debug-mode' / 'SKILL.md').exists()
+        )
+        self.assertFalse(
+            (REPO_ROOT / 'agents-zh' / 'skills' / 'debug-mode' / 'SKILL.md').exists()
+        )
 
     def test_global_rules_separate_personality_workflow_and_skill_configuration(self):
         source_root = REPO_ROOT / 'agents' / 'rules'
@@ -3288,6 +3387,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'Portability and Generation Evidence',
             ),
             'Author': (),
+            'Instruction Forms': (
+                'Steps and Checklists',
+                'Examples',
+                'Positive Requirements',
+                'Negative Requirements',
+            ),
             'Skill Contract': (
                 'Core Document',
                 'Resources',
@@ -3301,6 +3406,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             '分类': (),
             '证据': ('任务和失败预期', '负责范围的证据', '跨环境与生成证据'),
             '编写': (),
+            '表达格式': ('步骤与检查清单', '示例', '正面要求', '负面要求'),
             'Skill 契约': ('正文', '资源', '审查、验收与交接', '脚本入口'),
             '验证': ('成品检查', '实际执行', '分发检查'),
             '结果': (),
@@ -3361,6 +3467,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'Distribution and Generation Evidence',
             ),
             'Author': (),
+            'Instruction Forms': (
+                'Steps and Checklists',
+                'Examples',
+                'Positive Requirements',
+                'Negative Requirements',
+            ),
             'Rule Contract': ('Required Header', 'Policy Body', 'Generation Contracts'),
             'Validate': ('Policy Review', 'Context Validation', 'Discovery Surfaces'),
             'Result': (),
@@ -3369,6 +3481,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             '分类': (),
             '证据': ('规则依据', '仓库事实', '分发与生成依据'),
             '编写': (),
+            '表达格式': ('步骤与检查清单', '示例', '正面要求', '负面要求'),
             '规则契约': ('基本格式', '规则正文', '生成契约'),
             '验证': ('成品检查', '适用环境检查', '加载入口检查'),
             '结果': (),
@@ -5496,21 +5609,21 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         expected = {
             'codex': {
                 'codex': '0.144.0',
-                'superpowers': '6.0.0',
-                'codegraph': '1.4.0',
-                'tokscale': '4.5.2',
+                'superpowers': '6.1.1',
+                'codegraph': '1.4.1',
+                'tokscale': '4.6.1',
             },
             'cursor': {
                 'cursor-agent': '2026.01.27',
-                'superpowers': '6.0.0',
-                'codegraph': '1.4.0',
-                'tokscale': '4.5.2',
+                'superpowers': '6.1.1',
+                'codegraph': '1.4.1',
+                'tokscale': '4.6.1',
             },
             'copilot': {
                 'copilot': '1.0.58',
-                'superpowers': '6.0.0',
-                'codegraph': '1.4.0',
-                'tokscale': '4.5.2',
+                'superpowers': '6.1.1',
+                'codegraph': '1.4.1',
+                'tokscale': '4.6.1',
             },
         }
         for platform, targets in expected.items():

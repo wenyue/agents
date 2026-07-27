@@ -11,10 +11,12 @@ ownership, and Git safety.
 
 ## Superpowers
 
-- `superpowers:using-superpowers` is disabled and must not be invoked. Evaluate other
-  `superpowers:*` skills directly under their own trigger conditions and applicable higher-priority
-  rules.
-- Invoke `superpowers:brainstorming` only when the user explicitly requests brainstorming.
+- Treat `superpowers:using-superpowers` as disabled. Evaluate other `superpowers:*` skills directly
+  under their own trigger conditions and applicable higher-priority rules.
+- Use `write-skill` for Skill authoring and `write-rule` for Rule authoring. Reserve
+  `superpowers:writing-skills` for an explicit user request for adversarial behavioral evaluation or
+  pressure testing.
+- Reserve `superpowers:brainstorming` for an explicit user request for brainstorming.
 - Use English for concrete Superpowers execution plans. This exception applies to step-by-step
   implementation plans, not design documents.
 
@@ -34,7 +36,8 @@ ownership, and Git safety.
 
 ## Git Safety
 
-- Do not overwrite, stash, reset, clean, or silently discard pre-existing local changes.
+- Preserve pre-existing local changes. When an operation would overwrite, stash, reset, clean, or
+  discard them, stop and choose a non-destructive path or request direction.
 - A same-file overlap is not automatically a blocker. Merge it when confidence is high and the
   result can be verified; otherwise stop and ask.
-- Do not push or create a pull request unless the user explicitly requests that remote action.
+- Push or create a pull request only after the user explicitly requests that remote action.

@@ -10,7 +10,8 @@ and documentation.
 - Give every behavior, state, invariant, and lifecycle one clear owner.
 - Keep owner-local logic cohesive with its owner; move logic only when its reuse or boundary is real.
 - Keep public interfaces minimal and aligned with stable product or domain capabilities.
-- Do not expose APIs, move logic, or add indirection solely for tests or call-site convenience.
+- Meet test and call-site needs through the owning contract rather than widening APIs, moving
+  owner-local logic, or adding indirection solely for convenience.
 
 ## Clarity And Abstraction
 
@@ -28,11 +29,12 @@ and documentation.
 - Preserve valid dependency lifetimes across asynchronous work and callbacks.
 - Give each unit only the capabilities it needs, with dependency direction and cross-layer
   boundaries explicit.
-- Do not obtain dependencies from hidden globals or distribute state in ways that obscure ownership.
+- Provide dependencies through visible owners and keep state placement consistent with that
+  ownership.
 
 ## Documentation
 
 - Use comments to preserve rationale, invariants, lifecycle constraints, external requirements, and
   non-obvious edge cases.
-- Do not narrate code, repeat names, record edit history, or use comments to compensate for unclear
-  design.
+- Keep code narration, repeated names, and edit history out of comments; when design is unclear,
+  improve the design instead of explaining around it.

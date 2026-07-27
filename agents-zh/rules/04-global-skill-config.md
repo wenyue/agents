@@ -10,9 +10,11 @@
 
 ## Superpowers
 
-- `superpowers:using-superpowers` 已禁用，不得调用。其他 `superpowers:*` Skill 应根据各自的触发条件和
-  适用的更高优先级规则直接判断并调用。
-- 只有用户明确要求使用 brainstorming 时，才调用 `superpowers:brainstorming`。
+- 将 `superpowers:using-superpowers` 视为已禁用。其他 `superpowers:*` Skill 根据各自的触发条件和
+  适用的更高优先级规则直接判断。
+- 编写 Skill 时使用 `write-skill`，编写 Rule 时使用 `write-rule`。仅在用户明确要求对抗性行为评测
+  或压力测试时使用 `superpowers:writing-skills`。
+- 仅在用户明确要求 brainstorming 时使用 `superpowers:brainstorming`。
 - 具体的 Superpowers 执行计划使用英语。此例外只适用于分步实现计划，不适用于设计文档。
 
 ## 工作树工作流
@@ -29,6 +31,7 @@
 
 ## Git 安全
 
-- 不要覆盖、stash、reset、clean 或暗中丢弃已有的本地改动。
+- 保留已有本地改动。某项操作会覆盖、stash、reset、clean 或丢弃这些改动时，停止并改用无损方案，
+  或请求用户决定。
 - 同一文件存在改动重叠并不必然构成阻塞。置信度高且结果可验证时可以合并；否则停止并询问用户。
-- 除非用户明确要求远程操作，否则不要推送或创建拉取请求。
+- 只有用户明确要求远程操作后，才能推送或创建拉取请求。

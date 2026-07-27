@@ -24,9 +24,9 @@ Resolve conflicts in this order:
 
 - Keep each project rule's policy in exactly one source under `.agents/rules/`.
 - Keep platform-specific rule wrappers thin: they may contain required platform metadata or runtime
-  fields plus one reference to the owning rule, but must not duplicate its policy.
+  fields plus one reference to the owning rule; keep all policy in that owning rule.
 - Let the owning platform configuration or catalog define wrapper paths, templates, and generation
-  behavior. Do not encode those runtime facts in this rule.
+  behavior, and leave those runtime facts there.
 
 ## Numbering
 

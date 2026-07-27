@@ -11,7 +11,7 @@ subagent models and generate the five repository-specific assets declared by thi
 Template-owned project configuration gives every developer the same repository defaults. The
 script applies a partial deep merge: template fields overwrite drift, fields absent from a template
 remain untouched, and normal synchronization automatically repairs missing or outdated managed
-values. It never reads or modifies user configuration.
+values. User configuration remains outside this workflow.
 
 ## Ownership
 
@@ -88,7 +88,8 @@ synchronization, and reports a warning; `--check` reports the same warning and e
    are not a value source.
 
 3. Open and execute each public blueprint enumerated under Managed Assets. Generate Rules
-   at `.agents/rules/<name>.md` and Skills at `.agents/skills/<name>/`. Use current repository
+   at `.agents/rules/<name>.md` and Skills at `.agents/skills/<name>/`. Apply `write-rule` when
+   generating each Rule and `write-skill` when generating each Skill. Use current repository
    evidence; previous content may be used as a reference during generation, but it is not a source
    of truth. Each blueprint owns its generation and validation.
 
@@ -100,8 +101,8 @@ synchronization, and reports a warning; `--check` reports the same warning and e
    ```
 
    This same synchronization creates or updates the native Codex, Cursor, and Copilot project
-   configuration and hook files from readable templates. Do not separately edit user-level
-   configuration or remove template-external project fields.
+   configuration and hook files from readable templates. Let synchronization own those managed
+   fields while preserving user-level configuration and template-external project fields.
 
 5. When you need immediate setup feedback, run an uncached recommended-tool check only for the
    current execution platform:
@@ -117,13 +118,14 @@ synchronization, and reports a warning; `--check` reports the same warning and e
 
 ## Review Gate
 
-Accept only generated assets that satisfy their public blueprint and preserve unrelated
-target-owned files.
+- [ ] Review every generated Rule and Skill against its public blueprint.
+- [ ] Confirm unrelated target-owned files remain unchanged.
 
 ## Acceptance Gate
 
-Every enumerated Rule and Skill must be complete, every required model field must be resolved, and
-template-owned project configuration must be reconciled.
+- [ ] Confirm every enumerated Rule and Skill is complete.
+- [ ] Confirm every required model field is resolved.
+- [ ] Confirm template-owned project configuration is reconciled.
 
 ## Validation
 
@@ -138,7 +140,7 @@ python .agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py \
 ```
 
 Stop on any synchronization or blueprint failure. Recommended-tool checks and their internal
-failures do not block validation. Do not invoke a real model for validation.
+failures do not block validation. Perform validation without invoking a real model.
 
 ## Output
 

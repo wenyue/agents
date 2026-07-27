@@ -1,4 +1,14 @@
 {
   "$schema": "skills/setup-project-agents/references/project-config.schema.json",
-  "version": 1
+  "version": 1,
+  "skills": {
+    "external": [
+      {
+        "name": "debug-mode",
+        "repository": "doraemonkeys/claude-code-debug-mode",
+        "ref": "master",
+        "path": "debug-mode"
+      }
+    ]
+  }
 }

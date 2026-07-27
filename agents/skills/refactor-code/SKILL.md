@@ -29,8 +29,8 @@ materially different scope or behavior.
    supported path depends on it.
 6. Run the minimum relevant formatter, static checks, and tests before reporting completion.
 
-Do not introduce frameworks, configuration layers, test-only APIs, or extension points for
-hypothetical future needs.
+Introduce frameworks, configuration layers, test-only APIs, or extension points only when the
+approved current outcome requires them.
 
 ## Format Refactor
 
@@ -38,8 +38,10 @@ hypothetical future needs.
   behavior.
 - Improve names, ordering, branching, duplication, and helper boundaries only where they address
   the stated readability problem.
-- Do not expand a local cleanup into caller or module restructuring without a concrete need.
-- Do not extract tiny helpers merely to reduce line count.
+- Keep a local cleanup inside its current callers and module unless the stated problem requires a
+  broader owner change.
+- Extract a helper when it names a real responsibility or removes meaningful complexity, rather
+  than merely reducing line count.
 
 ## Logic Refactor
 
@@ -61,8 +63,7 @@ Before editing an external surface:
 3. Obtain explicit confirmation for the breaking scope and compatibility policy.
 
 After confirmation, update callers, tests, migrations, and documented contracts together. Remove
-the old surface and compatibility paths the user agreed to retire; do not keep dormant legacy
-entry points.
+the old surface, compatibility paths, and dormant entry points the user agreed to retire.
 
 ## Stop Conditions
 

@@ -12,8 +12,8 @@ lifecycle bookkeeping.
 ## Workflow
 
 1. Resolve the Tokscale client and stable session ID. Pass both explicitly for any supported client.
-   Codex may omit them when `CODEX_THREAD_ID` is available. Never infer the newest session when the
-   stable ID is unknown.
+   Codex may omit them when `CODEX_THREAD_ID` is available. Request the stable ID when neither
+   source provides it.
 2. Run the platform wrapper once:
 
 ```powershell
@@ -28,8 +28,9 @@ sh .agents/skills/report-session-usage/scripts/task-metrics.sh usage --client <c
 
 Both wrappers invoke the deterministic Python 3.11+ `scripts/timing.py` core.
 
-3. Include the wrapper output verbatim in the handoff. Do not calculate time, reconstruct task
-   boundaries, aggregate other sessions, reformat the values, or add a second metrics summary.
+3. Include the wrapper output verbatim as the only metrics summary in the handoff. Leave time
+   calculation, task-boundary reconstruction, other-session aggregation, and value reformatting
+   outside this workflow.
 
 ## Consumption Recovery
 
@@ -42,16 +43,16 @@ If Tokscale fails for Codex, the script reads only the latest cumulative `token_
 matching Codex session. It reports those Token categories with source `codex-log` and marks estimated
 cost unavailable. Other clients have no skill-owned log fallback and return an explicit unavailable
 result. When sandbox access caused the failure and approval is available, retry the same wrapper once
-outside the sandbox; do not repeat cold scans.
+outside the sandbox.
 
 ## Metric Contract
 
 - Report input, cached input, cache write, output, reasoning, and total Token counts as exact integers.
-- Label money as Tokscale `estimated API-equivalent cost`, never billed cost.
+- Label money as Tokscale `estimated API-equivalent cost`.
 - Missing logs and unavailable cost remain explicit problems; one unavailable value does not hide
   available Token evidence.
-- Do not report elapsed time, task duration, model activity, tool activity, task receipts, session
-  attachment, or attribution gaps.
+- Limit the report to whole-session token categories, estimated API-equivalent cost, and explicit
+  evidence problems.
 
 ## Output
 

@@ -6,8 +6,8 @@ Scope: Dart and Flutter ownership, state, lifecycle, UI, routing, models, and an
 
 ## Public Surface And Ownership
 
-- Keep public APIs narrow and product-driven; do not expose helpers or move owner-local behavior for
-  tests or convenience.
+- Keep public APIs narrow and product-driven; meet test and caller needs without exposing helpers or
+  moving owner-local behavior solely for convenience.
 - Keep domain invariants with the value or service that owns them.
 - Keep owner-local behavior as instance members by default.
 - Keep top-level functions for framework entry points, file-level declarations, shared algorithms,
@@ -32,7 +32,8 @@ Scope: Dart and Flutter ownership, state, lifecycle, UI, routing, models, and an
 - Treat provider `build()` as reactive; it may run again whenever dependencies change.
 - Register every `onDispose` callback immediately after creating its disposable resource.
 - Register disposal before any `await`.
-- Do not assign `state`, read providers, or touch `Ref` inside `onDispose`.
+- Use `onDispose` only to release captured resources; keep state assignment, provider reads, and
+  `Ref` access outside the callback.
 
 ## Async Boundaries
 

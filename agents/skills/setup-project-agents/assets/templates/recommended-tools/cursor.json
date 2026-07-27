@@ -19,7 +19,7 @@
     {
       "id": "superpowers",
       "name": "Superpowers for Cursor",
-      "target_version": "6.0.0",
+      "target_version": "6.1.1",
       "comparison": ">",
       "detectors": [
         {
@@ -34,7 +34,7 @@
     {
       "id": "codegraph",
       "name": "CodeGraph",
-      "target_version": "1.4.0",
+      "target_version": "1.4.1",
       "comparison": ">",
       "detectors": [
         {
@@ -49,7 +49,7 @@
     {
       "id": "tokscale",
       "name": "Tokscale",
-      "target_version": "4.5.2",
+      "target_version": "4.6.1",
       "comparison": ">",
       "detectors": [
         {

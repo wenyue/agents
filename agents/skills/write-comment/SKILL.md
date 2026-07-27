@@ -25,8 +25,8 @@ Project conventions override the defaults below.
 
 1. Identify what a future reader would misunderstand, violate, or have to rediscover without the
    comment.
-2. If the answer is nothing, do not add a comment; improve the name or structure when that is the
-   real problem.
+2. If the answer is nothing, leave the code uncommented and improve the name or structure when that
+   is the real problem.
 3. Choose the comment role: API contract, invariant, lifecycle, edge case, failure behavior,
    rationale, external requirement, or local intent.
 4. Write the smallest statement that supplies the missing information.
@@ -56,14 +56,14 @@ Project conventions override the defaults below.
 
 ## Examples
 
-Good comments add a missing constraint or reason:
+**Preferred**
 
 ```text
 // Keep the old token until persistence succeeds so a failed write can be retried.
 # The service reports healthy before the index is ready; poll the readiness endpoint instead.
 ```
 
-Bad comments restate visible code:
+**Avoid**
 
 ```text
 // Increment the retry count.
@@ -72,9 +72,9 @@ Bad comments restate visible code:
 
 ## Preserve Special Forms
 
-Do not rewrite a valid marker, suppression directive, documentation tag, URL, code fragment, or
-generated comment merely to make it sentence-shaped. Change it only when the target project's rule
-or the user's request requires the change.
+Preserve valid markers, suppression directives, documentation tags, URLs, code fragments, and
+generated comments in their required form. Change one only when the target project's rule or the
+user's request requires it.
 
 ## Result
 

@@ -29,9 +29,10 @@ boundaries.
   manifest-selected assets into a target repository under `.agents/`.
 - Rule and Skill blueprints under `agents/blueprints/` guide creation of complete target-owned
   `.agents/` files; the blueprints themselves are not installed as runtime content.
-- Changes do not flow from `.agents/` back into `agents/`.
-- Changes do not flow from `agents-zh/` into `agents/`, `.agents/`, manifests, wrappers, or target
-  repositories.
+- Treat public-to-target synchronization as one-way; `.agents/` changes have no reverse path into
+  `agents/`.
+- Treat `agents-zh/` as a terminal reading mirror with no path into `agents/`, `.agents/`,
+  manifests, wrappers, or target repositories.
 
 ## Script and Test Ownership
 
@@ -39,8 +40,8 @@ boundaries.
   distribute it as part of the operational skill.
 - Keep public distribution data under
   `agents/skills/setup-project-agents/references/`.
-- Keep repository maintenance and contract tests under `tests/`; do not distribute them as runtime
-  skill resources.
+- Keep repository maintenance and contract tests under `tests/`, outside distributed runtime Skill
+  resources.
 - Repository tests may import support scripts from their owning public skill directories without
   moving those scripts out of their runtime owners.
 
@@ -50,12 +51,12 @@ boundaries.
   `.agents/skills/change-set-verification/SKILL.md`.
 - Keep the local verification skill self-contained because this repository declares no package,
   module, service, formatter, linter, fixer, build, or environment-setup boundary.
-- Do not add `.agents/skills/worktree-environment-setup/` unless the repository later declares a
-  real preparation step.
+- Add `.agents/skills/worktree-environment-setup/` only after the repository declares a real
+  preparation step.
 
 ## Boundaries
 
 - Keep runtime versions and executable commands in `Project Tools`.
 - Keep public ownership, mirror maintenance, and installation policy in `Project Rules`.
-- Do not infer application modules, package dependencies, or service layers from the catalog
-  directory structure.
+- Describe application modules, package dependencies, or service layers only from direct repository
+  evidence, not from the catalog directory structure.

@@ -12,13 +12,14 @@ description: 当具名关联 Git worktree 中已通过验证的实现需要返�
 - **Review mode：** 将任务结果放入工作区，保持为 unstaged 或 untracked，同时保留 base HEAD、index 和无关的本地变更。
 - **Commit mode：** 只有用户明确提出要求，且任务路径与 base 上的本地变更没有重叠时，才 fast-forward base 分支。
 
-绝不能将含糊的请求解释为 commit mode。
+请求没有明确选择 commit mode 时，使用 review mode。
 
 ## 准备任务分支
 
 1. 必须使用具名的关联任务分支，且 HEAD 不能处于 detached 状态。
 2. 确认任务验证已通过。分别识别任务 worktree 中 staged、unstaged 和 untracked 的变更；纳入已确认属于任务的内容，所有权不明确时停止。
-3. 使用 `git worktree list --porcelain` 和 Git common directory 找出 base 检出目录及其分支。不得假定分支名为 `main` 或 `master`；无法明确目标 base 时停止。
+3. 使用 `git worktree list --porcelain` 和 Git common directory 找出 base 检出目录及其分支；
+   这些证据无法确定唯一目标 base 时停止。
 4. 将任务相对于 merge base 的全部工作整理成恰好一个业务提交。
 5. 将该提交 rebase 到当前 base HEAD。只有冲突明确属于任务范围、没有歧义且可验证时，才自动解决；否则中止 rebase 并请求用户决定。
 6. 确保任务 worktree 干净；如果整理提交或 rebase 改变了内容，重新运行受影响的检查。
@@ -26,13 +27,15 @@ description: 当具名关联 Git worktree 中已通过验证的实现需要返�
 ## Base 快照与恢复数据
 
 1. 记录 base 分支、HEAD、index tree、staged 变更、unstaged 变更和 untracked 文件。
-2. 计算最终任务路径，并将其备份到仓库外部。在 manifest 中记录文件类型，以及原本不存在的路径。不得使用 stash。
+2. 计算最终任务路径，并将其备份到仓库外部。在 manifest 中记录文件类型，以及原本不存在的路径。
+   使用快照和外部备份保存本地状态，不使用 stash。
 3. 临近传输前，再将 base 分支和 HEAD 与快照比较。如果任一发生移动，重新 rebase 任务提交，并更新快照、受影响路径和备份。
 
 ## Review Mode
 
 1. 保持 base HEAD 和 index 不变。
-2. 对 base 上没有本地变更的任务路径，先检查待传输内容，再只更新 working tree。不得使用会写入 index 的 checkout、apply 或 restore 模式。
+2. 对 base 上没有本地变更的任务路径，先检查待传输内容，再通过不会改变 index 的方式只更新
+   working tree。
 3. 对内容重叠的文本路径，在临时文件中以任务提交的 parent、当前 base working file 和任务结果执行三方合并。路径名相同本身不构成冲突。
 4. 只有结果无歧义、属于任务范围且可以验证时，才自主解决。
 5. 遇到 delete/modify 冲突、复杂 rename、二进制冲突、互斥行为、归属不明的生成输出或任何无法验证的合并时停止。如果项目提供确定性 generator，应从源头重新生成文件。
@@ -58,7 +61,8 @@ description: 当具名关联 Git worktree 中已通过验证的实现需要返�
 
 ## 禁止的操作
 
-此 skill 绝不能执行 push、pull、force-update、stash、reset、clean，也不能创建 merge commit。PR、保留分支或丢弃结果等后续操作交给
+此 Skill 没有执行 push、pull、force-update、stash、reset、clean 或创建 merge commit 的权限。
+PR、保留分支或丢弃结果等后续操作交给
 `superpowers:finishing-a-development-branch`。
 
 ## 结果

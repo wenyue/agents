@@ -11,7 +11,7 @@ description: 需要报告 Tokscale 支持的一个稳定 Agent Session 的 Token
 ## 工作流
 
 1. 确定 Tokscale client 和稳定 Session ID。任何受支持的 client 都可以显式传入这两个值；Codex
-   存在 `CODEX_THREAD_ID` 时可以省略。稳定 ID 未知时不得猜测最新 Session。
+   存在 `CODEX_THREAD_ID` 时可以省略。两个来源都无法提供稳定 ID 时，向用户索取。
 2. 在当前平台运行一次 wrapper：
 
 ```powershell
@@ -26,8 +26,8 @@ sh .agents/skills/report-session-usage/scripts/task-metrics.sh usage --client <c
 
 两个 wrapper 都会调用 Python 3.11+ 的确定性核心 `scripts/timing.py`。
 
-3. 在交接回复中原样引用 wrapper 输出。不得计算时间、重建任务边界、聚合其他 Session、重新排版数值，
-   也不要再写第二份指标摘要。
+3. 在交接回复中原样引用 wrapper 输出，并将它作为唯一的指标摘要。本流程不计算时间、不重建任务边界、
+   不聚合其他 Session，也不重新排版数值。
 
 ## 消耗恢复
 
@@ -38,14 +38,14 @@ sh .agents/skills/report-session-usage/scripts/task-metrics.sh usage --client <c
 如果 Codex 的 Tokscale 查询失败，脚本只读取匹配 Codex Session 中最新的累计 `token_count` 事件，
 返回其中的 Token 分类，来源标为 `codex-log`，API 等价估算费用标为不可用。其他 client 没有本 Skill
 提供的日志回退路径，应明确返回不可用。如果失败由沙箱权限引起且可以申请授权，只在沙箱外重试同一
-wrapper 一次；不得反复执行冷扫描。
+wrapper 一次。
 
 ## 指标契约
 
 - input、cached input、cache write、output、reasoning 和 total Token 都使用精确整数。
-- 费用必须标为 Tokscale `API 等价估算费用`，不得称为实际账单。
+- 费用标为 Tokscale `API 等价估算费用`。
 - 日志缺失和费用不可用必须作为问题明确说明；某项不可用时仍要保留已经取得的 Token 证据。
-- 不得报告实际耗时、任务时长、模型活动、工具活动、任务凭据、Session 登记或归因缺口。
+- 报告只包含整个 Session 的 Token 分类、API 等价估算费用和明确的证据问题。
 
 ## 输出
 

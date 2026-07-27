@@ -39,14 +39,14 @@ locally at low cost.
   diagnostics identify a local, low-cost correction. Mention a diagnostic only when its meaning
   affects architecture, ownership, accepted exceptions, or another non-local decision.
 - Name the semantic source for generated outputs and external schemas, the regeneration obligation,
-  and the files or regions that must not be edited by hand.
+  and the files or regions whose changes must come through that source.
 - State domain vocabulary, naming, identifiers, prefixes, localization, and user-visible copy rules
   only when they constrain valid changes and tooling does not reliably identify a local, low-cost
   correction.
 - State persistence compatibility, migrations, state ownership, lifecycle transitions,
   cancellation, concurrency, and cleanup invariants where the repository defines them.
-- Express each verified exception to a broader rule with its exact scope and condition. Do not
-  silently weaken the broader policy outside that exception.
+- Express each verified exception to a broader rule with its exact scope and condition, and preserve
+  the broader policy outside that exception.
 - Organize the final rule by owned behavior, not by the order in which evidence was discovered.
 
 ## Boundaries

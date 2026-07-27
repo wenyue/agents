@@ -33,7 +33,7 @@ the source.
 | Third-party skills | `.skillshare/skills/<skill>/SKILL.md` |
 | Copilot guidance | `.github/instructions/*.instructions.md` |
 
-- Use repository-root-relative paths in tracked configuration; do not use absolute filesystem paths.
+- Use repository-root-relative paths in tracked configuration.
 - When content appears in more than one wrapper, move it to the source and reduce the wrappers.
 - A thin wrapper contains only platform metadata or runtime fields plus one source reference.
 
@@ -60,8 +60,8 @@ When adding a subagent:
 
 1. Author the shared prompt in `.agents/agents/<name>.md`.
 2. Add thin Cursor, Codex, and Copilot wrappers for platforms that expose it.
-3. Keep repository-wide Copilot guidance in `.github/instructions/*.instructions.md`; do not
-   duplicate it in subagent prompts.
+3. Keep repository-wide Copilot guidance in `.github/instructions/*.instructions.md` and reference
+   it from subagent prompts when needed.
 
 ## Numbering
 

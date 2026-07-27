@@ -7,11 +7,3 @@ Thumbs.db
 *.log
 __pycache__/
 *.pyc
-
-# Local skillshare scratch data for third-party skills.
-.skillshare/logs/
-.skillshare/cache/
-.skillshare/tmp/
-
-# Local debug instrumentation output.
-.agents/debug.log
