@@ -57,9 +57,21 @@ outcomes across tasks.
   results remain useful; use `Promise.all` when every result is required.
 - Keep dependent, state-changing, approval, and wait calls sequential, and batch only work already
   inside the authorized scope.
-- Minimize model-visible polling. For long-running work, prefer one 30–60-second wait over repeated
-  short waits when supported. After an unchanged wait, query status only when it can change the
-  next action; otherwise wait again or do useful independent work.
+- Minimize model-visible polling. Keep progress updates within the runtime's maximum interval; when
+  none is specified, do not let more than 60 seconds pass between updates. For long-running work,
+  prefer the longest single wait that does not exceed that interval. If a wait produces no new
+  state, query status only when it can change the next action; otherwise wait again or do useful
+  independent work.
+- The progress-update interval is not a process timeout. When a command may run longer, set an
+  execution timeout that covers the entire operation and use yielded execution or an equivalent
+  wait mechanism to preserve the process and its output streams.
+- Do not intentionally time out a healthy process to regain conversational control. After an
+  unexpected timeout or interrupted execution channel, inspect the original process and its
+  preserved output before retrying. Do not retry the same logical operation while the original
+  process may still be running or the effects of repeating it are unknown.
+- Treat a long-running command as successful only when its final exit status indicates success.
+  Partial logs, generated files, and a missing process without its exit status do not establish
+  success.
 - Reuse established patterns and ownership boundaries. Introduce new structure only when the current
   requirement needs it.
 - When a workaround is necessary, contain it and make its limitation clear.

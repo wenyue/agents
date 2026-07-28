@@ -23,11 +23,16 @@
   均由 `superpowers:using-git-worktrees` 负责。
 - 创建工作树后，如果目标仓库提供 `worktree-environment-setup` Skill，应先使用它，再执行
   `superpowers:using-git-worktrees` 要求的基线验证。
-- 实现完成后使用 `worktree-integrate`。它的默认审查模式会将改动作为未暂存或未跟踪内容送回当前检出，
-  同时保留当前 `HEAD`、索引和无关本地改动。
+- 具名关联 worktree 中的实现完成并通过验证时，先提供四种选择，再执行操作：在本地合并到已记录的
+  基准分支；推送并创建 pull request；保留任务分支和 worktree；或集成到当前 checkout。
+- 按用户选择的结果直接执行，不再重复询问：集成到当前 checkout 使用 `worktree-integrate`；
+  本地合并、pull request、保留分支或用户明确要求的丢弃使用
+  `superpowers:finishing-a-development-branch`。
+- 即使当前 checkout 位于已记录的基准分支，也要将本地合并和集成到当前 checkout 视为不同结果。
+  本地合并会推进基准分支；`worktree-integrate` 的 review mode 保持当前 `HEAD` 和 index 不变，
+  将任务改动作为 unstaged 或 untracked 内容交回，并保留无关本地改动。
 - 只有用户明确要求整合后创建本地提交时，才使用 `worktree-integrate` 的提交模式，并将所有业务改动放在
   一个提交中。
-- 需要创建拉取请求、保留分支或丢弃分支时，使用 `superpowers:finishing-a-development-branch`。
 
 ## Git 安全
 

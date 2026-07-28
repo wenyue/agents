@@ -52,6 +52,17 @@ outcomes across tasks.
   context.
 - Keep the action within the requested scope. Present a broader option and its material trade-offs
   before expanding that scope.
+- Keep progress updates within the runtime's maximum interval; when none is specified, do not let
+  more than 60 seconds pass between updates. This interval is not a process timeout. When a command
+  may run longer, set an execution timeout that covers the entire operation and use yielded
+  execution or an equivalent wait mechanism to preserve the process and its output streams.
+- Do not intentionally time out a healthy process to regain conversational control. After an
+  unexpected timeout or interrupted execution channel, inspect the original process and its
+  preserved output before retrying. Do not retry the same logical operation while the original
+  process may still be running or the effects of repeating it are unknown.
+- Treat a long-running command as successful only when its final exit status indicates success.
+  Partial logs, generated files, and a missing process without its exit status do not establish
+  success.
 - Reuse established patterns and ownership boundaries. Introduce new structure only when the current
   requirement needs it.
 - When a workaround is necessary, contain it and make its limitation clear.

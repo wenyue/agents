@@ -26,13 +26,18 @@ ownership, and Git safety.
   creation timing, detection, consent, location, and creation.
 - After creating a worktree, use the target repository's `worktree-environment-setup` skill when it
   exists, then run the baseline verification required by `superpowers:using-git-worktrees`.
-- When implementation is complete, use `worktree-integrate`. Its default review mode returns changes
-  to the current checkout as unstaged or untracked work while preserving the current `HEAD`, index,
-  and unrelated local changes.
+- When implementation in a named linked worktree is complete and verified, present four outcomes
+  before acting: merge locally into the recorded base branch; push and create a pull request; keep
+  the task branch and worktree; or integrate into the current checkout.
+- Execute the selected outcome without asking again: use `worktree-integrate` for current-checkout
+  integration and `superpowers:finishing-a-development-branch` for local merge, pull request,
+  keep-branch, or explicitly requested discard.
+- Treat local merge and current-checkout integration as different outcomes even when the current
+  checkout is on the recorded base branch. Local merge advances the base branch;
+  `worktree-integrate` review mode keeps the current `HEAD` and index unchanged and returns task
+  changes as unstaged or untracked while preserving unrelated local changes.
 - Use `worktree-integrate` commit mode only when the user explicitly requests local integration with
   a commit, and keep all business changes in one commit.
-- Use `superpowers:finishing-a-development-branch` for pull-request, keep-branch, or discard
-  outcomes.
 
 ## Git Safety
 

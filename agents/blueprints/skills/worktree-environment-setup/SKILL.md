@@ -21,7 +21,10 @@ variables, credentials, local services, and readiness checks. Establish:
 - the narrowest repository-owned commands that install locked dependencies, initialize required
   inputs, generate required outputs, or start required services;
 - the supported host platforms, script runtime already established by the project, rerun behavior,
-  failure behavior, and observable readiness result; and
+  failure behavior, and observable readiness result;
+- for each long-running entry point, whether the command terminates or remains running, its expected
+  duration or startup time, applicable execution timeout, a wait mechanism that preserves the
+  process and its output streams, and observable success evidence; and
 - responsibilities owned by worktree creation, machine provisioning, baseline verification,
   implementation, synchronization, integration, or cleanup instead of environment setup.
 
@@ -55,6 +58,16 @@ check.
 - Make every owned command sequence stop on failure and safe to rerun after partial completion.
   Stop when the verified command is unavailable instead of substituting a command or degraded
   result.
+- When an entry point may outlive the progress-reporting interval, require yielded execution or an
+  equivalent wait mechanism that preserves the process and its output streams. Set a terminating
+  command's execution timeout long enough for its expected duration; manage a persistent service
+  through the repository's evidence-backed lifecycle mechanism. State that the progress interval
+  is not a process timeout.
+- When an execution channel is interrupted, require the agent to inspect the original process and
+  preserved output before retrying. Do not repeat the same setup operation while the original
+  process may still be running or the effects of repeating it are unknown. Require a final zero exit
+  status for commands expected to terminate, and the declared liveness and readiness checks for
+  persistent services. Establish setup success only after every declared readiness check passes.
 - Verify readiness through real project configuration, required outputs, and tool or service
   behavior. Version probes alone are insufficient when functional readiness can be checked.
 - Include `## Failure Recovery`. Report the failed step, exact command or condition, exit status
