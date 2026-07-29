@@ -3,7 +3,7 @@
 Strength: `Default`
 
 Scope: Cross-language ownership, boundaries, clarity, state integrity, dependencies, abstractions,
-and documentation.
+diagnostics, and documentation.
 
 ## Ownership And APIs
 
@@ -22,6 +22,14 @@ and documentation.
 - Introduce an abstraction only when it represents a real concept, protects an invariant, or removes
   meaningful duplication while reducing maintenance cost.
 - Avoid helpers, adapters, and generic layers that obscure ownership or serve only one trivial use.
+
+## Diagnostics And Suppressions
+
+- Do not suppress compiler, analyzer, or linter diagnostics at the configuration level. Use an
+  inline or file-wide suppression only when resolving the diagnostic would violate the approved
+  design or produce a materially worse result. Before each suppression, state its exact diagnostic,
+  scope, and necessity, then obtain explicit user confirmation. General or prior approval does not
+  authorize a later suppression.
 
 ## State And Dependencies
 
