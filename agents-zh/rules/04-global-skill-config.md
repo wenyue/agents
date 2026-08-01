@@ -2,7 +2,7 @@
 
 强度：`Mandatory`
 
-适用范围：子 Agent 委派、Superpowers 启用条件与执行计划语言、工作树工作流归属和 Git 安全。
+适用范围：子 Agent 委派、Superpowers 启用条件、工作树工作流归属和 Git 安全。
 
 ## 委派
 
@@ -15,7 +15,6 @@
 - 编写 Skill 时使用 `write-skill`，编写 Rule 时使用 `write-rule`。仅在用户明确要求对抗性行为评测
   或压力测试时使用 `superpowers:writing-skills`。
 - 仅在用户明确要求 brainstorming 时使用 `superpowers:brainstorming`。
-- 具体的 Superpowers 执行计划使用英语。此例外只适用于分步实现计划，不适用于设计文档。
 
 ## 工作树工作流
 

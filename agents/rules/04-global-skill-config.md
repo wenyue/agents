@@ -2,8 +2,7 @@
 
 Strength: `Mandatory`
 
-Scope: Subagent delegation, Superpowers activation and execution-plan language, worktree workflow
-ownership, and Git safety.
+Scope: Subagent delegation, Superpowers activation, worktree workflow ownership, and Git safety.
 
 ## Delegation
 
@@ -17,8 +16,6 @@ ownership, and Git safety.
   `superpowers:writing-skills` for an explicit user request for adversarial behavioral evaluation or
   pressure testing.
 - Reserve `superpowers:brainstorming` for an explicit user request for brainstorming.
-- Use English for concrete Superpowers execution plans. This exception applies to step-by-step
-  implementation plans, not design documents.
 
 ## Worktree Workflow
 
