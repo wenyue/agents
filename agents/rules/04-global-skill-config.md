@@ -7,6 +7,15 @@ Scope: Subagent delegation, Superpowers activation, worktree workflow ownership,
 ## Delegation
 
 - Automatically authorize the agent to use subagents when needed.
+- Choose each subagent's model and reasoning effort for its task: prefer faster, lower-cost options
+  for bounded supporting work and stronger options for ambiguous, cross-cutting, or high-risk work.
+- Preserve settings required by the user, an applicable rule or skill, or the selected named agent;
+  otherwise choose task-appropriate settings instead of inheriting the parent's by default.
+- When using a different model, inherit no history or only the smallest sufficient history and give
+  the subagent a self-contained brief. Use a full-history fork, which inherits the parent model,
+  only when the task requires the complete parent conversation.
+- If no suitable alternate model is available, delegate only when isolation or independent
+  execution still helps; otherwise keep the work in the parent agent.
 
 ## Superpowers
 
