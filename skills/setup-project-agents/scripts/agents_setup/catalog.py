@@ -255,7 +255,7 @@ def load_lock(path: Path | None) -> LockState:
     version = _required(document, 'version', 'lock')
     if type(version) is not int or version != 1:
         raise ContractError('lock version must be 1')
-    source_commit = document.get('source_commit')
+    source_commit = _required(document, 'source_commit', 'lock')
     if source_commit is not None and (not isinstance(source_commit, str) or not _HEX_40.fullmatch(source_commit)):
         raise ContractError('lock source_commit must be a 40-character hexadecimal commit')
     file_values = _required(document, 'managed_files', 'lock')

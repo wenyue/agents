@@ -210,6 +210,19 @@ class SetupCatalogTest(unittest.TestCase):
                 json.dumps(
                     {
                         'version': 1,
+                        'managed_files': [],
+                        'managed_fields': [],
+                    }
+                ),
+                encoding='utf-8',
+            )
+            with self.assertRaisesRegex(ContractError, 'requires source_commit'):
+                load_lock(path)
+
+            path.write_text(
+                json.dumps(
+                    {
+                        'version': 1,
                         'source_commit': 'not-a-commit',
                         'managed_files': [],
                         'managed_fields': [],
