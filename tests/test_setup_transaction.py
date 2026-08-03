@@ -540,7 +540,7 @@ class SetupTransactionTest(unittest.TestCase):
                     apply_plan(target, self.plan(Change(ChangeKind.UPDATE, PurePosixPath('owned'), b'new')))
 
             replace.assert_not_called()
-            self.assertEqual(owned.read_bytes(), b'attacker')
+            self.assertEqual(owned.read_bytes(), b'old')
 
     def test_fallback_root_swap_does_not_rollback_into_new_root(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -561,14 +561,13 @@ class SetupTransactionTest(unittest.TestCase):
 
             with mock.patch.object(transaction, '_SECURE_DIR_FDS', False), \
                  mock.patch.object(transaction, '_replace', side_effect=replace_then_swap):
-                with self.assertRaisesRegex(TransactionError, 'fallback root') as raised:
+                with self.assertRaisesRegex(TransactionError, 'unsupported') as raised:
                     apply_plan(target, self.plan(
                         Change(ChangeKind.CREATE, PurePosixPath('new/a'), b'a'),
                         Change(ChangeKind.CREATE, PurePosixPath('new/b'), b'b'),
                     ))
-            self.assertTrue((target / 'new').is_dir())
-            self.assertEqual(list((target / 'new').iterdir()), [])
-            self.assertIn('fallback root', str(raised.exception))
+            self.assertFalse((target / 'new').exists())
+            self.assertIn('unsupported', str(raised.exception))
 
     def test_fallback_cleanup_stops_when_root_swaps_after_create_result_removal(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -600,13 +599,12 @@ class SetupTransactionTest(unittest.TestCase):
             with mock.patch.object(transaction, '_SECURE_DIR_FDS', False), \
                  mock.patch.object(transaction, '_replace', side_effect=replace_once_then_fail), \
                  mock.patch.object(Path, 'unlink', new=unlink_then_swap):
-                with self.assertRaisesRegex(TransactionError, 'fallback root'):
+                with self.assertRaisesRegex(TransactionError, 'unsupported'):
                     apply_plan(target, self.plan(
                         Change(ChangeKind.CREATE, PurePosixPath('new/a'), b'a'),
                         Change(ChangeKind.CREATE, PurePosixPath('new/b'), b'b'),
                     ))
-            self.assertTrue((target / 'new').is_dir())
-            self.assertEqual(list((target / 'new').iterdir()), [])
+            self.assertFalse((target / 'new').exists())
 
 
 if __name__ == '__main__':

@@ -626,4 +626,8 @@ def apply_plan(target_root: Path, plan: Plan) -> None:
                 raise
             raise TransactionError(error) from error
         return
-    _apply_fallback(Path(target_root), plan)
+    # Validate the in-memory plan before refusing; callers can still surface contract errors.
+    _operations(plan)
+    raise TransactionError(
+        OSError('secure directory-relative transactional apply is unsupported on this platform')
+    )
