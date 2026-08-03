@@ -12,14 +12,10 @@ def load_json(relative_path: str) -> dict:
 
 
 class PluginManifestTest(unittest.TestCase):
-    def test_public_catalog_matches_native_plugin_version(self):
-        public = load_json(
-            'skills/setup-project-agents/references/public_assets.json'
-        )
-        self.assertEqual(
-            public['catalog'],
-            {'id': 'agents', 'version': '0.1.0', 'revision': 'v0.1.0'},
-        )
+    def test_project_catalog_matches_native_plugin_version(self):
+        catalog = load_json('catalog/project-assets.json')
+        self.assertEqual(catalog['plugin']['id'], 'agents')
+        self.assertEqual(catalog['plugin']['version'], '0.1.0')
 
     def test_repository_root_is_the_only_plugin_root(self):
         version = (REPO_ROOT / 'VERSION').read_text(encoding='utf-8').strip()

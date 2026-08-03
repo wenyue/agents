@@ -34,7 +34,7 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     | {f'COM{number}' for number in range(1, 10)}
     | {f'LPT{number}' for number in range(1, 10)}
 )
-_ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode', 'control_plane'})
+_ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode', 'control_plane', 'metadata'})
 _CATALOG_FIELDS = frozenset({'plugin', 'assets'})
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
 _PROJECT_CONFIG_FIELDS = frozenset({'version', 'platforms', 'hooks_enabled', 'selected_rules', 'selected_skills', 'selected_agents'})
@@ -99,6 +99,75 @@ def _required(value: Mapping[str, object], key: str, label: str) -> object:
     return value[key]
 
 
+def _nonempty_string(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ContractError(f'{label} must be a non-empty string')
+    return value
+
+
+def _rule_metadata(value: object, *, project_blueprint: bool) -> Mapping[str, object]:
+    metadata = _object(value, 'asset metadata')
+    _fields(metadata, frozenset({'section', 'read_when', 'strength', 'cursor', 'github'}), 'rule metadata')
+    for field in ('section', 'read_when', 'strength', 'cursor', 'github'):
+        _required(metadata, field, 'rule metadata')
+    section = _nonempty_string(metadata['section'], 'rule metadata section')
+    if section not in {'global', 'base', 'project'} or (project_blueprint and section != 'project'):
+        raise ContractError('rule metadata section is unsupported')
+    strength = _nonempty_string(metadata['strength'], 'rule metadata strength')
+    if strength not in {'Mandatory', 'Default', 'Advisory'}:
+        raise ContractError('rule metadata strength is unsupported')
+    _nonempty_string(metadata['read_when'], 'rule metadata read_when')
+    cursor = _object(metadata['cursor'], 'rule metadata cursor')
+    allowed_cursor = {'alwaysApply'} if project_blueprint else {'description', 'globs', 'alwaysApply'}
+    _fields(cursor, frozenset(allowed_cursor), 'rule metadata cursor')
+    _required(cursor, 'alwaysApply', 'rule metadata cursor')
+    if type(cursor['alwaysApply']) is not bool:
+        raise ContractError('rule metadata cursor alwaysApply must be a boolean')
+    if not project_blueprint:
+        _nonempty_string(_required(cursor, 'description', 'rule metadata cursor'), 'rule metadata cursor description')
+        if not cursor['alwaysApply']:
+            _nonempty_string(_required(cursor, 'globs', 'rule metadata cursor'), 'rule metadata cursor globs')
+        elif 'globs' in cursor:
+            _nonempty_string(cursor['globs'], 'rule metadata cursor globs')
+    github = _object(metadata['github'], 'rule metadata github')
+    _fields(github, frozenset({'applyTo'}), 'rule metadata github')
+    _nonempty_string(_required(github, 'applyTo', 'rule metadata github'), 'rule metadata github applyTo')
+    return dict(metadata)
+
+
+def _agent_metadata(value: object) -> Mapping[str, object]:
+    metadata = _object(value, 'asset metadata')
+    _fields(metadata, frozenset({'description', 'codex', 'cursor'}), 'agent metadata')
+    _nonempty_string(_required(metadata, 'description', 'agent metadata'), 'agent metadata description')
+    codex = _object(_required(metadata, 'codex', 'agent metadata'), 'agent metadata codex')
+    _fields(codex, frozenset({'sandbox_mode'}), 'agent metadata codex')
+    _nonempty_string(_required(codex, 'sandbox_mode', 'agent metadata codex'), 'agent metadata codex sandbox_mode')
+    cursor = _object(_required(metadata, 'cursor', 'agent metadata'), 'agent metadata cursor')
+    _fields(cursor, frozenset({'readonly'}), 'agent metadata cursor')
+    if type(_required(cursor, 'readonly', 'agent metadata cursor')) is not bool:
+        raise ContractError('agent metadata cursor readonly must be a boolean')
+    return dict(metadata)
+
+
+def _metadata(value: object, kind: str, target: PurePosixPath | None) -> Mapping[str, object]:
+    if kind == 'rule':
+        return _rule_metadata(value, project_blueprint=False)
+    if kind == 'agent':
+        return _agent_metadata(value)
+    is_project_rule_blueprint = (
+        kind == 'blueprint'
+        and target is not None
+        and target.parts[:2] == ('.agents', 'rules')
+    )
+    if is_project_rule_blueprint:
+        return _rule_metadata(value, project_blueprint=True)
+    if value is not None:
+        metadata = _object(value, 'asset metadata')
+        if metadata:
+            raise ContractError(f'asset kind {kind} cannot declare metadata')
+    return {}
+
+
 def _platforms(value: object, label: str, default: tuple[Platform, ...]) -> tuple[Platform, ...]:
     if value is None:
         return default
@@ -136,7 +205,10 @@ def parse_asset(value: Mapping[str, object]) -> AssetSpec:
         raise ContractError('asset control_plane must be a boolean')
     if control_plane and target is not None:
         raise ContractError('a control-plane asset cannot have a project target')
-    return AssetSpec(asset_id, kind, source, target, platforms, mode, control_plane)
+    return AssetSpec(
+        asset_id, kind, source, target, platforms, mode, control_plane,
+        _metadata(asset.get('metadata'), kind, target),
+    )
 
 
 def _load_json(path: Path, label: str) -> Mapping[str, object]:

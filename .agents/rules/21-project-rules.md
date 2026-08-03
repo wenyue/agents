@@ -11,11 +11,10 @@ repository-local runtime boundaries, and repository test contracts.
   rules, skills, agent prompts, templates, references, and scripts.
 - Make public catalog changes in `agents/`; treat `.agents/` as local runtime and `agents-zh/` as a
   reading mirror rather than sources for English public assets.
-- Treat `agents/skills/setup-project-agents/references/public_assets.json` as the owner of public
-  asset inclusion, declared retirements, Rule and Skill blueprints, wrapper templates, and managed
-  root-configuration declarations.
-- Keep deterministic synchronization and manifest validation in
-  `agents/skills/setup-project-agents/scripts/`, while target-specific policy remains in the target
+- Treat `catalog/project-assets.json` as the owner of public asset inclusion, Rule and Skill
+  blueprints, wrapper routing, renderer metadata, and managed root-configuration declarations.
+- Keep deterministic setup, source validation, rendering, and transaction behavior in
+  `skills/setup-project-agents/scripts/`, while target-specific policy remains in the target
   repository.
 
 ## Simplified-Chinese Mirror

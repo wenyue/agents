@@ -67,6 +67,129 @@ class SetupCatalogTest(unittest.TestCase):
                 }
             )
 
+    def test_asset_metadata_is_strictly_typed_and_available_to_renderers(self):
+        parsed = parse_asset(
+            {
+                'id': 'rule',
+                'kind': 'rule',
+                'source': 'rules/rule.md',
+                'target': '.agents/rules/rule.md',
+                'metadata': {
+                    'section': 'global',
+                    'read_when': 'Always',
+                    'strength': 'Mandatory',
+                    'cursor': {
+                        'description': 'A rule',
+                        'globs': '**',
+                        'alwaysApply': True,
+                    },
+                    'github': {'applyTo': '**'},
+                },
+            }
+        )
+        self.assertEqual(parsed.metadata['section'], 'global')
+        self.assertEqual(parsed.metadata['cursor']['alwaysApply'], True)
+
+        for metadata, message in (
+            ([], 'metadata must be an object'),
+            ({'unknown': True}, 'unknown rule metadata fields'),
+            ({
+                'section': 'global', 'read_when': 'Always', 'strength': 'Mandatory',
+                'cursor': {'description': 'A rule', 'alwaysApply': 'yes'},
+                'github': {'applyTo': '**'},
+            }, 'alwaysApply must be a boolean'),
+        ):
+            with self.subTest(metadata=metadata):
+                with self.assertRaisesRegex(ContractError, message):
+                    parse_asset(
+                        {
+                            'id': 'rule',
+                            'kind': 'rule',
+                            'source': 'rules/rule.md',
+                            'target': '.agents/rules/rule.md',
+                            'metadata': metadata,
+                        }
+                    )
+
+    def test_rule_agent_and_project_rule_blueprint_metadata_are_complete(self):
+        rule_metadata = {
+            'section': 'global',
+            'read_when': 'Always',
+            'strength': 'Mandatory',
+            'cursor': {'description': 'A rule', 'alwaysApply': True},
+            'github': {'applyTo': '**'},
+        }
+        rule = {
+            'id': 'rule',
+            'kind': 'rule',
+            'source': 'rules/rule.md',
+            'target': '.agents/rules/rule.md',
+            'metadata': rule_metadata,
+        }
+        for field in ('section', 'read_when', 'strength', 'cursor', 'github'):
+            with self.subTest(rule_field=field):
+                candidate = dict(rule)
+                candidate['metadata'] = dict(rule_metadata)
+                del candidate['metadata'][field]
+                with self.assertRaises(ContractError):
+                    parse_asset(candidate)
+        for parent, field in (('cursor', 'description'), ('cursor', 'alwaysApply'), ('github', 'applyTo')):
+            with self.subTest(parent=parent, field=field):
+                candidate = dict(rule)
+                candidate['metadata'] = {**rule_metadata, parent: dict(rule_metadata[parent])}
+                del candidate['metadata'][parent][field]
+                with self.assertRaises(ContractError):
+                    parse_asset(candidate)
+        for key, value in (('section', 'unknown'), ('strength', 'Required')):
+            with self.subTest(key=key):
+                candidate = dict(rule)
+                candidate['metadata'] = {**rule_metadata, key: value}
+                with self.assertRaises(ContractError):
+                    parse_asset(candidate)
+
+        agent_metadata = {
+            'description': 'An agent',
+            'codex': {'sandbox_mode': 'workspace-write'},
+            'cursor': {'readonly': False},
+        }
+        agent = {
+            'id': 'agent', 'kind': 'agent', 'source': 'agents/agent.md',
+            'target': '.agents/agents/agent.md', 'metadata': agent_metadata,
+        }
+        for field in ('description', 'codex', 'cursor'):
+            with self.subTest(agent_field=field):
+                candidate = dict(agent)
+                candidate['metadata'] = dict(agent_metadata)
+                del candidate['metadata'][field]
+                with self.assertRaises(ContractError):
+                    parse_asset(candidate)
+        for parent, field in (('codex', 'sandbox_mode'), ('cursor', 'readonly')):
+            with self.subTest(parent=parent, field=field):
+                candidate = dict(agent)
+                candidate['metadata'] = {**agent_metadata, parent: dict(agent_metadata[parent])}
+                del candidate['metadata'][parent][field]
+                with self.assertRaises(ContractError):
+                    parse_asset(candidate)
+
+        blueprint = {
+            'id': 'project-rule', 'kind': 'blueprint', 'source': 'blueprints/rule.md',
+            'target': '.agents/rules/project.md', 'mode': 'generate',
+            'metadata': {
+                'section': 'project', 'read_when': 'Project work', 'strength': 'Default',
+                'cursor': {'alwaysApply': True}, 'github': {'applyTo': '**'},
+            },
+        }
+        self.assertEqual(parse_asset(blueprint).metadata['section'], 'project')
+        blueprint['metadata']['section'] = 'base'
+        with self.assertRaises(ContractError):
+            parse_asset(blueprint)
+        with self.assertRaises(ContractError):
+            parse_asset({
+                'id': 'skill-blueprint', 'kind': 'blueprint', 'source': 'blueprints/skill.md',
+                'target': '.agents/skills/skill/SKILL.md', 'mode': 'generate',
+                'metadata': {'section': 'project'},
+            })
+
         with self.assertRaisesRegex(ContractError, 'control-plane'):
             parse_asset(
                 {

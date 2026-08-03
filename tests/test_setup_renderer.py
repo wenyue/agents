@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -350,9 +351,6 @@ class SetupRendererTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / 'source'
-            metadata = source / 'skills/setup-project-agents/references/public_assets.json'
-            metadata.parent.mkdir(parents=True)
-            metadata.write_text('{"rules": [], "agent_prompts": []}\n', encoding='utf-8')
             shared_source = source / 'rules/shared.md'
             shared_source.parent.mkdir(parents=True)
             shared_source.write_text('shared\n', encoding='utf-8')
@@ -403,6 +401,28 @@ class SetupRendererTest(unittest.TestCase):
             )
 
             self.assertEqual(rendered.files_by_path[target_path.as_posix()], b'generated\n')
+
+    def test_renderer_uses_catalog_metadata_without_a_legacy_references_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'source'
+            shutil.copytree(
+                REPO_ROOT,
+                source,
+                ignore=shutil.ignore_patterns('.git', '.superpowers', '__pycache__', '*.pyc'),
+            )
+            rendered = render_desired_state(
+                source,
+                root / 'target',
+                load_catalog(source),
+                self.config(False),
+                self.generated_tree(root),
+                self.models,
+                self.adapters,
+            )
+
+            self.assertIn('AGENTS.md', rendered.files_by_path)
+            self.assertIn('.cursor/rules/00-global-rule-config.mdc', rendered.files_by_path)
 
     def test_renderer_rejects_symlinked_target_reads(self):
         with tempfile.TemporaryDirectory() as temp_dir:

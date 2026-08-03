@@ -25,18 +25,14 @@ Use these repository-supported checks:
 
 Run both commands for every completed change set; together they form the required verification.
 
-## Public Sync Tooling
+## Project Setup Tooling
 
-- `agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py` is the English public
-  implementation installed into target repositories under
-  `.agents/skills/setup-project-agents/scripts/`.
-- The sync tool reads `agents/skills/setup-project-agents/references/public_assets.json` as its
-  public distribution manifest.
-- A normal sync invocation mutates the target repository; `--check` reports target drift without
-  writing target files. Neither invocation is a formatter, fixer, or replacement for this
-  repository's test command.
-- Run the sync tool against target repositories that consume the public catalog. Keep this
-  repository's intentionally curated `.agents/` runtime under its independent owner.
+- `skills/setup-project-agents/scripts/setup_project_agents.py` is the public setup control plane.
+- The setup command reads `catalog/project-assets.json`, fetches canonical `main` for an online
+  session, and applies only the lock-owned target snapshot.
+- `check` reports target drift without writes. Neither command is a formatter, fixer, or
+  replacement for this repository's test command.
+- Keep this repository's intentionally curated `.agents/` runtime under its independent owner.
 
 ## Boundaries
 

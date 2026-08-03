@@ -94,20 +94,6 @@ def _load_structured(path: Path, format_name: str) -> dict[str, object]:
     return value
 
 
-def _metadata(source_root: Path) -> Mapping[str, object]:
-    try:
-        value = json.loads(
-            (source_root / 'skills/setup-project-agents/references/public_assets.json').read_text(
-                encoding='utf-8'
-            )
-        )
-    except (OSError, json.JSONDecodeError) as error:
-        raise RenderError('cannot read public asset metadata') from error
-    if not isinstance(value, dict):
-        raise RenderError('public asset metadata must be an object')
-    return value
-
-
 def _copy_file(files: dict[PurePosixPath, bytes], path: PurePosixPath, content: bytes) -> None:
     if path in files:
         raise RenderError(f'duplicate rendered path: {path.as_posix()}')
@@ -139,15 +125,13 @@ def _copy_asset(files: dict[PurePosixPath, bytes], source: Path, target: PurePos
     raise RenderError(f'catalog source is missing: {source}')
 
 
-def _rule_rows(metadata: Mapping[str, object], section: str) -> str:
-    rules = metadata.get('rules', [])
-    if not isinstance(rules, list):
-        return ''
+def _rule_rows(catalog: Catalog, section: str) -> str:
     rows = []
-    for rule in rules:
-        if isinstance(rule, dict) and rule.get('section') == section:
+    for asset in catalog.assets:
+        metadata = asset.metadata
+        if asset.kind in {'rule', 'blueprint'} and metadata.get('section') == section:
             rows.append(
-                f"| {rule.get('read_when', '')} | `.agents/rules/{rule.get('file', '')}` | {rule.get('strength', '')} |"
+                f'| {metadata.get("read_when", "")} | `{asset.target.as_posix() if asset.target else ""}` | {metadata.get("strength", "")} |'
             )
     return '\n'.join(rows)
 
@@ -159,27 +143,29 @@ def _render_text(template: str, values: Mapping[str, object]) -> bytes:
     return template.encode()
 
 
-def _agent_values(metadata: Mapping[str, object], agent_id: str, target: PurePosixPath, models: Mapping[str, object]) -> dict[str, object]:
-    agents = metadata.get('agent_prompts', [])
-    agent = next((item for item in agents if isinstance(item, dict) and item.get('name') == agent_id), {})
-    if not isinstance(agent, dict):
-        agent = {}
+def _agent_values(asset, models: Mapping[str, object]) -> dict[str, object]:
+    agent_id = asset.id
+    target = asset.target
+    assert target is not None
+    agent = asset.metadata
     selected = models.get('agents', {})
     model = selected.get(agent_id, {}) if isinstance(selected, Mapping) else {}
     codex = model.get('codex', {}) if isinstance(model, Mapping) else {}
     cursor = model.get('cursor', {}) if isinstance(model, Mapping) else {}
     github = model.get('github', {}) if isinstance(model, Mapping) else {}
-    defaults = agent.get('codex', {}) if isinstance(agent.get('codex'), dict) else {}
-    cursor_defaults = agent.get('cursor', {}) if isinstance(agent.get('cursor'), dict) else {}
+    codex_defaults = agent['codex']
+    cursor_defaults = agent['cursor']
+    if not isinstance(codex_defaults, Mapping) or not isinstance(cursor_defaults, Mapping):
+        raise RenderError(f'agent metadata is invalid: {agent_id}')
     return {
         'agent.name': agent_id,
-        'agent.description': agent.get('description', ''),
+        'agent.description': agent['description'],
         'agent.apply_ref': target.as_posix(),
         'agent.codex_model': codex.get('model', ''),
         'agent.codex_model_reasoning_effort': codex.get('model_reasoning_effort', ''),
-        'agent.codex_sandbox_mode': codex.get('sandbox_mode', defaults.get('sandbox_mode', 'workspace-write')),
+        'agent.codex_sandbox_mode': codex.get('sandbox_mode', codex_defaults['sandbox_mode']),
         'agent.cursor_model': cursor.get('model', ''),
-        'agent.cursor_readonly': cursor.get('readonly', cursor_defaults.get('readonly', False)),
+        'agent.cursor_readonly': cursor.get('readonly', cursor_defaults['readonly']),
         'agent.github_model': github.get('model', ''),
     }
 
@@ -194,7 +180,6 @@ def render_desired_state(
     adapters: Mapping[Platform, HostAdapter],
 ) -> RenderedState:
     """Render only catalog-owned project assets without mutating the target."""
-    metadata = _metadata(source_root)
     files: dict[PurePosixPath, bytes] = {}
     fields: list[DesiredField] = []
     native_documents: dict[PurePosixPath, dict[str, object]] = {}
@@ -205,6 +190,7 @@ def render_desired_state(
         raise RenderError(str(error)) from error
     lock = load_lock(lock_path)
     old_fields = {(item.path, item.key) for item in lock.managed_fields}
+    assets_by_id = {asset.id: asset for asset in catalog.assets}
 
     for asset in catalog.assets:
         if asset.control_plane or asset.target is None or not set(asset.platforms).intersection(config.platforms):
@@ -246,9 +232,9 @@ def render_desired_state(
             content = (source_root / asset.source).read_bytes()
             if asset.id == 'entry-agents':
                 content = _render_text(content.decode(), {
-                    'global_rule_rows': _rule_rows(metadata, 'global'),
-                    'base_rule_rows': _rule_rows(metadata, 'base'),
-                    'project_rule_rows': _rule_rows(metadata, 'project'),
+                    'global_rule_rows': _rule_rows(catalog, 'global'),
+                    'base_rule_rows': _rule_rows(catalog, 'base'),
+                    'project_rule_rows': _rule_rows(catalog, 'project'),
                 })
             _copy_file(files, asset.target, content)
             continue
@@ -256,26 +242,27 @@ def render_desired_state(
             template = (source_root / asset.source).read_text(encoding='utf-8')
             if 'agent' in asset.id:
                 for agent_id in config.selected_agents:
-                    source = next(item for item in catalog.assets if item.id == agent_id)
+                    source = assets_by_id[agent_id]
                     assert source.target is not None
                     path = PurePosixPath(asset.target.as_posix().replace('{agent-name}', agent_id))
-                    _copy_file(files, path, _render_text(template, _agent_values(metadata, agent_id, source.target, models)))
+                    _copy_file(files, path, _render_text(template, _agent_values(source, models)))
             else:
-                rule_metadata = metadata.get('rules', [])
                 for rule_id in config.selected_rules:
-                    source = next(item for item in catalog.assets if item.id == rule_id)
+                    source = assets_by_id[rule_id]
                     assert source.target is not None
-                    item = next((rule for rule in rule_metadata if isinstance(rule, dict) and rule.get('file') == source.source.name), {})
-                    if not isinstance(item, dict):
-                        item = {}
+                    item = source.metadata
+                    cursor = item['cursor']
+                    github = item['github']
+                    if not isinstance(cursor, Mapping) or not isinstance(github, Mapping):
+                        raise RenderError(f'rule metadata is invalid: {rule_id}')
                     name = source.source.stem
                     path = PurePosixPath(asset.target.as_posix().replace('{rule-name}', name))
                     _copy_file(files, path, _render_text(template, {
                         'rule.apply_ref': source.target.as_posix(),
-                        'rule.cursor_description': item.get('cursor', {}).get('description', '') if isinstance(item.get('cursor'), dict) else '',
-                        'rule.cursor_globs': json.dumps(item.get('cursor', {}).get('globs', '**')) if isinstance(item.get('cursor'), dict) else '"**"',
-                        'rule.cursor_always_apply': item.get('cursor', {}).get('alwaysApply', False) if isinstance(item.get('cursor'), dict) else False,
-                        'rule.github_apply_to': item.get('github', {}).get('applyTo', '**') if isinstance(item.get('github'), dict) else '**',
+                        'rule.cursor_description': cursor['description'],
+                        'rule.cursor_globs': json.dumps(cursor.get('globs', '**')),
+                        'rule.cursor_always_apply': cursor['alwaysApply'],
+                        'rule.github_apply_to': github['applyTo'],
                     }))
 
     generated_targets = {

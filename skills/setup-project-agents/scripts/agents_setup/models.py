@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import PurePosixPath
 from typing import Mapping
@@ -25,6 +25,7 @@ class AssetSpec:
     platforms: tuple[Platform, ...]
     mode: str = 'copy'
     control_plane: bool = False
+    metadata: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
