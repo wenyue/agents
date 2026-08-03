@@ -60,6 +60,7 @@ class _Workspace:
 class _HeldSource:
     fd: int
     identity: tuple[int, int]
+    fresh: bool = False
 
     def close(self) -> None:
         os.close(self.fd)
@@ -421,6 +422,9 @@ def _is_marker_only(fd: int) -> bool:
     return os.listdir(fd) == [_INCOMPLETE_MARKER] and _has_valid_marker(fd)
 
 
+_after_source_mkdir = lambda _workspace, _identity: None
+
+
 def _open_held_source(workspace: _Workspace) -> _HeldSource:
     if workspace.fd is None:
         raise SourceUnavailable('secure held source is unavailable')
@@ -428,15 +432,23 @@ def _open_held_source(workspace: _Workspace) -> _HeldSource:
     if status is None:
         try:
             os.mkdir('source', mode=0o700, dir_fd=workspace.fd)
+            created_identity = _entry_identity(workspace.fd, 'source')
+            if created_identity is None:
+                raise InvalidFetchedSource('cannot verify named source directory')
+            _after_source_mkdir(workspace, created_identity)
             source_fd = _open_directory_nofollow(workspace.fd, 'source')
+        except InvalidFetchedSource:
+            raise
         except OSError as error:
             raise InvalidFetchedSource('cannot create named source directory') from error
-        held = _HeldSource(source_fd, _identity(os.fstat(source_fd)))
         try:
-            _write_incomplete_marker(source_fd)
+            held = _HeldSource(source_fd, _identity(os.fstat(source_fd)), fresh=True)
         except OSError as error:
+            os.close(source_fd)
+            raise InvalidFetchedSource('cannot inspect named source directory') from error
+        if held.identity != created_identity:
             held.close()
-            raise InvalidFetchedSource('cannot mark named source directory') from error
+            raise InvalidFetchedSource('named source directory changed during creation')
         return held
     identity = _entry_identity(workspace.fd, 'source')
     if identity is None:
@@ -503,6 +515,11 @@ def fetch_main(repository: str, *, work_root: Path) -> SourceSnapshot:
     source: _HeldSource | None = None
     try:
         source = _open_held_source(workspace)
+        if source.fresh:
+            try:
+                _write_incomplete_marker(source.fd)
+            except OSError as error:
+                raise InvalidFetchedSource('cannot mark named source directory') from error
         git_root = f'/proc/self/fd/{source.fd}'
         _before_first_git()
         _assert_final_source(workspace, source)

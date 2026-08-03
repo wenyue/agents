@@ -209,6 +209,38 @@ class SetupSourceTest(unittest.TestCase):
                 workspace / 'source',
             )
 
+    def test_initial_marker_write_failure_leaves_a_retryable_marker_only_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            workspace = temporary / 'session'
+            original_write_marker = source_module._write_incomplete_marker
+            calls = 0
+
+            def fail_only_the_initial_marker_write(fd: int) -> None:
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    raise OSError('marker write failed')
+                original_write_marker(fd)
+
+            with mock.patch.object(
+                source_module,
+                '_write_incomplete_marker',
+                side_effect=fail_only_the_initial_marker_write,
+            ):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main(origin.as_uri(), work_root=workspace)
+
+            self.assertEqual(
+                {path.name for path in (workspace / 'source').iterdir()},
+                {source_module._INCOMPLETE_MARKER},
+            )
+            self.assertEqual(
+                fetch_main(origin.as_uri(), work_root=workspace).root,
+                workspace / 'source',
+            )
+
     def test_fetch_main_rejects_a_missing_session_below_a_symlinked_ancestor(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
@@ -343,6 +375,40 @@ class SetupSourceTest(unittest.TestCase):
                     fetch_main('file:///origin.git', work_root=workspace)
 
             self.assertFalse(any(external.iterdir()))
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX source descriptors')
+    def test_source_replacement_between_mkdir_and_open_never_receives_marker_or_git(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            workspace = temporary / 'session'
+            moved = workspace / 'moved-source'
+
+            def replace_after_mkdir(workspace_state: object, _identity: object) -> None:
+                assert isinstance(workspace_state, source_module._Workspace)
+                os.rename(
+                    'source',
+                    'moved-source',
+                    src_dir_fd=workspace_state.fd,
+                    dst_dir_fd=workspace_state.fd,
+                )
+                os.mkdir('source', dir_fd=workspace_state.fd)
+                replacement = workspace / 'source' / 'sentinel'
+                replacement.write_text('keep\\n', encoding='utf-8')
+
+            with (
+                mock.patch.object(source_module, '_after_source_mkdir', replace_after_mkdir),
+                mock.patch.object(source_module.subprocess, 'run') as run,
+            ):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main('file:///origin.git', work_root=workspace)
+
+            run.assert_not_called()
+            self.assertEqual((workspace / 'source' / 'sentinel').read_text(encoding='utf-8'), 'keep\\n')
+            self.assertFalse((workspace / 'source' / source_module._INCOMPLETE_MARKER).exists())
+            self.assertFalse((workspace / 'source' / '.git').exists())
+            self.assertTrue(moved.is_dir())
+            self.assertFalse((moved / source_module._INCOMPLETE_MARKER).exists())
+            self.assertFalse((moved / '.git').exists())
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX source descriptors')
     def test_replacement_source_remains_while_the_moved_held_source_is_reset_to_marker(self):
