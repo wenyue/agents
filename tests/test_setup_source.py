@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,7 @@ from agents_setup.source import (  # noqa: E402
     fetch_main,
     validate_source,
 )
+from agents_setup import source as source_module  # noqa: E402
 import bootstrap  # noqa: E402
 import setup_project_agents  # noqa: E402
 
@@ -198,6 +200,84 @@ class SetupSourceTest(unittest.TestCase):
             self.assertTrue(workspace.is_dir())
             self.assertEqual(sentinel.read_text(encoding='utf-8'), '{}\n')
             self.assertFalse((workspace / 'source').exists())
+            origin, _ = self.make_origin(Path(temp_dir))
+            self.assertEqual(
+                fetch_main(origin.as_uri(), work_root=workspace).root,
+                workspace / 'source',
+            )
+
+    def test_fetch_main_rejects_a_missing_session_below_a_symlinked_ancestor(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            outside = temporary / 'outside'
+            outside.mkdir()
+            ancestor = temporary / 'ancestor'
+            ancestor.symlink_to(outside, target_is_directory=True)
+
+            with self.assertRaises(InvalidFetchedSource):
+                fetch_main('file:///origin.git', work_root=ancestor / 'session')
+
+            self.assertFalse((outside / 'session').exists())
+
+    def test_git_commands_receive_a_sanitized_environment(self):
+        with mock.patch.dict(
+            os.environ,
+            {'GIT_DIR': '/attacker/git', 'GIT_WORK_TREE': '/attacker/tree', 'GIT_INDEX_FILE': '/attacker/index'},
+            clear=False,
+        ), mock.patch.object(
+            source_module.subprocess,
+            'run',
+            return_value=subprocess.CompletedProcess(('git', 'version'), 0),
+        ) as run:
+            source_module._run_git(('git', 'version'), failure=SourceUnavailable)
+
+        environment = run.call_args.kwargs['env']
+        self.assertNotIn('GIT_DIR', environment)
+        self.assertNotIn('GIT_WORK_TREE', environment)
+        self.assertNotIn('GIT_INDEX_FILE', environment)
+        self.assertEqual(environment['GIT_TERMINAL_PROMPT'], '0')
+        self.assertEqual(environment['GIT_CONFIG_NOSYSTEM'], '1')
+        self.assertEqual(environment['GIT_CONFIG_GLOBAL'], os.devnull)
+
+    def test_cleanup_error_preserves_the_original_source_unavailable_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with mock.patch.object(
+                source_module,
+                '_safe_remove_created_checkout',
+                side_effect=OSError('cleanup failed'),
+            ):
+                with self.assertRaises(SourceUnavailable):
+                    fetch_main(
+                        (Path(temp_dir) / 'missing-origin.git').as_uri(),
+                        work_root=Path(temp_dir) / 'session',
+                    )
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX directory descriptors')
+    def test_cleanup_does_not_delete_a_replacement_after_identity_check(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir) / 'session'
+            workspace.mkdir()
+            checkout = workspace / 'source'
+            checkout.mkdir()
+            original = workspace / 'original'
+
+            def replace_source() -> None:
+                checkout.rename(original)
+                checkout.mkdir()
+                (checkout / 'sentinel').write_text('keep\n', encoding='utf-8')
+
+            workspace_state = source_module._open_safe_workspace(workspace)
+            try:
+                identity = source_module._entry_identity(workspace_state.fd, 'source')
+                with mock.patch.object(source_module, '_before_cleanup_quarantine', replace_source):
+                    source_module._safe_remove_created_checkout(workspace_state, identity)
+            finally:
+                workspace_state.close()
+
+            sentinels = list(workspace.rglob('sentinel'))
+            self.assertEqual(len(sentinels), 1)
+            self.assertEqual(sentinels[0].read_text(encoding='utf-8'), 'keep\n')
+            self.assertTrue(workspace.is_dir())
 
     def test_fetch_main_rejects_preexisting_checkouts_without_touching_them(self):
         with tempfile.TemporaryDirectory() as temp_dir:
