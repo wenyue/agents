@@ -86,6 +86,14 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
     )
 
 
+def candidate_directories(workspace: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in workspace.iterdir()
+        if path.name.startswith('.agents-setup-source-')
+    )
+
+
 class SetupSourceTest(unittest.TestCase):
     def make_origin(self, root: Path) -> tuple[Path, Path]:
         origin = root / 'origin.git'
@@ -188,10 +196,10 @@ class SetupSourceTest(unittest.TestCase):
                     with self.assertRaises(InvalidFetchedSource):
                         validate_source(source)
 
-    def test_fetch_failure_leaves_a_marker_only_source_and_retries(self):
+    def test_fetch_failure_leaves_a_marker_only_candidate_and_retries(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'
-            workspace.mkdir()
+            workspace.mkdir(mode=0o700)
             sentinel = workspace / 'request.json'
             sentinel.write_text('{}\n', encoding='utf-8')
             with self.assertRaises(SourceUnavailable):
@@ -199,8 +207,10 @@ class SetupSourceTest(unittest.TestCase):
 
             self.assertTrue(workspace.is_dir())
             self.assertEqual(sentinel.read_text(encoding='utf-8'), '{}\n')
+            self.assertFalse((workspace / 'source').exists())
+            self.assertEqual(len(candidate_directories(workspace)), 1)
             self.assertEqual(
-                {path.name for path in (workspace / 'source').iterdir()},
+                {path.name for path in candidate_directories(workspace)[0].iterdir()},
                 {source_module._INCOMPLETE_MARKER},
             )
             origin, _ = self.make_origin(Path(temp_dir))
@@ -209,7 +219,7 @@ class SetupSourceTest(unittest.TestCase):
                 workspace / 'source',
             )
 
-    def test_initial_marker_write_failure_leaves_a_retryable_marker_only_source(self):
+    def test_initial_marker_write_failure_leaves_a_retryable_marker_only_candidate(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             origin, _ = self.make_origin(temporary)
@@ -232,10 +242,32 @@ class SetupSourceTest(unittest.TestCase):
                 with self.assertRaises(InvalidFetchedSource):
                     fetch_main(origin.as_uri(), work_root=workspace)
 
+            self.assertFalse((workspace / 'source').exists())
+            self.assertEqual(len(candidate_directories(workspace)), 1)
             self.assertEqual(
-                {path.name for path in (workspace / 'source').iterdir()},
+                {path.name for path in candidate_directories(workspace)[0].iterdir()},
                 {source_module._INCOMPLETE_MARKER},
             )
+            self.assertEqual(
+                fetch_main(origin.as_uri(), work_root=workspace).root,
+                workspace / 'source',
+            )
+
+    def test_permanent_initial_marker_write_failure_does_not_reserve_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            workspace = temporary / 'session'
+
+            with mock.patch.object(
+                source_module,
+                '_write_incomplete_marker',
+                side_effect=OSError('marker storage unavailable'),
+            ):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main(origin.as_uri(), work_root=workspace)
+
+            self.assertFalse((workspace / 'source').exists())
             self.assertEqual(
                 fetch_main(origin.as_uri(), work_root=workspace).root,
                 workspace / 'source',
@@ -253,6 +285,15 @@ class SetupSourceTest(unittest.TestCase):
                 fetch_main('file:///origin.git', work_root=ancestor / 'session')
 
             self.assertFalse((outside / 'session').exists())
+
+    def test_fetch_main_rejects_a_nonprivate_workspace_before_git(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir) / 'session'
+            workspace.mkdir(mode=0o755)
+            with mock.patch.object(source_module.subprocess, 'run') as run:
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main('file:///origin.git', work_root=workspace)
+            run.assert_not_called()
 
     def test_git_commands_receive_a_sanitized_environment(self):
         with mock.patch.dict(
@@ -293,7 +334,8 @@ class SetupSourceTest(unittest.TestCase):
             origin, _ = self.make_origin(temporary)
             workspace = temporary / 'session'
             source = workspace / 'source'
-            source.mkdir(parents=True)
+            workspace.mkdir(mode=0o700)
+            source.mkdir(mode=0o700)
             marker = source / 'keep'
             marker.write_text('preserve\n', encoding='utf-8')
             with self.assertRaises(InvalidFetchedSource):
@@ -305,7 +347,7 @@ class SetupSourceTest(unittest.TestCase):
             temporary = Path(temp_dir)
             origin, _ = self.make_origin(temporary)
             workspace = temporary / 'session'
-            workspace.mkdir()
+            workspace.mkdir(mode=0o700)
             outside = temporary / 'outside'
             outside.mkdir()
             marker = outside / 'keep'
@@ -320,7 +362,8 @@ class SetupSourceTest(unittest.TestCase):
             temporary = Path(temp_dir)
             origin, _ = self.make_origin(temporary)
             source = temporary / 'session' / 'source'
-            source.mkdir(parents=True)
+            source.parent.mkdir(mode=0o700)
+            source.mkdir(mode=0o700)
             with self.assertRaises(InvalidFetchedSource):
                 fetch_main(origin.as_uri(), work_root=source.parent)
             self.assertTrue(source.is_dir())
@@ -330,7 +373,8 @@ class SetupSourceTest(unittest.TestCase):
             temporary = Path(temp_dir)
             origin, _ = self.make_origin(temporary)
             source = temporary / 'session' / 'source'
-            source.mkdir(parents=True)
+            source.parent.mkdir(mode=0o700)
+            source.mkdir(mode=0o700)
             marker = source / source_module._INCOMPLETE_MARKER
             marker.write_bytes(source_module._INCOMPLETE_MARKER_BYTES)
             marker.chmod(0o600)
@@ -355,7 +399,9 @@ class SetupSourceTest(unittest.TestCase):
             argv = run.call_args_list[0].args[0]
             self.assertRegex(argv[-1], r'^/proc/self/fd/[0-9]+$')
             self.assertEqual(run.call_args_list[0].kwargs['pass_fds'], (int(argv[-1].rsplit('/', 1)[1]),))
-            self.assertTrue((workspace / 'source' / source_module._INCOMPLETE_MARKER).is_file())
+            candidates = candidate_directories(workspace)
+            self.assertEqual(len(candidates), 1)
+            self.assertTrue((candidates[0] / source_module._INCOMPLETE_MARKER).is_file())
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX source descriptors')
     def test_workspace_namespace_replacement_never_redirects_git_into_an_external_directory(self):
@@ -377,38 +423,98 @@ class SetupSourceTest(unittest.TestCase):
             self.assertFalse(any(external.iterdir()))
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX source descriptors')
-    def test_source_replacement_between_mkdir_and_open_never_receives_marker_or_git(self):
+    def test_mkdir_return_replacement_never_receives_marker_or_git(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             workspace = temporary / 'session'
-            moved = workspace / 'moved-source'
+            replacements: list[Path] = []
+            real_mkdir = source_module.os.mkdir
 
-            def replace_after_mkdir(workspace_state: object, _identity: object) -> None:
-                assert isinstance(workspace_state, source_module._Workspace)
-                os.rename(
-                    'source',
-                    'moved-source',
-                    src_dir_fd=workspace_state.fd,
-                    dst_dir_fd=workspace_state.fd,
-                )
-                os.mkdir('source', dir_fd=workspace_state.fd)
-                replacement = workspace / 'source' / 'sentinel'
-                replacement.write_text('keep\\n', encoding='utf-8')
+            def replace_before_mkdir_returns(
+                name: str | bytes,
+                mode: int = 0o777,
+                *,
+                dir_fd: int | None = None,
+            ) -> None:
+                real_mkdir(name, mode=mode, dir_fd=dir_fd)
+                if (
+                    isinstance(name, str)
+                    and dir_fd is not None
+                    and name.startswith('.agents-setup-source-')
+                ):
+                    moved_name = f'{name}-moved'
+                    os.rename(name, moved_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+                    real_mkdir(name, mode=0o755, dir_fd=dir_fd)
+                    replacement = workspace / name
+                    (replacement / 'sentinel').write_text('keep\\n', encoding='utf-8')
+                    replacements.append(replacement)
 
             with (
-                mock.patch.object(source_module, '_after_source_mkdir', replace_after_mkdir),
+                mock.patch.object(source_module.os, 'mkdir', side_effect=replace_before_mkdir_returns),
                 mock.patch.object(source_module.subprocess, 'run') as run,
             ):
-                with self.assertRaises(InvalidFetchedSource):
+                with self.assertRaises((SourceUnavailable, InvalidFetchedSource)):
                     fetch_main('file:///origin.git', work_root=workspace)
 
             run.assert_not_called()
+            self.assertEqual(len(replacements), 1)
+            replacement = replacements[0]
+            self.assertEqual((replacement / 'sentinel').read_text(encoding='utf-8'), 'keep\\n')
+            self.assertFalse((replacement / source_module._INCOMPLETE_MARKER).exists())
+            self.assertFalse((replacement / '.git').exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX source descriptors')
+    def test_publish_wrapper_failure_after_rename_resets_only_the_held_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            workspace = temporary / 'session'
+            original_rename = source_module._rename_noreplace
+
+            def rename_then_raise(fd: int, old: str, new: str) -> None:
+                original_rename(fd, old, new)
+                raise OSError('publish wrapper failed after rename')
+
+            with mock.patch.object(
+                source_module,
+                '_rename_noreplace',
+                side_effect=rename_then_raise,
+            ):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main(origin.as_uri(), work_root=workspace)
+
+            self.assertEqual(
+                {path.name for path in (workspace / 'source').iterdir()},
+                {source_module._INCOMPLETE_MARKER},
+            )
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX source descriptors')
+    def test_publish_replacement_preserves_current_source_and_resets_moved_held_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            workspace = temporary / 'session'
+            moved = temporary / 'moved-source'
+
+            def replace_after_publish() -> None:
+                (workspace / 'source').rename(moved)
+                (workspace / 'source').mkdir()
+                (workspace / 'source' / 'sentinel').write_text('keep\\n', encoding='utf-8')
+
+            with mock.patch.object(
+                source_module,
+                '_after_publish',
+                replace_after_publish,
+                create=True,
+            ):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main(origin.as_uri(), work_root=workspace)
+
             self.assertEqual((workspace / 'source' / 'sentinel').read_text(encoding='utf-8'), 'keep\\n')
-            self.assertFalse((workspace / 'source' / source_module._INCOMPLETE_MARKER).exists())
-            self.assertFalse((workspace / 'source' / '.git').exists())
-            self.assertTrue(moved.is_dir())
-            self.assertFalse((moved / source_module._INCOMPLETE_MARKER).exists())
-            self.assertFalse((moved / '.git').exists())
+            self.assertEqual(
+                {path.name for path in moved.iterdir()},
+                {source_module._INCOMPLETE_MARKER},
+            )
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX source descriptors')
     def test_replacement_source_remains_while_the_moved_held_source_is_reset_to_marker(self):
@@ -462,7 +568,9 @@ class SetupSourceTest(unittest.TestCase):
             with mock.patch('agents_setup.source.subprocess.run', side_effect=checkout_failure):
                 with self.assertRaises(InvalidFetchedSource):
                     fetch_main('file:///origin.git', work_root=workspace)
-            self.assertTrue((workspace / 'source' / source_module._INCOMPLETE_MARKER).is_file())
+            candidates = candidate_directories(workspace)
+            self.assertEqual(len(candidates), 1)
+            self.assertTrue((candidates[0] / source_module._INCOMPLETE_MARKER).is_file())
 
             rev_parse_failure = [
                 subprocess.CompletedProcess(('git', 'init'), 0),
@@ -474,7 +582,9 @@ class SetupSourceTest(unittest.TestCase):
             with mock.patch('agents_setup.source.subprocess.run', side_effect=rev_parse_failure):
                 with self.assertRaises(InvalidFetchedSource):
                     fetch_main('file:///origin.git', work_root=workspace)
-            self.assertTrue((workspace / 'source' / source_module._INCOMPLETE_MARKER).is_file())
+            candidates = candidate_directories(workspace)
+            self.assertEqual(len(candidates), 2)
+            self.assertTrue(all((candidate / source_module._INCOMPLETE_MARKER).is_file() for candidate in candidates))
 
     def test_fetch_main_rejects_unsafe_repository_argv(self):
         with tempfile.TemporaryDirectory() as temp_dir:

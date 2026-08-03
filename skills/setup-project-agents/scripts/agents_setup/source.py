@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import re
+import secrets
 import stat
 import subprocess
 from dataclasses import dataclass
@@ -60,7 +62,8 @@ class _Workspace:
 class _HeldSource:
     fd: int
     identity: tuple[int, int]
-    fresh: bool = False
+    name: str
+    published: bool
 
     def close(self) -> None:
         os.close(self.fd)
@@ -226,9 +229,19 @@ def _secure_dirfd_supported() -> bool:
     )
 
 
+def _renameat2_available() -> bool:
+    if os.name != 'posix' or not hasattr(os, 'uname') or os.uname().sysname != 'Linux':
+        return False
+    try:
+        return hasattr(ctypes.CDLL(None, use_errno=True), 'renameat2')
+    except OSError:
+        return False
+
+
 def _secure_fetch_supported() -> bool:
     return (
         _secure_dirfd_supported()
+        and _renameat2_available()
         and Path('/proc/self/fd').is_dir()
     )
 
@@ -422,46 +435,63 @@ def _is_marker_only(fd: int) -> bool:
     return os.listdir(fd) == [_INCOMPLETE_MARKER] and _has_valid_marker(fd)
 
 
-_after_source_mkdir = lambda _workspace, _identity: None
+def _is_private_owned_directory(status: os.stat_result) -> bool:
+    return (
+        stat.S_ISDIR(status.st_mode)
+        and status.st_uid == os.geteuid()
+        and stat.S_IMODE(status.st_mode) == 0o700
+    )
 
 
-def _open_held_source(workspace: _Workspace) -> _HeldSource:
+def _assert_private_workspace(workspace: _Workspace) -> None:
+    if workspace.fd is None or not _is_private_owned_directory(os.fstat(workspace.fd)):
+        raise InvalidFetchedSource('source workspace must be private and owned by the current user')
+
+
+def _open_incomplete_source(workspace: _Workspace) -> _HeldSource | None:
     if workspace.fd is None:
         raise SourceUnavailable('secure held source is unavailable')
-    status = _entry_status(workspace.fd, 'source')
-    if status is None:
-        try:
-            os.mkdir('source', mode=0o700, dir_fd=workspace.fd)
-            created_identity = _entry_identity(workspace.fd, 'source')
-            if created_identity is None:
-                raise InvalidFetchedSource('cannot verify named source directory')
-            _after_source_mkdir(workspace, created_identity)
-            source_fd = _open_directory_nofollow(workspace.fd, 'source')
-        except InvalidFetchedSource:
-            raise
-        except OSError as error:
-            raise InvalidFetchedSource('cannot create named source directory') from error
-        try:
-            held = _HeldSource(source_fd, _identity(os.fstat(source_fd)), fresh=True)
-        except OSError as error:
-            os.close(source_fd)
-            raise InvalidFetchedSource('cannot inspect named source directory') from error
-        if held.identity != created_identity:
-            held.close()
-            raise InvalidFetchedSource('named source directory changed during creation')
-        return held
     identity = _entry_identity(workspace.fd, 'source')
     if identity is None:
-        raise InvalidFetchedSource('source checkout is not a safe directory')
+        if _entry_status(workspace.fd, 'source') is not None:
+            raise InvalidFetchedSource('source checkout is not a safe directory')
+        return None
     try:
         source_fd = _open_directory_nofollow(workspace.fd, 'source')
     except OSError as error:
         raise InvalidFetchedSource('cannot open source checkout') from error
-    held = _HeldSource(source_fd, _identity(os.fstat(source_fd)))
-    if held.identity != identity or not _is_marker_only(source_fd):
+    held = _HeldSource(source_fd, _identity(os.fstat(source_fd)), 'source', True)
+    if (
+        held.identity != identity
+        or not _is_private_owned_directory(os.fstat(source_fd))
+        or not _is_marker_only(source_fd)
+    ):
         held.close()
         raise InvalidFetchedSource('source checkout is not an incomplete retry marker')
     return held
+
+
+def _create_candidate_source(workspace: _Workspace) -> _HeldSource:
+    if workspace.fd is None:
+        raise SourceUnavailable('secure source candidate is unavailable')
+    for _ in range(16):
+        name = f'.agents-setup-source-{secrets.token_hex(16)}'
+        try:
+            os.mkdir(name, mode=0o700, dir_fd=workspace.fd)
+        except FileExistsError:
+            continue
+        except OSError as error:
+            raise SourceUnavailable('cannot create secure source candidate') from error
+        try:
+            source_fd = _open_directory_nofollow(workspace.fd, name)
+        except OSError as error:
+            raise InvalidFetchedSource('cannot open secure source candidate') from error
+        held = _HeldSource(source_fd, _identity(os.fstat(source_fd)), name, False)
+        if not _is_private_owned_directory(os.fstat(source_fd)):
+            held.close()
+            raise InvalidFetchedSource('secure source candidate changed during creation')
+        return held
+    raise SourceUnavailable('cannot allocate secure source candidate')
 
 
 def _reset_held_source(source: _HeldSource) -> None:
@@ -493,6 +523,34 @@ def _assert_final_source(workspace: _Workspace, source: _HeldSource) -> None:
 
 _before_first_git = lambda: None
 _before_final_source_guard = lambda: None
+_after_publish = lambda: None
+
+
+def _rename_noreplace(fd: int, old: str, new: str) -> None:
+    library = ctypes.CDLL(None, use_errno=True)
+    renameat2 = library.renameat2
+    renameat2.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
+    renameat2.restype = ctypes.c_int
+    if renameat2(fd, old.encode(), fd, new.encode(), 1) != 0:
+        error = ctypes.get_errno()
+        if error == getattr(os, 'EEXIST', 17):
+            raise InvalidFetchedSource('source checkout already exists')
+        raise InvalidFetchedSource('cannot publish secure source snapshot')
+
+
+def _publish_candidate(workspace: _Workspace, source: _HeldSource) -> None:
+    if workspace.fd is None or source.published:
+        raise InvalidFetchedSource('source candidate is not publishable')
+    _assert_workspace_namespace(workspace)
+    if _identity(os.fstat(source.fd)) != source.identity:
+        raise InvalidFetchedSource('held source changed before publish')
+    try:
+        _rename_noreplace(workspace.fd, source.name, 'source')
+        source.published = True
+        _after_publish()
+    except OSError as error:
+        raise InvalidFetchedSource('cannot publish secure source snapshot') from error
+    _assert_final_source(workspace, source)
 
 
 def _validate_repository(repository: str) -> str:
@@ -514,15 +572,20 @@ def fetch_main(repository: str, *, work_root: Path) -> SourceSnapshot:
     workspace = _open_safe_workspace(work_root)
     source: _HeldSource | None = None
     try:
-        source = _open_held_source(workspace)
-        if source.fresh:
+        _assert_private_workspace(workspace)
+        source = _open_incomplete_source(workspace)
+        if source is None:
+            source = _create_candidate_source(workspace)
             try:
                 _write_incomplete_marker(source.fd)
             except OSError as error:
-                raise InvalidFetchedSource('cannot mark named source directory') from error
+                raise InvalidFetchedSource('cannot mark secure source candidate') from error
         git_root = f'/proc/self/fd/{source.fd}'
         _before_first_git()
-        _assert_final_source(workspace, source)
+        if source.published:
+            _assert_final_source(workspace, source)
+        else:
+            _assert_workspace_namespace(workspace)
         try:
             _run_git(
                 ('git', 'init', '--quiet', git_root),
@@ -554,8 +617,9 @@ def fetch_main(repository: str, *, work_root: Path) -> SourceSnapshot:
         if not _COMMIT.fullmatch(commit):
             raise InvalidFetchedSource('Git returned an invalid source commit')
         _remove_incomplete_marker(source)
-        _assert_final_source(workspace, source)
         _validate_held_source(source.fd)
+        if not source.published:
+            _publish_candidate(workspace, source)
         _before_final_source_guard()
         _assert_final_source(workspace, source)
         return SourceSnapshot(workspace.path / 'source', commit.lower())
