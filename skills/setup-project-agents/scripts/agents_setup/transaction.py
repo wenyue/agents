@@ -2,18 +2,22 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
+import secrets
 import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from .catalog import ContractError, validate_lock_state
 from .models import Change, ChangeKind, LockState, Plan
 from .project import ProjectError, confined_target
 
 
 _LOCK_PATH = PurePosixPath('.agents/lock.json')
 _replace = os.replace
+_DIRECTORY_FLAGS = os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0) | getattr(os, 'O_NOFOLLOW', 0)
+_FILE_FLAGS = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
+_SECURE_DIR_FDS = os.name == 'posix' and bool(getattr(os, 'O_NOFOLLOW', 0))
 
 
 class TransactionError(RuntimeError):
@@ -31,14 +35,13 @@ class TransactionError(RuntimeError):
 @dataclass(frozen=True)
 class _Operation:
     path: PurePosixPath
-    target: Path
     kind: ChangeKind
     content: bytes | None
 
 
 @dataclass(frozen=True)
 class _Backup:
-    target: Path
+    operation: _Operation
     snapshot: Path | None
     mode: int | None
 
@@ -51,10 +54,7 @@ def _lock_bytes(lock: LockState) -> bytes:
     document = {
         'version': lock.version,
         'source_commit': lock.source_commit,
-        'managed_files': [
-            {'path': item.path.as_posix(), 'sha256': item.sha256}
-            for item in lock.managed_files
-        ],
+        'managed_files': [{'path': item.path.as_posix(), 'sha256': item.sha256} for item in lock.managed_files],
         'managed_fields': [
             {'path': item.path.as_posix(), 'key': item.key, 'sha256': item.sha256}
             for item in lock.managed_fields
@@ -63,33 +63,26 @@ def _lock_bytes(lock: LockState) -> bytes:
     return (json.dumps(document, sort_keys=True, indent=2) + '\n').encode('utf-8')
 
 
-def _confined(root: Path, path: PurePosixPath) -> Path:
-    try:
-        return confined_target(root, path)
-    except ProjectError as error:
-        raise TransactionError(error) from error
-
-
 def _validate_change(change: Change) -> None:
-    if not isinstance(change, Change):
-        raise TransactionError(TypeError('plan change must be a Change'))
-    if not isinstance(change.path, PurePosixPath):
-        raise TransactionError(TypeError('plan change path must be a relative POSIX path'))
+    if not isinstance(change, Change) or not isinstance(change.path, PurePosixPath):
+        raise TransactionError(TypeError('plan change must have a relative POSIX path'))
+    if change.path.is_absolute() or not change.path.parts or '..' in change.path.parts:
+        raise TransactionError(ValueError('plan change path must be relative and cannot contain ..'))
     if not isinstance(change.kind, ChangeKind):
         raise TransactionError(TypeError(f'unsupported change kind: {change.kind!r}'))
-    if change.kind is ChangeKind.DELETE:
-        if change.content is not None:
-            raise TransactionError(TypeError(f'delete change has content: {_path_key(change.path)}'))
-    elif not isinstance(change.content, bytes):
+    if change.kind is ChangeKind.DELETE and change.content is not None:
+        raise TransactionError(TypeError(f'delete change has content: {_path_key(change.path)}'))
+    if change.kind is not ChangeKind.DELETE and not isinstance(change.content, bytes):
         raise TransactionError(TypeError(f'file change content must be bytes: {_path_key(change.path)}'))
 
 
-def _operations(root: Path, plan: Plan) -> tuple[_Operation, ...]:
+def _operations(plan: Plan) -> tuple[tuple[_Operation, ...], LockState]:
     if not isinstance(plan, Plan):
         raise TransactionError(TypeError('plan must be a Plan'))
-    if not isinstance(plan.next_lock, LockState):
-        raise TransactionError(TypeError('plan next_lock must be a LockState'))
-
+    try:
+        lock = validate_lock_state(plan.next_lock)
+    except ContractError as error:
+        raise TransactionError(error) from error
     seen: set[PurePosixPath] = set()
     operations: list[_Operation] = []
     for change in plan.changes:
@@ -99,186 +92,425 @@ def _operations(root: Path, plan: Plan) -> tuple[_Operation, ...]:
         if change.path in seen:
             raise TransactionError(ValueError(f'duplicate plan change: {_path_key(change.path)}'))
         seen.add(change.path)
-        target = _confined(root, change.path)
         if change.kind is not ChangeKind.UNCHANGED:
-            operations.append(_Operation(change.path, target, change.kind, change.content))
-
-    lock_target = _confined(root, _LOCK_PATH)
+            operations.append(_Operation(change.path, change.kind, change.content))
     operations.sort(key=lambda operation: _path_key(operation.path))
-    operations.append(_Operation(_LOCK_PATH, lock_target, ChangeKind.UPDATE, _lock_bytes(plan.next_lock)))
-    return tuple(operations)
+    return tuple(operations), lock
 
 
-def _entry_mode(path: Path) -> int | None:
+def _open_root(root: Path) -> int:
+    absolute = Path(root).absolute()
+    descriptor = os.open(absolute.anchor, _DIRECTORY_FLAGS)
     try:
-        entry = path.lstat()
+        for part in absolute.parts[1:]:
+            next_descriptor = os.open(part, _DIRECTORY_FLAGS, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = next_descriptor
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _open_parent(root_fd: int, path: PurePosixPath, *, create: bool, created: list[PurePosixPath]) -> int:
+    descriptor = os.dup(root_fd)
+    try:
+        for index, part in enumerate(path.parts[:-1], start=1):
+            try:
+                next_descriptor = os.open(part, _DIRECTORY_FLAGS, dir_fd=descriptor)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(part, 0o777, dir_fd=descriptor)
+                created.append(PurePosixPath(*path.parts[:index]))
+                next_descriptor = os.open(part, _DIRECTORY_FLAGS, dir_fd=descriptor)
+            except OSError as error:
+                raise TransactionError(f'unsafe parent path: {part}') from error
+            os.close(descriptor)
+            descriptor = next_descriptor
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _stat_at(parent_fd: int, name: str) -> os.stat_result | None:
+    try:
+        entry = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
     except FileNotFoundError:
         return None
     if stat.S_ISLNK(entry.st_mode):
-        raise TransactionError(f'target path contains symlink: {path}')
+        raise TransactionError(f'unsafe symlink at transaction target: {name}')
     if not stat.S_ISREG(entry.st_mode):
-        raise TransactionError(f'target path is not a regular file: {path}')
-    return stat.S_IMODE(entry.st_mode)
+        raise TransactionError(f'target path is not a regular file: {name}')
+    return entry
 
 
-def _check_expected_target(operation: _Operation) -> None:
-    mode = _entry_mode(operation.target)
-    if operation.path == _LOCK_PATH:
-        return
-    if operation.kind is ChangeKind.CREATE and mode is not None:
-        raise TransactionError(f'create target appeared after planning: {operation.path.as_posix()}')
-    if operation.kind in {ChangeKind.UPDATE, ChangeKind.DELETE} and mode is None:
-        raise TransactionError(f'target disappeared after planning: {operation.path.as_posix()}')
-
-
-def _backup(operation: _Operation, backup_root: Path, index: int) -> _Backup:
-    mode = _entry_mode(operation.target)
-    if mode is None:
-        return _Backup(operation.target, None, None)
-    snapshot = backup_root / f'{index:04d}'
+def _read_at(parent_fd: int, name: str) -> tuple[bytes, int] | None:
+    entry = _stat_at(parent_fd, name)
+    if entry is None:
+        return None
+    descriptor = os.open(name, _FILE_FLAGS, dir_fd=parent_fd)
     try:
-        shutil.copy2(operation.target, snapshot)
-    except OSError as error:
-        raise TransactionError(error) from error
-    return _Backup(operation.target, snapshot, mode)
+        current = os.fstat(descriptor)
+        if not stat.S_ISREG(current.st_mode) or (current.st_dev, current.st_ino) != (entry.st_dev, entry.st_ino):
+            raise TransactionError(f'unsafe target changed while reading: {name}')
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 65536):
+            chunks.append(chunk)
+        return b''.join(chunks), stat.S_IMODE(current.st_mode)
+    finally:
+        os.close(descriptor)
 
 
-def _ensure_parent(root: Path, relative: PurePosixPath, created: list[Path]) -> None:
-    absolute_root = Path(root).absolute()
-    current = Path(absolute_root.anchor)
-    parts = absolute_root.parts[1:] + relative.parts[:-1]
-    for part in parts:
-        current /= part
-        try:
-            entry = current.lstat()
-        except FileNotFoundError:
-            try:
-                current.mkdir()
-            except OSError as error:
-                raise TransactionError(error) from error
-            created.append(current)
-            continue
-        if stat.S_ISLNK(entry.st_mode):
-            raise TransactionError(f'target path contains symlink: {current}')
-        if not stat.S_ISDIR(entry.st_mode):
-            raise TransactionError(f'target parent is not a directory: {current}')
-    _confined(root, relative)
-
-
-def _write_sibling(target: Path, content: bytes, mode: int | None) -> Path:
-    handle = tempfile.NamedTemporaryFile(
-        mode='wb',
-        prefix=f'.{target.name}.agents-setup-',
-        suffix='.tmp',
-        dir=target.parent,
-        delete=False,
-    )
-    temporary = Path(handle.name)
+def _write_sibling(
+    root_fd: int,
+    path: PurePosixPath,
+    content: bytes,
+    mode: int | None,
+    created: list[PurePosixPath],
+) -> tuple[str, int]:
+    """Create a closed same-directory temporary file through a freshly opened safe parent fd."""
+    parent_fd = _open_parent(root_fd, path, create=True, created=created)
+    temporary = f'.{path.name}.agents-setup-{secrets.token_hex(12)}.tmp'
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0)
+    descriptor = os.open(temporary, flags, 0o666, dir_fd=parent_fd)
     try:
-        handle.write(content)
-        handle.flush()
+        view = memoryview(content)
+        while view:
+            written = os.write(descriptor, view)
+            view = view[written:]
     except BaseException:
-        handle.close()
-        temporary.unlink(missing_ok=True)
+        os.close(descriptor)
+        os.unlink(temporary, dir_fd=parent_fd)
+        os.close(parent_fd)
         raise
     else:
-        handle.close()
+        os.close(descriptor)
     if mode is not None:
-        temporary.chmod(mode)
-    return temporary
+        os.chmod(temporary, mode, dir_fd=parent_fd, follow_symlinks=False)
+    return temporary, parent_fd
 
 
-def _apply(operation: _Operation, backup: _Backup) -> None:
+def _same_parent(root_fd: int, path: PurePosixPath, parent_fd: int) -> None:
+    fresh_fd = _open_parent(root_fd, path, create=False, created=[])
+    try:
+        fresh = os.fstat(fresh_fd)
+        held = os.fstat(parent_fd)
+        if (fresh.st_dev, fresh.st_ino) != (held.st_dev, held.st_ino):
+            raise TransactionError(f'unsafe parent changed during transaction: {_path_key(path)}')
+    finally:
+        os.close(fresh_fd)
+
+
+def _expected(root_fd: int, operation: _Operation, *, lock: bool = False) -> None:
+    try:
+        parent_fd = _open_parent(root_fd, operation.path, create=False, created=[])
+    except FileNotFoundError:
+        if operation.kind is ChangeKind.CREATE or lock:
+            return
+        raise TransactionError(f'target disappeared after planning: {_path_key(operation.path)}')
+    try:
+        entry = _stat_at(parent_fd, operation.path.name)
+    finally:
+        os.close(parent_fd)
+    if lock:
+        return
+    if operation.kind is ChangeKind.CREATE and entry is not None:
+        raise TransactionError(f'create target appeared after planning: {_path_key(operation.path)}')
+    if operation.kind in {ChangeKind.UPDATE, ChangeKind.DELETE} and entry is None:
+        raise TransactionError(f'target disappeared after planning: {_path_key(operation.path)}')
+
+
+def _backup(root_fd: int, operation: _Operation, backup_root: Path, index: int) -> _Backup:
+    try:
+        parent_fd = _open_parent(root_fd, operation.path, create=False, created=[])
+    except FileNotFoundError:
+        return _Backup(operation, None, None)
+    try:
+        current = _read_at(parent_fd, operation.path.name)
+    finally:
+        os.close(parent_fd)
+    if current is None:
+        return _Backup(operation, None, None)
+    content, mode = current
+    snapshot = backup_root / f'{index:04d}'
+    snapshot.write_bytes(content)
+    return _Backup(operation, snapshot, mode)
+
+
+def _apply(root_fd: int, operation: _Operation, backup: _Backup, created: list[PurePosixPath]) -> None:
     if operation.kind is ChangeKind.DELETE:
-        operation.target.unlink()
+        parent_fd = _open_parent(root_fd, operation.path, create=False, created=created)
+        try:
+            _stat_at(parent_fd, operation.path.name)
+            os.unlink(operation.path.name, dir_fd=parent_fd)
+        finally:
+            os.close(parent_fd)
         return
     assert operation.content is not None
-    temporary = _write_sibling(operation.target, operation.content, backup.mode)
+    temporary, parent_fd = _write_sibling(root_fd, operation.path, operation.content, backup.mode, created)
     try:
-        _replace(temporary, operation.target)
+        _same_parent(root_fd, operation.path, parent_fd)
+        _replace(temporary, operation.path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
     finally:
-        temporary.unlink(missing_ok=True)
-
-
-def _restore(backup: _Backup) -> None:
-    if backup.snapshot is None:
         try:
-            entry = backup.target.lstat()
+            os.unlink(temporary, dir_fd=parent_fd)
         except FileNotFoundError:
-            return
-        if stat.S_ISLNK(entry.st_mode):
-            raise OSError(f'refusing to remove symlink during rollback: {backup.target}')
-        if not stat.S_ISREG(entry.st_mode):
-            raise OSError(f'refusing to remove non-file during rollback: {backup.target}')
-        backup.target.unlink()
-        return
+            pass
+        os.close(parent_fd)
 
-    _entry_mode(backup.target)
-    content = backup.snapshot.read_bytes()
-    temporary = _write_sibling(backup.target, content, backup.mode)
+
+def _verify_desired(root_fd: int, changes: tuple[Change, ...]) -> None:
+    for change in changes:
+        try:
+            parent_fd = _open_parent(root_fd, change.path, create=False, created=[])
+        except FileNotFoundError:
+            if change.kind is ChangeKind.DELETE:
+                continue
+            raise TransactionError(f'content changed before lock commit: {_path_key(change.path)}')
+        try:
+            current = _read_at(parent_fd, change.path.name)
+        except FileNotFoundError:
+            current = None
+        finally:
+            os.close(parent_fd)
+        if change.kind is ChangeKind.DELETE:
+            if current is not None:
+                raise TransactionError(f'delete result changed: {_path_key(change.path)}')
+        elif current is None or current[0] != change.content:
+            raise TransactionError(f'content changed before lock commit: {_path_key(change.path)}')
+
+
+def _restore(root_fd: int, backup: _Backup, created: list[PurePosixPath]) -> None:
     try:
-        os.replace(temporary, backup.target)
+        parent_fd = _open_parent(root_fd, backup.operation.path, create=backup.snapshot is not None, created=created)
+    except FileNotFoundError:
+        return
+    try:
+        current = _stat_at(parent_fd, backup.operation.path.name)
+        if backup.snapshot is None:
+            if current is not None:
+                os.unlink(backup.operation.path.name, dir_fd=parent_fd)
+            return
     finally:
-        temporary.unlink(missing_ok=True)
+        os.close(parent_fd)
+    assert backup.snapshot is not None
+    content = backup.snapshot.read_bytes()
+    temporary, parent_fd = _write_sibling(root_fd, backup.operation.path, content, backup.mode, created)
+    try:
+        _same_parent(root_fd, backup.operation.path, parent_fd)
+        os.replace(temporary, backup.operation.path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+    finally:
+        try:
+            os.unlink(temporary, dir_fd=parent_fd)
+        except FileNotFoundError:
+            pass
+        os.close(parent_fd)
 
 
-def _rollback(applied: list[_Backup], created: list[Path]) -> tuple[BaseException, ...]:
+def _cleanup_created(root_fd: int, created: list[PurePosixPath]) -> list[BaseException]:
+    errors: list[BaseException] = []
+    for path in reversed(created):
+        try:
+            parent_fd = _open_parent(root_fd, path, create=False, created=[])
+            try:
+                os.rmdir(path.name, dir_fd=parent_fd)
+            finally:
+                os.close(parent_fd)
+        except BaseException as error:
+            errors.append(error)
+    return errors
+
+
+def _rollback(root_fd: int, applied: list[_Backup], created: list[PurePosixPath]) -> tuple[BaseException, ...]:
     errors: list[BaseException] = []
     for backup in reversed(applied):
         try:
-            _restore(backup)
+            _restore(root_fd, backup, created)
         except BaseException as error:
             errors.append(error)
-    for directory in reversed(created):
-        try:
-            entry = directory.lstat()
-            if stat.S_ISLNK(entry.st_mode):
-                raise OSError(f'refusing to remove symlink during rollback: {directory}')
-            directory.rmdir()
-        except FileNotFoundError:
-            continue
-        except BaseException as error:
-            errors.append(error)
+    errors.extend(_cleanup_created(root_fd, created))
     return tuple(errors)
 
 
-def apply_plan(target_root: Path, plan: Plan) -> None:
-    """Apply a validated plan atomically enough to restore every target on failure."""
-    root = Path(target_root)
+def _apply_secure(target_root: Path, plan: Plan) -> None:
+    operations, lock = _operations(plan)
+    root_fd = _open_root(target_root)
     applied: list[_Backup] = []
-    created: list[Path] = []
+    created: list[PurePosixPath] = []
     try:
-        operations = _operations(root, plan)
-        # Revalidate every planned destination, including the lock, before target writes.
         for change in plan.changes:
-            target = _confined(root, change.path)
-            if change.kind is ChangeKind.UNCHANGED and _entry_mode(target) is None:
-                raise TransactionError(
-                    f'target disappeared after planning: {change.path.as_posix()}'
-                )
-        for operation in operations:
-            _confined(root, operation.path)
-            _check_expected_target(operation)
-    except BaseException as error:
-        original = error.original_error if isinstance(error, TransactionError) else error
-        raise TransactionError(original) from error
+            _expected(root_fd, _Operation(change.path, change.kind, change.content))
+        lock_operation = _Operation(_LOCK_PATH, ChangeKind.UPDATE, _lock_bytes(lock))
+        _expected(root_fd, lock_operation, lock=True)
+        with tempfile.TemporaryDirectory(prefix='agents-setup-transaction-') as temporary_root:
+            try:
+                all_operations = (*operations, lock_operation)
+                backups = {
+                    operation.path: _backup(root_fd, operation, Path(temporary_root), index)
+                    for index, operation in enumerate(all_operations)
+                }
+                for operation in operations:
+                    _expected(root_fd, operation)
+                    applied.append(backups[operation.path])
+                    _apply(root_fd, operation, backups[operation.path], created)
+                _verify_desired(root_fd, plan.changes)
+                _expected(root_fd, lock_operation, lock=True)
+                applied.append(backups[lock_operation.path])
+                _apply(root_fd, lock_operation, backups[lock_operation.path], created)
+            except BaseException as error:
+                original = error.original_error if isinstance(error, TransactionError) else error
+                raise TransactionError(original, _rollback(root_fd, applied, created)) from error
+    finally:
+        os.close(root_fd)
 
-    with tempfile.TemporaryDirectory(prefix='agents-setup-transaction-') as temporary_root:
+
+def _apply_fallback(target_root: Path, plan: Plan) -> None:
+    """Functional fallback with repeated confinement; it cannot provide POSIX openat guarantees."""
+    operations, lock = _operations(plan)
+    root = Path(target_root)
+    applied: list[tuple[_Operation, Path | None, int | None]] = []
+    created: list[Path] = []
+
+    def target(path: PurePosixPath) -> Path:
         try:
-            backup_root = Path(temporary_root)
-            backups = {
-                operation.target: _backup(operation, backup_root, index)
-                for index, operation in enumerate(operations)
-            }
-            for operation in operations:
-                _ensure_parent(root, operation.path, created)
-                _confined(root, operation.path)
-                _check_expected_target(operation)
-                backup = backups[operation.target]
-                # Record before mutation so an injected replacement that mutates then raises is safe.
-                applied.append(backup)
-                _apply(operation, backup)
+            return confined_target(root, path)
+        except ProjectError as error:
+            raise TransactionError(error) from error
+
+    def entry(path: Path) -> os.stat_result | None:
+        try:
+            item = path.lstat()
+        except FileNotFoundError:
+            return None
+        if stat.S_ISLNK(item.st_mode) or not stat.S_ISREG(item.st_mode):
+            raise TransactionError(f'unsafe fallback target: {path}')
+        return item
+
+    def ensure_parent(path: Path) -> None:
+        parent = path.parent
+        missing: list[Path] = []
+        current = parent
+        while not current.exists():
+            missing.append(current)
+            current = current.parent
+        if current.is_symlink() or not current.is_dir():
+            raise TransactionError(f'unsafe fallback parent: {current}')
+        for directory in reversed(missing):
+            directory.mkdir()
+            created.append(directory)
+            if directory.is_symlink() or not directory.is_dir():
+                raise TransactionError(f'unsafe fallback parent: {directory}')
+
+    def sibling(path: Path, content: bytes, mode: int | None) -> Path:
+        ensure_parent(path)
+        temporary = path.parent / f'.{path.name}.agents-setup-{secrets.token_hex(12)}.tmp'
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        try:
+            view = memoryview(content)
+            while view:
+                written = os.write(descriptor, view)
+                view = view[written:]
+        finally:
+            os.close(descriptor)
+        if mode is not None:
+            temporary.chmod(mode)
+        return temporary
+
+    def expected(operation: _Operation, *, is_lock: bool = False) -> None:
+        current = entry(target(operation.path))
+        if is_lock:
+            return
+        if operation.kind is ChangeKind.CREATE and current is not None:
+            raise TransactionError(f'create target appeared after planning: {_path_key(operation.path)}')
+        if operation.kind in {ChangeKind.UPDATE, ChangeKind.DELETE} and current is None:
+            raise TransactionError(f'target disappeared after planning: {_path_key(operation.path)}')
+        if operation.kind is ChangeKind.UNCHANGED:
+            assert operation.content is not None
+            if current is None or target(operation.path).read_bytes() != operation.content:
+                raise TransactionError(f'content changed before lock commit: {_path_key(operation.path)}')
+
+    try:
+        for change in plan.changes:
+            expected(_Operation(change.path, change.kind, change.content))
+        lock_operation = _Operation(_LOCK_PATH, ChangeKind.UPDATE, _lock_bytes(lock))
+        expected(lock_operation, is_lock=True)
+        with tempfile.TemporaryDirectory(prefix='agents-setup-transaction-') as temporary_root:
+            snapshots = Path(temporary_root)
+            all_operations = (*operations, lock_operation)
+            backups: dict[PurePosixPath, tuple[Path | None, int | None]] = {}
+            for index, operation in enumerate(all_operations):
+                path = target(operation.path)
+                item = entry(path)
+                if item is None:
+                    backups[operation.path] = (None, None)
+                else:
+                    snapshot = snapshots / f'{index:04d}'
+                    snapshot.write_bytes(path.read_bytes())
+                    backups[operation.path] = (snapshot, stat.S_IMODE(item.st_mode))
+            for operation in (*operations, lock_operation):
+                if operation.path == _LOCK_PATH:
+                    for change in plan.changes:
+                        change_path = target(change.path)
+                        current = entry(change_path)
+                        if change.kind is ChangeKind.DELETE:
+                            if current is not None:
+                                raise TransactionError(f'delete result changed: {_path_key(change.path)}')
+                        elif current is None or change_path.read_bytes() != change.content:
+                            raise TransactionError(f'content changed before lock commit: {_path_key(change.path)}')
+                expected(operation, is_lock=operation.path == _LOCK_PATH)
+                snapshot, mode = backups[operation.path]
+                applied.append((operation, snapshot, mode))
+                path = target(operation.path)
+                if operation.kind is ChangeKind.DELETE:
+                    path.unlink()
+                    continue
+                assert operation.content is not None
+                temporary = sibling(path, operation.content, mode)
+                try:
+                    current_parent = target(operation.path).parent.stat()
+                    temporary_parent = temporary.parent.stat()
+                    if (current_parent.st_dev, current_parent.st_ino) != (temporary_parent.st_dev, temporary_parent.st_ino):
+                        raise TransactionError(f'unsafe fallback parent changed: {_path_key(operation.path)}')
+                    _replace(temporary, path)
+                finally:
+                    temporary.unlink(missing_ok=True)
+    except BaseException as error:
+        rollback_errors: list[BaseException] = []
+        for operation, snapshot, mode in reversed(applied):
+            try:
+                path = target(operation.path)
+                current = entry(path)
+                if snapshot is None:
+                    if current is not None:
+                        path.unlink()
+                else:
+                    temporary = sibling(path, snapshot.read_bytes(), mode)
+                    try:
+                        os.replace(temporary, path)
+                    finally:
+                        temporary.unlink(missing_ok=True)
+            except BaseException as rollback_error:
+                rollback_errors.append(rollback_error)
+        for directory in reversed(created):
+            try:
+                if not directory.is_symlink():
+                    directory.rmdir()
+            except BaseException as rollback_error:
+                rollback_errors.append(rollback_error)
+        original = error.original_error if isinstance(error, TransactionError) else error
+        raise TransactionError(original, tuple(rollback_errors)) from error
+
+
+def apply_plan(target_root: Path, plan: Plan) -> None:
+    """Apply a validated plan, using descriptor-relative no-follow operations where available."""
+    if _SECURE_DIR_FDS:
+        try:
+            _apply_secure(Path(target_root), plan)
         except BaseException as error:
-            original = error.original_error if isinstance(error, TransactionError) else error
-            rollback_errors = _rollback(applied, created)
-            raise TransactionError(original, rollback_errors) from error
+            if isinstance(error, TransactionError):
+                raise
+            raise TransactionError(error) from error
+        return
+    _apply_fallback(Path(target_root), plan)

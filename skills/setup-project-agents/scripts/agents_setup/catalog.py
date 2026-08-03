@@ -257,6 +257,41 @@ def _managed_field(value: object) -> ManagedField:
     )
 
 
+def validate_lock_state(lock: LockState) -> LockState:
+    """Validate an in-memory lock with the same contract as a parsed lock document."""
+    if not isinstance(lock, LockState):
+        raise ContractError('lock state must be a LockState')
+    if type(lock.version) is not int or lock.version != 1:
+        raise ContractError('lock version must be 1')
+    if lock.source_commit is not None and (
+        not isinstance(lock.source_commit, str) or not _HEX_40.fullmatch(lock.source_commit)
+    ):
+        raise ContractError('lock source_commit must be a 40-character hexadecimal commit')
+    files: list[ManagedFile] = []
+    fields: list[ManagedField] = []
+    for item in lock.managed_files:
+        if not isinstance(item, ManagedFile) or not isinstance(item.path, PurePosixPath):
+            raise ContractError('lock managed file must be a ManagedFile')
+        path = safe_relative(item.path.as_posix(), 'managed file path')
+        files.append(ManagedFile(path, _sha256(item.sha256, 'managed file sha256')))
+    for item in lock.managed_fields:
+        if not isinstance(item, ManagedField) or not isinstance(item.path, PurePosixPath):
+            raise ContractError('lock managed field must be a ManagedField')
+        path = safe_relative(item.path.as_posix(), 'managed field path')
+        fields.append(
+            ManagedField(
+                path,
+                safe_field_key(item.key, 'managed field key'),
+                _sha256(item.sha256, 'managed field sha256'),
+            )
+        )
+    if len({item.path for item in files}) != len(files):
+        raise ContractError('lock has duplicate managed file paths')
+    if len({(item.path, item.key) for item in fields}) != len(fields):
+        raise ContractError('lock has duplicate managed fields')
+    return LockState(lock.version, lock.source_commit, tuple(files), tuple(fields))
+
+
 def load_lock(path: Path | None) -> LockState:
     if path is None or not path.exists():
         return LockState.empty()
@@ -278,4 +313,4 @@ def load_lock(path: Path | None) -> LockState:
         raise ContractError('lock has duplicate managed file paths')
     if len({(item.path, item.key) for item in fields}) != len(fields):
         raise ContractError('lock has duplicate managed fields')
-    return LockState(version, source_commit, files, fields)
+    return validate_lock_state(LockState(version, source_commit, files, fields))

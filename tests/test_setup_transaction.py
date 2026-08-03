@@ -12,7 +12,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / 'skills' / 'setup-project-agents' / 'scripts'))
 
 from agents_setup import transaction  # noqa: E402
-from agents_setup.models import Change, ChangeKind, LockState, ManagedFile, Plan  # noqa: E402
+from agents_setup.models import (  # noqa: E402
+    Change,
+    ChangeKind,
+    LockState,
+    ManagedField,
+    ManagedFile,
+    Plan,
+)
 from agents_setup.transaction import TransactionError, apply_plan  # noqa: E402
 
 
@@ -51,9 +58,9 @@ class SetupTransactionTest(unittest.TestCase):
             real_replace = os.replace
             destinations: list[Path] = []
 
-            def record_replace(source, destination):
+            def record_replace(source, destination, **kwargs):
                 destinations.append(Path(destination))
-                real_replace(source, destination)
+                real_replace(source, destination, **kwargs)
 
             with mock.patch.object(transaction, '_replace', side_effect=record_replace):
                 apply_plan(target, plan)
@@ -63,7 +70,7 @@ class SetupTransactionTest(unittest.TestCase):
             self.assertEqual((target / 'nested/owned-b').read_bytes(), b'new-b')
             self.assertFalse((target / 'removed').exists())
             self.assertEqual(unmanaged.read_bytes(), b'leave me exactly alone\x00')
-            self.assertEqual(destinations[-1], target / '.agents/lock.json')
+            self.assertEqual(destinations[-1], Path('lock.json'))
             self.assertEqual(
                 json.loads((target / '.agents/lock.json').read_text(encoding='utf-8')),
                 {
@@ -104,11 +111,11 @@ class SetupTransactionTest(unittest.TestCase):
             real_replace = os.replace
             calls = 0
 
-            def replace_once_then_fail(source, destination):
+            def replace_once_then_fail(source, destination, **kwargs):
                 nonlocal calls
                 calls += 1
                 if calls == 1:
-                    real_replace(source, destination)
+                    real_replace(source, destination, **kwargs)
                     return None
                 raise OSError('boom after replacement')
 
@@ -180,11 +187,11 @@ class SetupTransactionTest(unittest.TestCase):
             real_replace = os.replace
             calls = 0
 
-            def replace_then_fail_at_lock(source, destination):
+            def replace_then_fail_at_lock(source, destination, **kwargs):
                 nonlocal calls
                 calls += 1
                 if calls == 1:
-                    real_replace(source, destination)
+                    real_replace(source, destination, **kwargs)
                     return None
                 raise OSError('lock write failed')
 
@@ -204,15 +211,15 @@ class SetupTransactionTest(unittest.TestCase):
             real_replace = os.replace
             destinations: list[Path] = []
 
-            def record_replace(source, destination):
+            def record_replace(source, destination, **kwargs):
                 destinations.append(Path(destination))
-                real_replace(source, destination)
+                real_replace(source, destination, **kwargs)
 
             with mock.patch.object(transaction, '_replace', side_effect=record_replace):
                 apply_plan(target, plan)
 
             self.assertEqual(path.read_bytes(), b'same')
-            self.assertEqual(destinations, [target / '.agents/lock.json'])
+            self.assertEqual(destinations, [Path('lock.json')])
 
     def test_symlink_introduced_after_planning_aborts_before_first_replacement(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -227,11 +234,161 @@ class SetupTransactionTest(unittest.TestCase):
             (target / '.agents').symlink_to(outside, target_is_directory=True)
 
             with mock.patch.object(transaction, '_replace') as replace:
-                with self.assertRaisesRegex(TransactionError, 'symlink'):
+                with self.assertRaisesRegex(TransactionError, 'symlink|unsafe'):
                     apply_plan(target, plan)
 
             replace.assert_not_called()
             self.assertFalse((outside / 'rules/a.md').exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX openat semantics')
+    def test_parent_replacement_before_sibling_write_never_writes_outside_target(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            container = Path(temp_dir)
+            target = container / 'target'
+            managed = target / 'managed'
+            external = container / 'external'
+            managed.mkdir(parents=True)
+            external.mkdir()
+            self.write(target, 'managed/owned', b'old')
+            plan = self.plan(Change(ChangeKind.UPDATE, PurePosixPath('managed/owned'), b'new'))
+            original_write = transaction._write_sibling
+            attacked = False
+
+            def swap_parent_then_write(*args, **kwargs):
+                nonlocal attacked
+                if not attacked:
+                    attacked = True
+                    managed.rename(container / 'moved-managed')
+                    managed.symlink_to(external, target_is_directory=True)
+                return original_write(*args, **kwargs)
+
+            with mock.patch.object(transaction, '_write_sibling', side_effect=swap_parent_then_write), \
+                 mock.patch.object(transaction, '_replace') as replace:
+                with self.assertRaisesRegex(TransactionError, 'symlink|unsafe'):
+                    apply_plan(target, plan)
+
+            replace.assert_not_called()
+            self.assertEqual(list(external.iterdir()), [])
+            self.assertFalse((target / '.agents/lock.json').exists())
+
+    def test_revalidates_unchanged_content_before_committing_lock(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            self.write(target, 'changed', b'old')
+            unchanged = self.write(target, 'unchanged', b'same')
+            plan = self.plan(
+                Change(ChangeKind.UPDATE, PurePosixPath('changed'), b'new'),
+                Change(ChangeKind.UNCHANGED, PurePosixPath('unchanged'), b'same'),
+            )
+            real_replace = os.replace
+            calls = 0
+
+            def replace_then_tamper(source, destination, **kwargs):
+                nonlocal calls
+                calls += 1
+                real_replace(source, destination, **kwargs)
+                if calls == 1:
+                    unchanged.write_bytes(b'tampered')
+
+            with mock.patch.object(transaction, '_replace', side_effect=replace_then_tamper):
+                with self.assertRaisesRegex(TransactionError, 'unchanged|content'):
+                    apply_plan(target, plan)
+
+            self.assertEqual((target / 'changed').read_bytes(), b'old')
+            self.assertEqual(unchanged.read_bytes(), b'tampered')
+            self.assertFalse((target / '.agents/lock.json').exists())
+
+    def test_rejects_invalid_next_locks_before_any_replacement(self):
+        invalid_locks = (
+            LockState(2, None, (), ()),
+            LockState(1, 'not-a-commit', (), ()),
+            LockState(1, None, (ManagedFile(PurePosixPath('../escape'), 'a' * 64),), ()),
+            LockState(1, None, (ManagedFile(PurePosixPath('owned'), 'short'),), ()),
+            LockState(
+                1,
+                None,
+                (
+                    ManagedFile(PurePosixPath('owned'), 'a' * 64),
+                    ManagedFile(PurePosixPath('owned'), 'b' * 64),
+                ),
+                (),
+            ),
+            LockState(
+                1,
+                None,
+                (),
+                (ManagedField(PurePosixPath('owned'), 'bad..key', 'a' * 64),),
+            ),
+            LockState(
+                1,
+                None,
+                (),
+                (
+                    ManagedField(PurePosixPath('owned'), 'key', 'a' * 64),
+                    ManagedField(PurePosixPath('owned'), 'key', 'b' * 64),
+                ),
+            ),
+        )
+        for lock in invalid_locks:
+            with self.subTest(lock=lock), tempfile.TemporaryDirectory() as temp_dir:
+                target = Path(temp_dir)
+                plan = self.plan(Change(ChangeKind.CREATE, PurePosixPath('owned'), b'new'), lock=lock)
+
+                with mock.patch.object(transaction, '_replace') as replace:
+                    with self.assertRaises(TransactionError):
+                        apply_plan(target, plan)
+
+                replace.assert_not_called()
+                self.assertFalse((target / 'owned').exists())
+                self.assertFalse((target / '.agents/lock.json').exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX modes')
+    def test_create_uses_the_process_umask_instead_of_a_private_tempfile_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            old_umask = os.umask(0o027)
+            try:
+                apply_plan(
+                    target,
+                    self.plan(Change(ChangeKind.CREATE, PurePosixPath('owned'), b'new')),
+                )
+            finally:
+                os.umask(old_umask)
+
+            self.assertEqual(stat.S_IMODE((target / 'owned').stat().st_mode), 0o640)
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX openat semantics')
+    def test_unchanged_symlink_after_an_update_blocks_lock_and_rolls_back(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            container = Path(temp_dir)
+            target = container / 'target'
+            external = container / 'external'
+            target.mkdir()
+            external.write_bytes(b'same')
+            self.write(target, 'changed', b'old')
+            unchanged = self.write(target, 'unchanged', b'same')
+            plan = self.plan(
+                Change(ChangeKind.UPDATE, PurePosixPath('changed'), b'new'),
+                Change(ChangeKind.UNCHANGED, PurePosixPath('unchanged'), b'same'),
+            )
+            real_replace = os.replace
+            calls = 0
+
+            def replace_then_swap_unchanged(source, destination, **kwargs):
+                nonlocal calls
+                calls += 1
+                real_replace(source, destination, **kwargs)
+                if calls == 1:
+                    unchanged.unlink()
+                    unchanged.symlink_to(external)
+
+            with mock.patch.object(transaction, '_replace', side_effect=replace_then_swap_unchanged):
+                with self.assertRaisesRegex(TransactionError, 'symlink|unsafe'):
+                    apply_plan(target, plan)
+
+            self.assertEqual((target / 'changed').read_bytes(), b'old')
+            self.assertEqual(external.read_bytes(), b'same')
+            self.assertFalse((target / '.agents/lock.json').exists())
 
 
 if __name__ == '__main__':
