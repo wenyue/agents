@@ -1,1146 +1,919 @@
-# Agents Cross-Platform Plugin Implementation Plan
+# Agents Cross-Platform Plugin Redesign Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Package `wenyue/agents` as a versioned Codex, Cursor, and GitHub Copilot plugin that exposes `setup-project-agents`, keeps project setup explicit, and provides a safe tool-maintenance workflow.
+**Goal:** Turn the repository root into the single Codex, Cursor, and GitHub Copilot plugin, with a `main`-tracking project setup control plane, transactional project snapshots, explicit Hooks, effective multi-agent checks, and user-approved external-tool maintenance.
 
-**Architecture:** `agents/` is both the plugin root and the single public runtime source. Three native plugin manifests expose its root-native `skills/` tree, while repository marketplaces point at `./agents`. `setup-project-agents` prefers the installed plugin checkout as its source, writes a catalog version into project configuration, and retains an immutable-release fallback for legacy project-local copies. Project hooks call a dedicated `manage-agent-tools` skill and only diagnose drift.
+**Architecture:** The repository root is the published plugin and owns one English runtime tree. A small bootstrap fetches remote `main`, pins the fetched commit for one run, and hands off to focused Python modules that build one desired-state plan and apply it transactionally. Projects store user choices in `.agents/config.json` and generated ownership in `.agents/lock.json`; platform directories contain only native configuration and thin wrappers.
 
-**Tech Stack:** Python 3.11 standard library, JSON/TOML configuration, POSIX shell, PowerShell, `unittest`, Codex/Cursor/Copilot plugin manifests.
+**Tech Stack:** Python 3.11 standard library, `unittest`, JSON/JSONC, TOML through `tomllib` plus the existing vendored `tomli` fallback, Git CLI, POSIX shell, PowerShell, Codex/Cursor/Copilot plugin manifests.
 
 ## Global Constraints
 
-- Plugin ID is exactly `agents`; marketplace/source name is exactly `wenyue-agents`; initial version is exactly `0.1.0`.
-- `agents/` remains the sole English public source; `.agents/` remains this repository's curated runtime; `agents-zh/` is human-readable Simplified Chinese only.
-- Plugin installation must not modify a project or register a global SessionStart hook.
-- Every project still requires an explicit `setup-project-agents` invocation.
-- SessionStart hooks may detect and report tool drift but must never install, upgrade, or trust tools automatically.
-- The installed plugin source takes precedence over network retrieval; legacy network fallback must use `v0.1.0` or a 40-character commit, never `master`.
-- Existing uncommitted work is preserved. Stage only the files listed by the current task and inspect `git diff --cached` before every commit.
-- Use `python3` with Python 3.11 or newer. The repository-wide test baseline initially had 167 passing tests and 9 unrelated `test_report_session_usage.py` errors caused by a stale sibling-repository path.
-- Every completed change set must run the full repository test command and `git diff --check`.
+- The repository root is the plugin root; do not add a nested plugin package or a `src/` to `dist/` build.
+- Plugin ID is `agents`; `VERSION` and all three native manifests initially remain `0.1.0`.
+- The canonical update source is `https://github.com/wenyue/agents.git`, ref `main`; do not use Releases, tags, `main.zip`, or an old project updater.
+- Fetch `main` for every online setup run, then pin the resolved commit SHA for that run and record it in `.agents/lock.json`.
+- If fetch is unavailable, continue from the installed plugin with a warning; if fetched content is invalid, fail before target mutation.
+- Copy the complete selected Rules, Skills, and Agents snapshot, but never copy `setup-project-agents`; install Hooks only when explicitly enabled.
+- Codex writes `features.hooks = true` only for explicit Hook enablement. Multi-agent support is detected from effective state and is never written merely to repeat a default.
+- Setup may overwrite or delete only lock-owned paths or fields. An unmanaged collision is a blocking conflict.
+- Do not mutate host plugin caches, editor trust databases, or third-party tools inside the project synchronization transaction.
+- Keep runtime English-only. Move Chinese Markdown to `docs/zh-CN/`; no JSON, scripts, templates, or runtime manifests belong there.
+- Do not preserve the old synchronizer, archive fallback, project-local updater, old manifest, or compatibility tests in the final tree.
+- Use repository-relative paths in tracked files. Preserve unrelated work and stage only the current task's files.
+- Run `uv run --python 3.11 --no-project python -m unittest discover -s tests -p 'test_*.py'` and `git diff --check` before every task commit.
 
 ## File Map
 
-- `agents/.codex-plugin/plugin.json`: Codex plugin metadata and root-native Skill path.
-- `.agents/plugins/marketplace.json`: Codex repository marketplace pointing at `./agents`.
-- `agents/.cursor-plugin/plugin.json`: Cursor plugin metadata and root-native Skill path.
-- `.cursor-plugin/marketplace.json`: Cursor repository marketplace pointing at `./agents`.
-- `agents/plugin.json`: Copilot plugin metadata and root-native Skill path.
-- `.github/plugin/marketplace.json`: Copilot repository marketplace pointing at `./agents`.
-- `agents/skills/manage-agent-tools/`: owns recommended-tool policy, diagnostics, platform wrappers, and the explicit maintenance workflow.
-- `agents/skills/setup-project-agents/`: owns deterministic project synchronization and plugin/local/legacy source selection.
-- `agents/skills/setup-project-agents/references/public_assets.json`: owns public installation membership plus catalog identity and release revision.
-- `agents/skills/setup-project-agents/assets/templates/project-config/agents.config.json`: owns managed project catalog metadata.
-- `agents/skills/setup-project-agents/references/project-config.schema.json`: validates catalog metadata in target configuration.
-- `tests/test_plugin_manifests.py`: validates all native plugin and marketplace contracts.
-- `tests/test_public_agent_assets.py`: validates source resolution, catalog synchronization, tool ownership, and existing public installation behavior.
-- `README.md` and `agents-zh/README.md`: document plugin installation, explicit project setup, and concise Hook trust behavior.
+### Plugin and content roots
+
+- `.codex-plugin/plugin.json`: Codex plugin metadata; exposes root `skills/`.
+- `.cursor-plugin/plugin.json`: Cursor metadata; exposes root `skills/`, `rules/`, and `agents/`.
+- `plugin.json`: Copilot metadata; exposes root `skills/` and `agents/`.
+- `VERSION`: one semantic plugin version consumed by manifest tests.
+- `rules/`, `skills/`, `agents/`, `blueprints/`: the only English runtime and generation sources.
+- `catalog/project-assets.json`: the only machine-readable project payload declaration.
+- `catalog/project-config.schema.json`: user configuration contract.
+- `catalog/project-lock.schema.json`: generated ownership contract.
+- `templates/project/`: project entry files, native config, Hooks, and wrappers.
+- `config/recommended-tools/`: platform, Superpowers, CodeGraph, and Tokscale policy.
+
+### Setup implementation
+
+- `skills/setup-project-agents/scripts/bootstrap.py`: stable fetch-and-handoff protocol.
+- `skills/setup-project-agents/scripts/setup_project_agents.py`: `prepare`, `apply`, and `check` CLI orchestration.
+- `skills/setup-project-agents/scripts/agents_setup/models.py`: immutable data contracts.
+- `skills/setup-project-agents/scripts/agents_setup/catalog.py`: Catalog/config/lock parsing and validation.
+- `skills/setup-project-agents/scripts/agents_setup/source.py`: Git `main` fetch and source validation.
+- `skills/setup-project-agents/scripts/agents_setup/project.py`: project inspection and safe path resolution.
+- `skills/setup-project-agents/scripts/agents_setup/planner.py`: the single desired/current/lock diff engine.
+- `skills/setup-project-agents/scripts/agents_setup/renderer.py`: asset, wrapper, generated-output, JSON/JSONC, and TOML rendering.
+- `skills/setup-project-agents/scripts/agents_setup/validation.py`: staged-tree and native-config validation.
+- `skills/setup-project-agents/scripts/agents_setup/transaction.py`: backup, atomic apply, and rollback.
+- `skills/setup-project-agents/scripts/agents_setup/host_adapters/`: Codex, Cursor, and Copilot capability adapters.
+
+### Tests and documentation
+
+- `tests/test_plugin_manifests.py`: root package and marketplace contracts.
+- `tests/test_setup_catalog.py`: Catalog, config, lock, and path contracts.
+- `tests/test_setup_planner.py`: ownership, conflicts, and idempotence.
+- `tests/test_setup_renderer.py`: native output and explicit Hook behavior.
+- `tests/test_setup_transaction.py`: atomic apply and rollback.
+- `tests/test_setup_source.py`: `main` fetch, pinning, fallback, and handoff.
+- `tests/test_setup_cli.py`: prepare/apply/check integration.
+- `tests/test_manage_agent_tools.py`: tool policy and non-mutating Hook mode.
+- `.github/workflows/test.yml`: Python 3.11 Linux/macOS/Windows verification.
+- `README.md` and `docs/zh-CN/`: public English documentation and Chinese reading mirror.
 
 ---
 
-### Task 1: Add Native Plugin and Marketplace Manifests
+### Task 1: Promote the Repository Root to the Plugin Root
 
 **Files:**
-- Create: `agents/.codex-plugin/plugin.json`
-- Create: `.agents/plugins/marketplace.json`
-- Create: `agents/.cursor-plugin/plugin.json`
-- Create: `.cursor-plugin/marketplace.json`
-- Create: `agents/plugin.json`
-- Create: `.github/plugin/marketplace.json`
-- Create: `tests/test_plugin_manifests.py`
-
-**Interfaces:**
-- Consumes: public Skills at `agents/skills/*/SKILL.md`.
-- Produces: six JSON entry points with plugin ID `agents`, version `0.1.0`, root-native Skill path `./skills/`, and marketplace source `./agents`.
-
-- [ ] **Step 1: Write the failing manifest contract tests**
-
-Create `tests/test_plugin_manifests.py`:
-
-```python
-import json
-import unittest
-from pathlib import Path
-
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-PLUGIN_VERSION = '0.1.0'
-
-
-def load_json(relative_path: str) -> dict:
-    value = json.loads((REPO_ROOT / relative_path).read_text(encoding='utf-8'))
-    if not isinstance(value, dict):
-        raise AssertionError(f'{relative_path} must contain an object')
-    return value
-
-
-class PluginManifestTest(unittest.TestCase):
-    def test_native_plugin_manifests_share_identity_version_and_skills(self):
-        for path in (
-            'agents/.codex-plugin/plugin.json',
-            'agents/.cursor-plugin/plugin.json',
-            'agents/plugin.json',
-        ):
-            with self.subTest(path=path):
-                manifest = load_json(path)
-                self.assertEqual(manifest['name'], 'agents')
-                self.assertEqual(manifest['version'], PLUGIN_VERSION)
-                self.assertEqual(manifest['skills'], './skills/')
-                self.assertNotIn('hooks', manifest)
-                self.assertTrue((REPO_ROOT / 'agents' / manifest['skills']).is_dir())
-
-    def test_codex_marketplace_points_at_repository_plugin_root(self):
-        marketplace = load_json('.agents/plugins/marketplace.json')
-        self.assertEqual(marketplace['name'], 'wenyue-agents')
-        self.assertEqual(marketplace['interface']['displayName'], 'wenyue/agents')
-        self.assertEqual(
-            marketplace['plugins'],
-            [{
-                'name': 'agents',
-                'source': {'source': 'local', 'path': './agents'},
-                'policy': {
-                    'installation': 'AVAILABLE',
-                    'authentication': 'ON_INSTALL',
-                },
-                'category': 'Developer Tools',
-            }],
-        )
-
-    def test_cursor_and_copilot_marketplaces_point_at_repository_root(self):
-        for path in (
-            '.cursor-plugin/marketplace.json',
-            '.github/plugin/marketplace.json',
-        ):
-            with self.subTest(path=path):
-                marketplace = load_json(path)
-                self.assertEqual(marketplace['name'], 'wenyue-agents')
-                self.assertEqual(marketplace['plugins'][0]['name'], 'agents')
-                self.assertEqual(marketplace['plugins'][0]['source'], './agents')
-                self.assertEqual(marketplace['plugins'][0]['version'], PLUGIN_VERSION)
-
-
-if __name__ == '__main__':
-    unittest.main()
-```
-
-- [ ] **Step 2: Run the suite and verify the new tests fail because manifests are absent**
-
-Run:
-
-```sh
-python3 \
-  -m unittest discover -s tests -p 'test_*.py'
-```
-
-Expected: the new `PluginManifestTest` cases fail with `FileNotFoundError`; the existing 9 unrelated session-usage errors remain.
-
-- [ ] **Step 3: Add the minimal Codex plugin and marketplace**
-
-Create `agents/.codex-plugin/plugin.json`:
-
-```json
-{
-  "name": "agents",
-  "version": "0.1.0",
-  "description": "Install and maintain shared project-agent workflows across repositories.",
-  "author": {
-    "name": "wenyue",
-    "url": "https://github.com/wenyue"
-  },
-  "homepage": "https://github.com/wenyue/agents",
-  "repository": "https://github.com/wenyue/agents",
-  "keywords": ["coding-agents", "project-setup", "skills"],
-  "skills": "./skills/",
-  "interface": {
-    "displayName": "wenyue/agents",
-    "shortDescription": "Set up and maintain project agent tooling",
-    "longDescription": "Install versioned workflows for project rules, skills, agents, hooks, and recommended-tool diagnostics.",
-    "developerName": "wenyue",
-    "category": "Developer Tools",
-    "capabilities": ["Read", "Write"],
-    "websiteURL": "https://github.com/wenyue/agents",
-    "defaultPrompt": [
-      "Use setup-project-agents to initialize this repository.",
-      "Check and update this repository's agent assets."
-    ]
-  }
-}
-```
-
-Create `.agents/plugins/marketplace.json`:
-
-```json
-{
-  "name": "wenyue-agents",
-  "interface": {
-    "displayName": "wenyue/agents"
-  },
-  "plugins": [
-    {
-      "name": "agents",
-      "source": {
-        "source": "local",
-        "path": "./agents"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Developer Tools"
-    }
-  ]
-}
-```
-
-- [ ] **Step 4: Add the minimal Cursor plugin and marketplace**
-
-Create `agents/.cursor-plugin/plugin.json`:
-
-```json
-{
-  "name": "agents",
-  "displayName": "wenyue/agents",
-  "version": "0.1.0",
-  "description": "Install and maintain shared project-agent workflows across repositories.",
-  "author": {
-    "name": "wenyue"
-  },
-  "homepage": "https://github.com/wenyue/agents",
-  "repository": "https://github.com/wenyue/agents",
-  "keywords": ["coding-agents", "project-setup", "skills"],
-  "category": "developer-tools",
-  "skills": "./skills/"
-}
-```
-
-Create `.cursor-plugin/marketplace.json`:
-
-```json
-{
-  "name": "wenyue-agents",
-  "owner": {
-    "name": "wenyue"
-  },
-  "metadata": {
-    "description": "Cross-platform project agent workflows",
-    "version": "0.1.0"
-  },
-  "plugins": [
-    {
-      "name": "agents",
-      "source": "./agents",
-      "version": "0.1.0",
-      "description": "Install and maintain shared project-agent workflows across repositories."
-    }
-  ]
-}
-```
-
-- [ ] **Step 5: Add the minimal Copilot plugin and marketplace**
-
-Create `agents/plugin.json`:
-
-```json
-{
-  "name": "agents",
-  "version": "0.1.0",
-  "description": "Install and maintain shared project-agent workflows across repositories.",
-  "author": {
-    "name": "wenyue",
-    "url": "https://github.com/wenyue"
-  },
-  "homepage": "https://github.com/wenyue/agents",
-  "repository": "https://github.com/wenyue/agents",
-  "keywords": ["coding-agents", "project-setup", "skills"],
-  "skills": "./skills/"
-}
-```
-
-Create `.github/plugin/marketplace.json`:
-
-```json
-{
-  "name": "wenyue-agents",
-  "owner": {
-    "name": "wenyue"
-  },
-  "metadata": {
-    "description": "Cross-platform project agent workflows",
-    "version": "0.1.0"
-  },
-  "plugins": [
-    {
-      "name": "agents",
-      "source": "./agents",
-      "version": "0.1.0",
-      "description": "Install and maintain shared project-agent workflows across repositories."
-    }
-  ]
-}
-```
-
-- [ ] **Step 6: Validate the Codex package and run the manifest tests**
-
-Run:
-
-```sh
-python3 "$CODEX_HOME/skills/.system/plugin-creator/scripts/validate_plugin.py" agents
-python3 \
-  -m unittest tests.test_plugin_manifests
-```
-
-Expected: the official local Codex validator exits `0`, and all `PluginManifestTest` cases pass.
-Then run the repository-wide Python 3.11 command from Step 2 and confirm only the same 9 unrelated
-session-usage errors remain.
-
-- [ ] **Step 7: Commit only the plugin contract files**
-
-```sh
-git add -- agents/.codex-plugin/plugin.json .agents/plugins/marketplace.json \
-  agents/.cursor-plugin/plugin.json .cursor-plugin/marketplace.json \
-  agents/plugin.json .github/plugin/marketplace.json tests/test_plugin_manifests.py
-git diff --cached --check
-git commit -m "feat: package agents for three plugin hosts"
-```
-
----
-
-### Task 2: Give Tool Maintenance a Dedicated Shared Skill
-
-**Files:**
-- Create: `agents/skills/manage-agent-tools/SKILL.md`
-- Create: `agents-zh/skills/manage-agent-tools/SKILL.md`
-- Move: `agents/skills/setup-project-agents/scripts/check_recommended_tools.py` to `agents/skills/manage-agent-tools/scripts/check_recommended_tools.py`
-- Move: `agents/skills/setup-project-agents/scripts/check_recommended_tools.sh` to `agents/skills/manage-agent-tools/scripts/check_recommended_tools.sh`
-- Move: `agents/skills/setup-project-agents/scripts/check_recommended_tools.ps1` to `agents/skills/manage-agent-tools/scripts/check_recommended_tools.ps1`
-- Move: `agents/skills/setup-project-agents/assets/templates/recommended-tools/*.json` to `agents/skills/manage-agent-tools/references/recommended-tools/*.json`
-- Modify: `agents/skills/setup-project-agents/references/public_assets.json`
-- Modify: `agents/skills/setup-project-agents/assets/templates/project-config/codex.hooks.json`
-- Modify: `agents/skills/setup-project-agents/assets/templates/project-config/cursor.hooks.json`
-- Modify: `agents/skills/setup-project-agents/assets/templates/project-config/copilot.tool-check.hooks.json`
+- Create: `VERSION`
+- Move: `agents/.codex-plugin/plugin.json` to `.codex-plugin/plugin.json`
+- Modify: `.cursor-plugin/plugin.json`
+- Move: `agents/plugin.json` to `plugin.json`
+- Move: `agents/rules/` to `rules/`
+- Move: `agents/skills/` to `skills/`
+- Move: `agents/blueprints/` to `blueprints/`
+- Move: `agents/agents/change-set-verifier.md` to `agents/change-set-verifier.md`
+- Modify: `.agents/plugins/marketplace.json`
+- Modify: `.cursor-plugin/marketplace.json`
+- Modify: `.github/plugin/marketplace.json`
+- Modify: `tests/test_plugin_manifests.py`
 - Modify: `tests/test_public_agent_assets.py`
+- Modify: `tests/test_report_session_usage.py`
 
 **Interfaces:**
-- Consumes: existing `Finding`, `check_policy`, `run_hook`, `check`, and `hook --force` behavior.
-- Produces: shared Skill `manage-agent-tools`; project Hook commands under `.agents/skills/manage-agent-tools/scripts/`; policy lookup at `references/recommended-tools/<platform>.json`.
+- Consumes: current plugin version `0.1.0` and existing runtime files.
+- Produces: root-native paths used by every later task; `VERSION` contains `0.1.0\n`.
 
-- [ ] **Step 1: Update tests first to declare the new owner**
+- [ ] **Step 1: Replace manifest tests with the root-layout contract**
 
-Replace the module-level checker constant, add the policy-root constant beside it, and add the
-method below inside the existing `SyncPublicAgentAssetsTest` class:
-
-```python
-MANAGE_AGENT_TOOLS_ROOT = REPO_ROOT / 'agents' / 'skills' / 'manage-agent-tools'
-RECOMMENDED_TOOL_CHECKER = (
-    MANAGE_AGENT_TOOLS_ROOT / 'scripts' / 'check_recommended_tools.py'
-)
-RECOMMENDED_TOOL_POLICIES = (
-    MANAGE_AGENT_TOOLS_ROOT / 'references' / 'recommended-tools'
-)
-```
+Add these assertions to `tests/test_plugin_manifests.py` before moving files:
 
 ```python
+def test_repository_root_is_the_only_plugin_root(self):
+    version = (REPO_ROOT / 'VERSION').read_text(encoding='utf-8').strip()
+    self.assertEqual(version, '0.1.0')
+    manifests = (
+        REPO_ROOT / '.codex-plugin' / 'plugin.json',
+        REPO_ROOT / '.cursor-plugin' / 'plugin.json',
+        REPO_ROOT / 'plugin.json',
+    )
+    for manifest_path in manifests:
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        self.assertEqual(manifest['name'], 'agents')
+        self.assertEqual(manifest['version'], version)
+        self.assertEqual(manifest['skills'], './skills/')
+    self.assertFalse((REPO_ROOT / 'agents' / '.codex-plugin').exists())
+    self.assertFalse((REPO_ROOT / 'agents' / 'skills').exists())
 
-    def test_manage_agent_tools_owns_checker_policy_and_project_hook_commands(self):
-        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
-        self.assertIn({'name': 'manage-agent-tools'}, public_config['skills'])
-        for platform in ('codex', 'cursor', 'copilot'):
-            self.assertTrue(
-                (RECOMMENDED_TOOL_POLICIES / f'{platform}.json').is_file()
-            )
-        hook_templates = (
-            REPO_TEMPLATES / 'project-config' / 'codex.hooks.json',
-            REPO_TEMPLATES / 'project-config' / 'cursor.hooks.json',
-            REPO_TEMPLATES / 'project-config' / 'copilot.tool-check.hooks.json',
-        )
-        for template in hook_templates:
-            self.assertIn(
-                '.agents/skills/manage-agent-tools/scripts/',
-                template.read_text(encoding='utf-8'),
-            )
+def test_local_marketplaces_point_at_the_repository_root(self):
+    for relative in (
+        '.cursor-plugin/marketplace.json',
+        '.github/plugin/marketplace.json',
+    ):
+        marketplace = load_json(relative)
+        self.assertEqual(marketplace['plugins'][0]['source'], './')
+    codex = load_json('.agents/plugins/marketplace.json')
+    self.assertEqual(codex['plugins'][0]['source']['path'], './')
 ```
 
-- [ ] **Step 2: Run the suite and verify the ownership test fails**
+- [ ] **Step 2: Run the focused tests and verify they fail on the nested layout**
 
-Run the repository-wide Python 3.11 test command.
+Run:
 
-Expected: the new test fails because `manage-agent-tools` and its files do not exist; the 9 unrelated baseline errors remain.
+```sh
+uv run --python 3.11 --no-project python -m unittest tests.test_plugin_manifests
+```
 
-- [ ] **Step 3: Move the existing checker, wrappers, and policies without changing behavior**
+Expected: FAIL because `VERSION` and `.codex-plugin/plugin.json` do not yet exist and marketplace sources are `./agents`.
 
-Use patch-based renames so the current Hook/multi-agent worktree edits move intact. Update `default_policy_path` in the moved Python file to:
+- [ ] **Step 3: Move the runtime trees and manifests without duplicating them**
+
+Use `git mv` for every path listed in this task. After the moves, update the three manifests to these path fields:
+
+```json
+{
+  "name": "agents",
+  "version": "0.1.0",
+  "skills": "./skills/"
+}
+```
+
+Preserve every existing metadata field. Add `"rules": "./rules/"` and `"agents": "./agents/"` only to `.cursor-plugin/plugin.json`; add `"agents": "./agents/"` to `plugin.json`. Change all local marketplace sources from `./agents` to `./`.
+
+- [ ] **Step 4: Retarget existing tests to root-native paths**
+
+Use these constants in the still-existing legacy test modules so the suite remains green during construction:
+
+```python
+REPO_SKILL_ROOT = REPO_ROOT / 'skills' / 'setup-project-agents'
+MANAGE_AGENT_TOOLS_ROOT = REPO_ROOT / 'skills' / 'manage-agent-tools'
+REPORT_SESSION_USAGE_ROOT = REPO_ROOT / 'skills' / 'report-session-usage'
+```
+
+Update repository-source fixtures from `source / 'agents' / 'skills'` to `source / 'skills'`. Do not add fallback branches for the old location.
+
+- [ ] **Step 5: Run all tests and commit the root topology**
+
+Run the global verification commands. Expected: 197 tests pass with the existing single skip.
+
+```sh
+git add VERSION .codex-plugin .cursor-plugin .github/plugin .agents/plugins \
+  plugin.json rules skills agents blueprints tests
+git diff --cached --check
+git commit -m "refactor: promote agents plugin to repository root"
+```
+
+---
+
+### Task 2: Define Catalog, Project Config, Lock, and Model Contracts
+
+**Files:**
+- Create: `catalog/project-assets.json`
+- Create: `catalog/project-config.schema.json`
+- Create: `catalog/project-lock.schema.json`
+- Create: `skills/setup-project-agents/scripts/agents_setup/__init__.py`
+- Create: `skills/setup-project-agents/scripts/agents_setup/models.py`
+- Create: `skills/setup-project-agents/scripts/agents_setup/catalog.py`
+- Create: `tests/test_setup_catalog.py`
+
+**Interfaces:**
+- Produces: `Platform`, `AssetSpec`, `ProjectConfig`, `ManagedFile`, `ManagedField`, `LockState`, `load_catalog`, `load_project_config`, and `load_lock`.
+- Consumes: root `VERSION`, `rules/`, `skills/`, `agents/`, `blueprints/`, and `templates/project/` paths that later tasks create.
+
+- [ ] **Step 1: Write failing contract and path-safety tests**
+
+Create `tests/test_setup_catalog.py` with these core cases:
+
+```python
+class SetupCatalogTest(unittest.TestCase):
+    def test_catalog_excludes_setup_control_plane(self):
+        catalog = load_catalog(REPO_ROOT)
+        targets = {
+            asset.target.as_posix()
+            for asset in catalog.assets
+            if asset.target is not None
+        }
+        self.assertNotIn('.agents/skills/setup-project-agents', targets)
+        self.assertIn('.agents/skills/manage-agent-tools', targets)
+
+    def test_project_config_defaults_to_all_hosts_and_hooks_off(self):
+        config = load_project_config(None, catalog=load_catalog(REPO_ROOT))
+        self.assertEqual(config.platforms, tuple(Platform))
+        self.assertFalse(config.hooks_enabled)
+
+    def test_catalog_rejects_escape_and_absolute_targets(self):
+        for target in ('../escape', '/tmp/escape'):
+            with self.subTest(target=target):
+                with self.assertRaisesRegex(ContractError, 'relative path'):
+                    parse_asset({'id': 'bad', 'kind': 'file', 'source': 'README.md', 'target': target})
+```
+
+- [ ] **Step 2: Run the focused tests and verify import failure**
+
+Run:
+
+```sh
+uv run --python 3.11 --no-project python -m unittest tests.test_setup_catalog
+```
+
+Expected: FAIL because `agents_setup.catalog` does not exist.
+
+- [ ] **Step 3: Add immutable model contracts**
+
+Implement these exact public types in `models.py`:
+
+```python
+class Platform(str, Enum):
+    CODEX = 'codex'
+    CURSOR = 'cursor'
+    COPILOT = 'copilot'
+
+@dataclass(frozen=True)
+class AssetSpec:
+    id: str
+    kind: str
+    source: PurePosixPath
+    target: PurePosixPath | None
+    platforms: tuple[Platform, ...]
+    mode: str = 'copy'
+    control_plane: bool = False
+
+@dataclass(frozen=True)
+class ProjectConfig:
+    version: int
+    platforms: tuple[Platform, ...]
+    hooks_enabled: bool
+    selected_rules: tuple[str, ...]
+    selected_skills: tuple[str, ...]
+    selected_agents: tuple[str, ...]
+
+@dataclass(frozen=True)
+class ManagedFile:
+    path: PurePosixPath
+    sha256: str
+
+@dataclass(frozen=True)
+class ManagedField:
+    path: PurePosixPath
+    key: str
+    sha256: str
+
+@dataclass(frozen=True)
+class LockState:
+    version: int
+    source_commit: str | None
+    managed_files: tuple[ManagedFile, ...]
+    managed_fields: tuple[ManagedField, ...]
+```
+
+Also define `ContractError(ValueError)`, `LockState.empty() -> LockState`,
+`LockState.from_files(files: Mapping[str, str]) -> LockState`, and a `Catalog` dataclass containing
+plugin ID, plugin version, repository, ref, and `assets`.
+
+- [ ] **Step 4: Implement strict parsers and schemas**
+
+`catalog.py` must expose the exact signatures
+`safe_relative(value: str, label: str) -> PurePosixPath`,
+`parse_asset(value: Mapping[str, object]) -> AssetSpec`,
+`load_catalog(source_root: Path) -> Catalog`,
+`load_project_config(path: Path | None, *, catalog: Catalog) -> ProjectConfig`, and
+`load_lock(path: Path | None) -> LockState`.
+
+Reject unknown top-level and asset fields, duplicate IDs or targets, unsafe names, non-semver `VERSION`, non-40-hex lock commits, and a control-plane asset with a project target. Default config is all Catalog rule/skill/agent IDs, all three platforms, and Hooks disabled.
+
+Populate `catalog/project-assets.json` with every current root Rule, every root Skill except `setup-project-agents`, `agents/change-set-verifier.md`, the five Blueprint-generated outputs, entry/config templates, and platform wrappers. Give `setup-project-agents` a Catalog record with `control_plane: true` and no target so exclusion is testable rather than implicit.
+
+- [ ] **Step 5: Run tests and commit the contracts**
+
+Run `tests.test_setup_catalog`, then the global verification commands.
+
+```sh
+git add catalog skills/setup-project-agents/scripts/agents_setup tests/test_setup_catalog.py
+git commit -m "feat: define project agent catalog contracts"
+```
+
+---
+
+### Task 3: Implement the Single Ownership-Aware Planner
+
+**Files:**
+- Modify: `skills/setup-project-agents/scripts/agents_setup/models.py`
+- Create: `skills/setup-project-agents/scripts/agents_setup/project.py`
+- Create: `skills/setup-project-agents/scripts/agents_setup/planner.py`
+- Create: `tests/test_setup_planner.py`
+
+**Interfaces:**
+- Consumes: `ProjectConfig`, `LockState`, rendered desired files and fields.
+- Produces: `DesiredFile`, `DesiredField`, `Change`, `ChangeKind`, `Plan`, `inspect_project`, and `build_plan`.
+
+- [ ] **Step 1: Write failing planner tests for create, update, conflict, delete, and idempotence**
+
+Use a temporary target and assert this public behavior:
+
+```python
+plan = build_plan(
+    target_root=target,
+    desired_files=(DesiredFile(PurePosixPath('.agents/rules/a.md'), b'new\n'),),
+    desired_fields=(),
+    lock=LockState.empty(),
+)
+self.assertEqual(plan.changes[0].kind, ChangeKind.CREATE)
+
+(target / '.agents/rules/a.md').write_text('user\n', encoding='utf-8')
+with self.assertRaisesRegex(PlanningError, 'unmanaged collision'):
+    build_plan(target, desired_files, (), LockState.empty())
+
+owned = LockState.from_files({'.agents/rules/a.md': sha256_bytes(b'old\n')})
+(target / '.agents/rules/a.md').write_bytes(b'old\n')
+self.assertEqual(build_plan(target, desired_files, (), owned).changes[0].kind, ChangeKind.UPDATE)
+```
+
+Add separate cases proving a removed lock-owned path becomes `DELETE`, a matching desired file becomes `UNCHANGED`, a modified lock-owned file becomes a conflict, and symlinked target components are rejected.
+
+- [ ] **Step 2: Run focused tests and verify planner imports fail**
+
+Expected: FAIL because `project.py` and `planner.py` do not exist.
+
+- [ ] **Step 3: Implement project inspection and plan models**
+
+Add:
+
+```python
+class ChangeKind(str, Enum):
+    CREATE = 'create'
+    UPDATE = 'update'
+    DELETE = 'delete'
+    UNCHANGED = 'unchanged'
+
+@dataclass(frozen=True)
+class DesiredFile:
+    path: PurePosixPath
+    content: bytes
+
+@dataclass(frozen=True)
+class DesiredField:
+    path: PurePosixPath
+    key: str
+    value: object
+    format: str
+
+@dataclass(frozen=True)
+class Change:
+    kind: ChangeKind
+    path: PurePosixPath
+    content: bytes | None
+
+@dataclass(frozen=True)
+class Plan:
+    changes: tuple[Change, ...]
+    next_lock: LockState
+```
+
+`project.py` must expose `confined_target(root, relative)` and reject absolute paths, `..`, existing symlink components, and a target root that is itself a symlink.
+
+- [ ] **Step 4: Implement one deterministic planner used by check and apply**
+
+Implement `sha256_bytes(content: bytes) -> str` and
+`build_plan(target_root: Path, desired_files: Sequence[DesiredFile], desired_fields: Sequence[DesiredField], lock: LockState, *, source_commit: str | None = None) -> Plan`.
+The planner must sort by POSIX path, compare SHA-256 bytes, allow updates/deletes only when the
+current digest matches the previous lock, and construct `next_lock` only from desired managed files
+and fields. It must never write. Field planning receives fully rendered file bytes from Task 4, so
+file and field ownership share one conflict path.
+
+- [ ] **Step 5: Run tests and commit**
+
+Run focused and global verification.
+
+```sh
+git add skills/setup-project-agents/scripts/agents_setup tests/test_setup_planner.py
+git commit -m "feat: plan lock-owned project agent changes"
+```
+
+---
+
+### Task 4: Render Platform-Native Desired State and Explicit Hooks
+
+**Files:**
+- Create: `templates/project/entry-files/AGENTS.md`
+- Create: `templates/project/platform-config/*.json`
+- Create: `templates/project/platform-config/*.toml`
+- Create: `templates/project/hooks/*.json`
+- Create: `templates/project/wrappers/*`
+- Create: `skills/setup-project-agents/scripts/agents_setup/renderer.py`
+- Create: `skills/setup-project-agents/scripts/agents_setup/validation.py`
+- Create: `skills/setup-project-agents/scripts/agents_setup/host_adapters/__init__.py`
+- Create: `skills/setup-project-agents/scripts/agents_setup/host_adapters/base.py`
+- Create: `skills/setup-project-agents/scripts/agents_setup/host_adapters/codex.py`
+- Create: `skills/setup-project-agents/scripts/agents_setup/host_adapters/cursor.py`
+- Create: `skills/setup-project-agents/scripts/agents_setup/host_adapters/copilot.py`
+- Create: `tests/test_setup_renderer.py`
+
+**Interfaces:**
+- Consumes: Catalog assets, project config, generated Blueprint outputs, model selections, and existing unmanaged native fields.
+- Produces: `render_desired_state(source_root: Path, target_root: Path, catalog: Catalog, config: ProjectConfig, generated_root: Path, models: Mapping[str, object], adapters: Mapping[Platform, HostAdapter]) -> RenderedState`, `CapabilityStatus`, and three host adapters.
+
+- [ ] **Step 1: Write failing golden tests for the three hosts**
+
+Create fixtures that call `render_desired_state` with Hooks off and on. Assert:
+
+```python
+self.assertNotIn('.codex/hooks.json', off.files_by_path)
+self.assertNotIn('.cursor/hooks.json', off.files_by_path)
+self.assertNotIn('.github/hooks/project-agent-tool-check.json', off.files_by_path)
+self.assertNotIn(('.codex/config.toml', 'features.hooks'), off.fields_by_key)
+
+self.assertEqual(on.fields_by_key[('.codex/config.toml', 'features.hooks')], True)
+self.assertEqual(on.fields_by_key[('.github/copilot/settings.json', 'disableAllHooks')], False)
+self.assertIn('.cursor/hooks.json', on.files_by_path)
+self.assertNotIn('.agents/skills/setup-project-agents/SKILL.md', on.files_by_path)
+```
+
+Also assert Cursor wrappers reference `.agents/rules/00-global-rule-config.md`, Copilot wrappers reference the
+same shared source, and all Hook commands call
+`.agents/skills/manage-agent-tools/scripts/check_recommended_tools` with relative paths.
+Add a transition test that renders Hooks on, records the resulting lock, then renders Hooks off;
+the second plan must delete all three lock-owned Hook files and remove only the two owned native
+fields while preserving unrelated Codex and Copilot settings.
+
+- [ ] **Step 2: Run the renderer tests and verify imports fail**
+
+Expected: FAIL because renderer and adapters are absent.
+
+- [ ] **Step 3: Establish and normalize root templates**
+
+Copy the existing setup templates into the four `templates/project/` subdirectories while the old
+suite still exercises the monolith; Task 9 deletes the old copy during cutover. Treat the new root
+templates as canonical for all new modules. Preserve native JSON/TOML values, but remove
+`features.hooks = true` from the unconditional Codex baseline; make it an owned field emitted only
+when Hooks are enabled. Keep `.codex/hooks.json`, `.cursor/hooks.json`, and
+`.github/hooks/project-agent-tool-check.json` as separate optional assets.
+
+- [ ] **Step 4: Implement host adapter contracts**
+
+In `base.py` define:
+
+```python
+class CapabilityStatus(str, Enum):
+    READY = 'ready'
+    NEEDS_APPROVAL = 'needs_approval'
+    NEEDS_RESTART = 'needs_restart'
+    UNSUPPORTED = 'unsupported'
+
+@dataclass(frozen=True)
+class CapabilityResult:
+    status: CapabilityStatus
+    detail: str
+
+class CommandRunner(Protocol):
+    def run(self, argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        raise NotImplementedError
+```
+
+Also define a `HostAdapter` Protocol with `platform`, `check_multi_agent(runner)`,
+`hook_fields(enabled)`, and `plugin_refresh_command()` members. Codex adapter parses
+`codex features list` for effective `multi_agent`; Cursor and Copilot adapters compare their CLI
+versions with `2026.01.27` and `1.0.58` respectively. None writes a multi-agent setting. Cursor Hook
+trust returns `NEEDS_APPROVAL` with an official-UI instruction; no adapter writes trust storage.
+
+- [ ] **Step 5: Implement deterministic rendering and validation**
+
+`render_desired_state` returns:
+
+```python
+@dataclass(frozen=True)
+class RenderedState:
+    files: tuple[DesiredFile, ...]
+    fields: tuple[DesiredField, ...]
+    capabilities: Mapping[Platform, CapabilityResult]
+```
+
+Add read-only `files_by_path` and `fields_by_key` properties used by the golden tests. Copy selected
+shared assets, overlay generated Blueprint outputs, render wrappers from structured metadata, and
+merge JSON/JSONC/TOML fields while preserving values absent from the template. `validation.py`
+reparses every rendered native config, verifies wrapper references exist in the staged desired tree,
+and rejects missing Hook checker scripts.
+
+- [ ] **Step 6: Run tests and commit**
+
+Run focused and global verification.
+
+```sh
+git add templates catalog/project-assets.json \
+  skills/setup-project-agents/scripts/agents_setup tests/test_setup_renderer.py
+git commit -m "feat: render aligned project agent configurations"
+```
+
+---
+
+### Task 5: Apply Plans Transactionally with Rollback
+
+**Files:**
+- Create: `skills/setup-project-agents/scripts/agents_setup/transaction.py`
+- Create: `tests/test_setup_transaction.py`
+
+**Interfaces:**
+- Consumes: a validated `Plan` and target root.
+- Produces: `apply_plan(target_root: Path, plan: Plan) -> None`; no partial state after failure.
+
+- [ ] **Step 1: Write failing transaction tests**
+
+Cover create/update/delete, parent creation, atomic replacement, and injected failure:
+
+```python
+with mock.patch.object(transaction, '_replace', side_effect=[None, OSError('boom')]):
+    with self.assertRaisesRegex(TransactionError, 'boom'):
+        apply_plan(target, plan)
+self.assertEqual((target / 'owned-a').read_bytes(), b'old-a')
+self.assertEqual((target / 'owned-b').read_bytes(), b'old-b')
+self.assertFalse((target / '.agents/lock.json').exists())
+```
+
+Assert unmanaged files remain byte-identical and a symlink introduced after planning aborts before the first replace.
+
+- [ ] **Step 2: Run focused tests and verify import failure**
+
+- [ ] **Step 3: Implement backup, apply, lock-last, and reverse rollback**
+
+Use `tempfile.TemporaryDirectory(prefix='agents-setup-transaction-')`. Before writes, revalidate every target path, copy each existing managed file or record absence, write new bytes to a sibling temporary file, and call `os.replace`. Apply `.agents/lock.json` last. On any exception, restore backups in reverse order and raise `TransactionError` with the original error.
+
+Expose `_replace = os.replace` as the sole injection point used by tests.
+
+- [ ] **Step 4: Run tests and commit**
+
+```sh
+git add skills/setup-project-agents/scripts/agents_setup/transaction.py \
+  tests/test_setup_transaction.py
+git commit -m "feat: apply project agent plans transactionally"
+```
+
+---
+
+### Task 6: Fetch Remote Main and Hand Off Through a Stable Bootstrap
+
+**Files:**
+- Create: `skills/setup-project-agents/scripts/agents_setup/source.py`
+- Create: `skills/setup-project-agents/scripts/bootstrap.py`
+- Create: `tests/test_setup_source.py`
+
+**Interfaces:**
+- Produces: `SourceSnapshot`, `fetch_main`, `validate_source`, and stable bootstrap arguments `--source-root`, `--source-commit`, `--no-bootstrap`.
+- Consumes: Git executable and the installed plugin root as offline fallback.
+
+- [ ] **Step 1: Write failing Git integration tests**
+
+Build a temporary bare origin with `main`, then assert:
+
+```python
+snapshot = fetch_main(origin.as_uri(), work_root=temp_path)
+self.assertEqual(snapshot.commit, run_git(origin_work, 'rev-parse', 'main').strip())
+self.assertEqual(snapshot.root.joinpath('VERSION').read_text().strip(), '0.1.0')
+self.assertFalse(snapshot.root.joinpath('.git').is_symlink())
+```
+
+Add tests for a new `main` commit, unavailable origin fallback, fetched invalid Catalog fail-closed
+behavior, exact child arguments, persistence under `SESSION/source` through all three phases, and
+cleanup only after the whole setup session ends.
+
+- [ ] **Step 2: Run focused tests and verify failure**
+
+- [ ] **Step 3: Implement `fetch_main` with fixed argv arrays**
+
+Run these commands without Shell interpolation:
+
+```python
+('git', 'init', '--quiet', str(checkout))
+('git', '-C', str(checkout), 'remote', 'add', 'origin', repository)
+('git', '-C', str(checkout), 'fetch', '--depth=1', 'origin', 'main')
+('git', '-C', str(checkout), 'checkout', '--quiet', '--detach', 'FETCH_HEAD')
+('git', '-C', str(checkout), 'rev-parse', 'HEAD')
+```
+
+Validate the 40-hex commit, all native manifests, `VERSION`, Catalog plugin identity, and setup entrypoint. Distinguish `SourceUnavailable` from `InvalidFetchedSource`; only the former permits installed-source fallback.
+
+- [ ] **Step 4: Implement stable bootstrap handoff**
+
+`bootstrap.py` accepts only the initial `prepare` phase. It fetches `main` into
+`SESSION/source`, pins that checkout for the lifetime of the setup session, and runs:
+
+```python
+argv = [
+    sys.executable,
+    str(snapshot.root / 'skills/setup-project-agents/scripts/setup_project_agents.py'),
+    *forwarded,
+    '--source-root', str(snapshot.root),
+    '--source-commit', snapshot.commit,
+    '--no-bootstrap',
+]
+completed = subprocess.run(argv, check=False)
+return completed.returncode
+```
+
+When offline, use the installed plugin root, pass `--source-commit offline`, convert that sentinel to
+`None` before building `LockState`, and print one warning to stderr. Keep these argument names stable
+for all post-redesign versions. Bootstrap must not delete `SESSION/source`; the Skill owns session
+cleanup after `check` finishes.
+
+- [ ] **Step 5: Run tests and commit**
+
+```sh
+git add skills/setup-project-agents/scripts/bootstrap.py \
+  skills/setup-project-agents/scripts/agents_setup/source.py tests/test_setup_source.py
+git commit -m "feat: bootstrap project setup from remote main"
+```
+
+---
+
+### Task 7: Add Prepare, Apply, and Check Orchestration
+
+**Files:**
+- Create: `skills/setup-project-agents/scripts/setup_project_agents.py`
+- Modify: `skills/setup-project-agents/scripts/sync_public_agent_assets.sh`
+- Modify: `skills/setup-project-agents/scripts/sync_public_agent_assets.ps1`
+- Rewrite: `skills/setup-project-agents/SKILL.md`
+- Create: `tests/test_setup_cli.py`
+
+**Interfaces:**
+- Produces: `prepare`, `apply`, and `check` CLI subcommands sharing renderer and planner.
+- Consumes: a system-temporary setup session containing `request.json`, `generated/`, and `models.json`.
+
+- [ ] **Step 1: Write failing CLI integration tests**
+
+Assert `prepare` writes a session request with source commit, selected platforms, Hook choice, model requests, and five generation requests. Assert `apply` refuses missing generated outputs, writes a complete project, and `check` returns `0` unchanged or `1` on drift without writing.
+
+```python
+self.assertEqual(main(['check', '--session', str(session), *source_args]), 0)
+(target / '.agents/rules/00-global-rule-config.md').write_text('drift\n')
+before = snapshot_tree(target)
+self.assertEqual(main(['check', '--session', str(session), *source_args]), 1)
+self.assertEqual(snapshot_tree(target), before)
+```
+
+- [ ] **Step 2: Run focused tests and verify the CLI is absent**
+
+- [ ] **Step 3: Implement the session protocol and commands**
+
+The parser must require exactly one subcommand:
+
+```text
+prepare --target PATH --session PATH [--platform PLATFORM] --hooks enabled|disabled
+apply   --target PATH --session PATH --models PATH
+check   --target PATH --session PATH --models PATH
+```
+
+`--platform` is repeatable. All commands also accept the internal bootstrap arguments from Task 6.
+`prepare` performs source and project inspection but no target write, then records generation
+destinations under `SESSION/generated/.agents/rules/` and `SESSION/generated/.agents/skills/`.
+`apply` and `check` validate the same generated tree, call the same `render_desired_state` and
+`build_plan`, and differ only in whether `apply_plan` runs.
+
+- [ ] **Step 4: Rewrite the Skill around the new control-plane protocol**
+
+The Skill workflow must:
+
+1. Ask once for enabled platforms and explicit Hook enablement, defaulting to all platforms and Hooks off when `.agents/config.json` is absent.
+2. Run `bootstrap.py prepare` into a system temporary session; this fetches and retains
+   `SESSION/source` at one fixed commit.
+3. Fill `models.json` from `request.json`.
+4. Execute each Rule Blueprint with `write-rule` and each Skill Blueprint with `write-skill`, targeting `SESSION/generated` rather than the project.
+5. Run `SESSION/source/skills/setup-project-agents/scripts/setup_project_agents.py apply` with the
+   same session, model file, source root, and source commit recorded by `prepare`.
+6. Run the same pinned entrypoint with `check`, report the source commit and changed managed paths,
+   then delete the system-temporary session.
+7. Present any host adapter plugin-refresh command or official UI action, execute only an approved
+   command, and report `needs_restart` without treating host refresh as part of the project-file
+   transaction.
+
+The shell and PowerShell wrappers become thin launchers for `bootstrap.py`; remove every reference to archive fallback or project-local setup copies.
+
+- [ ] **Step 5: Run tests and commit**
+
+```sh
+git add skills/setup-project-agents tests/test_setup_cli.py
+git commit -m "feat: orchestrate transactional project agent setup"
+```
+
+---
+
+### Task 8: Centralize Tool Policy and Keep Hooks Diagnostic-Only
+
+**Files:**
+- Move: `skills/manage-agent-tools/references/recommended-tools/*.json` to `config/recommended-tools/*.json`
+- Modify: `skills/manage-agent-tools/scripts/check_recommended_tools.py`
+- Modify: `skills/manage-agent-tools/scripts/check_recommended_tools.sh`
+- Modify: `skills/manage-agent-tools/scripts/check_recommended_tools.ps1`
+- Rewrite: `skills/manage-agent-tools/SKILL.md`
+- Create: `tests/test_manage_agent_tools.py`
+- Modify: `catalog/project-assets.json`
+
+**Interfaces:**
+- Consumes: root policies when running as a plugin and copied Skill-local policies when running from a project Hook.
+- Produces: read-only `doctor`, approval-gated `upgrade`, and Hook exit/output contracts.
+
+- [ ] **Step 1: Extract failing tool-policy tests from the legacy suite**
+
+Move the existing `RecommendedToolCheckerTest` cases into `tests/test_manage_agent_tools.py`. Add assertions that Codex policy contains only the effective `multi_agent` requirement, none of the three policies contains a Hook required value, and Hook mode never calls an install or upgrade runner.
+
+- [ ] **Step 2: Run focused tests and verify policy lookup still points at the old directory**
+
+- [ ] **Step 3: Move policies and implement two-root lookup**
+
+Policy resolution must be:
 
 ```python
 def default_policy_path(platform: str) -> Path:
-    return (
-        Path(__file__).resolve().parent.parent
-        / 'references'
-        / 'recommended-tools'
-        / f'{platform}.json'
-    )
+    skill_root = Path(__file__).resolve().parents[1]
+    project_copy = skill_root / 'references' / 'recommended-tools' / f'{platform}.json'
+    if project_copy.is_file():
+        return project_copy
+    plugin_root = skill_root.parents[1]
+    return plugin_root / 'config' / 'recommended-tools' / f'{platform}.json'
 ```
 
-Update all three project Hook templates so their commands point to the corresponding entry point under:
+Renderer must copy the selected policy files into the project snapshot under `.agents/skills/manage-agent-tools/references/recommended-tools/`. Keep the current daily cache, lock, timeout, and platform-native Hook output behavior.
 
-```text
-.agents/skills/manage-agent-tools/scripts/
-```
+- [ ] **Step 4: Rewrite maintenance instructions around native managers**
 
-Add `{"name": "manage-agent-tools"}` to `public_assets.json` immediately before `setup-project-agents` so the health-check runtime is installed before Hook templates are reconciled.
+Keep `doctor` read-only. For `upgrade`, show exact commands and obtain approval before execution. Use `copilot plugin update` for Copilot plugins, Codex marketplace refresh/native install flow where supported, and Cursor's official UI when no stable non-interactive update exists. Never edit plugin caches or trust stores. Stop when CodeGraph or Tokscale installation provenance is ambiguous.
 
-Replace every test fixture or assertion that reads
-`REPO_TEMPLATES / 'recommended-tools' / <platform>.json` with
-`RECOMMENDED_TOOL_POLICIES / <platform>.json`. Do not leave the old template directory as a
-compatibility copy; the new Skill is the sole policy owner.
-
-- [ ] **Step 4: Author the shared English Skill with write-skill**
-
-Create `agents/skills/manage-agent-tools/SKILL.md`:
-
-```markdown
----
-name: manage-agent-tools
-description: Use when checking, diagnosing, installing, or upgrading the supported agent platform, Superpowers, CodeGraph, or Tokscale.
----
-
-# Manage Agent Tools
-
-Diagnose the current platform's declared tool policy and apply user-approved fixes through the tool's original plugin manager or package manager. Complete when a fresh uncached check has no findings, or report every unresolved finding and why it remains.
-
-## Ownership
-
-- This Skill owns interactive diagnosis and user-approved tool maintenance.
-- `references/recommended-tools/<platform>.json` owns target versions, detectors, and install or upgrade guidance.
-- Project SessionStart Hooks may call the checker in `hook` mode; they report findings but never mutate tools.
-- `setup-project-agents` owns project configuration and Hook installation, not third-party tool mutation.
-
-## Workflow
-
-1. Determine the active platform as `codex`, `cursor`, or `copilot` from the current runtime. If the runtime cannot be identified, ask the user for the platform and stop this turn.
-2. Resolve the directory containing this active `SKILL.md` as `MANAGE_AGENT_TOOLS_ROOT`; do not assume a repository-local `.agents/` path.
-3. Run `sh "$MANAGE_AGENT_TOOLS_ROOT/scripts/check_recommended_tools.sh" check --platform PLATFORM` on POSIX, or `& "$MANAGE_AGENT_TOOLS_ROOT/scripts/check_recommended_tools.ps1" check --platform PLATFORM` on Windows.
-4. If the command exits `0`, report that the declared policy is satisfied and stop.
-5. If the command exits `2`, report that diagnosis failed, include stderr, and do not attempt installation or upgrade.
-6. If the command exits `1`, classify each finding as a missing tool, unreadable version, outdated version, required-value mismatch, or detector failure.
-7. For each missing or outdated tool, inspect how it is installed. Use the active platform's plugin manager for Superpowers. Use the executable location and available package-manager metadata for CodeGraph and Tokscale.
-8. Present the exact commands and affected tools before mutation. Ask the user to approve those commands and stop this turn.
-9. After approval, execute only the approved commands. Do not replace one package manager with another when the original installation source is known.
-10. Run the uncached check again. Report the satisfied tools, unresolved findings, commands executed, and any command that failed.
-
-## Stop Conditions
-
-- Stop before mutation when user approval is absent.
-- Stop without mutation when installation provenance is ambiguous; report the candidate sources and request direction.
-- Stop after an upgrade command fails twice for the same tool; report both failures and the next safe manual action.
-- Do not edit platform trust stores. Hook trust remains an explicit platform action.
-
-## Validation
-
-- Confirm the final checker exit status.
-- Confirm every executed command was included in the user's approval.
-- Confirm SessionStart Hook mode performed no installation or upgrade command.
-
-## Result
-
-Report the platform, policy path, before and after findings, approved commands, command results, and unresolved work.
-```
-
-- [ ] **Step 5: Add the Simplified-Chinese mirror**
-
-Create `agents-zh/skills/manage-agent-tools/SKILL.md`:
-
-```markdown
----
-name: manage-agent-tools
-description: 当需要检查、诊断、安装或升级受支持的智能体平台、Superpowers、CodeGraph 或 Tokscale 时使用。
----
-
-# 管理智能体工具
-
-诊断当前平台声明的工具策略，并通过工具原本的插件管理器或包管理器应用经用户批准的修复。全新无缓存检查不再报告发现项时任务完成；否则报告每个尚未解决的发现项及其原因。
-
-## 归属
-
-- 本 Skill 负责交互式诊断，以及经用户批准的工具维护。
-- `references/recommended-tools/<platform>.json` 负责目标版本、检测器以及安装或升级指引。
-- 项目 SessionStart Hook 可以用 `hook` 模式调用检查器；它只报告发现项，绝不修改工具。
-- `setup-project-agents` 负责项目配置和 Hook 安装，不负责修改第三方工具。
-
-## 工作流
-
-1. 根据当前运行时将活跃平台确定为 `codex`、`cursor` 或 `copilot`。如果无法识别运行时，请用户指定平台，并结束本轮。
-2. 将当前活跃 `SKILL.md` 所在目录解析为 `MANAGE_AGENT_TOOLS_ROOT`；不要假设 Skill 位于仓库本地的 `.agents/` 路径。
-3. 在 POSIX 上运行 `sh "$MANAGE_AGENT_TOOLS_ROOT/scripts/check_recommended_tools.sh" check --platform PLATFORM`；在 Windows 上运行 `& "$MANAGE_AGENT_TOOLS_ROOT/scripts/check_recommended_tools.ps1" check --platform PLATFORM`。
-4. 如果命令以 `0` 退出，报告声明的策略已满足，然后停止。
-5. 如果命令以 `2` 退出，报告诊断失败并包含 stderr；不要尝试安装或升级。
-6. 如果命令以 `1` 退出，将每个发现项分类为工具缺失、版本不可读、版本过旧、必需值不匹配或检测器失败。
-7. 对每个缺失或过旧的工具，检查它的安装来源。Superpowers 使用活跃平台的插件管理器；CodeGraph 和 Tokscale 使用可执行文件位置及可用的包管理器元数据。
-8. 修改前展示确切命令和受影响工具。请用户批准这些命令，并结束本轮。
-9. 获得批准后，只执行已批准的命令。已知原始安装来源时，不要改用另一种包管理器。
-10. 再次执行无缓存检查。报告已满足的工具、尚未解决的发现项、已执行命令，以及任何失败命令。
-
-## 停止条件
-
-- 未获得用户批准时，在修改前停止。
-- 安装来源存在歧义时，不进行修改；报告候选来源并请求用户决定。
-- 同一工具的升级命令失败两次后停止；报告两次失败和下一项安全的手动操作。
-- 不要编辑平台信任存储。Hook 信任仍然必须由用户执行明确的平台操作。
-
-## 验证
-
-- 确认最终检查器退出状态。
-- 确认执行的每条命令都包含在用户批准范围内。
-- 确认 SessionStart Hook 模式没有执行安装或升级命令。
-
-## 结果
-
-报告平台、策略路径、修改前后的发现项、已批准命令、命令结果，以及尚未完成的工作。
-```
-
-- [ ] **Step 6: Run the suite and validate checker CLI behavior**
-
-Run the repository-wide Python 3.11 test command.
-
-Then run:
+- [ ] **Step 5: Run tests and commit**
 
 ```sh
-sh agents/skills/manage-agent-tools/scripts/check_recommended_tools.sh \
-  check --platform codex
-```
-
-Expected: ownership and existing checker tests pass. The representative CLI exits `0` or `1` with structured diagnostics, not `2`; it performs no mutation. The 9 unrelated session-usage errors remain in the full suite.
-
-- [ ] **Step 7: Commit the ownership migration**
-
-```sh
-git add -- agents/skills/manage-agent-tools agents-zh/skills/manage-agent-tools \
-  agents/skills/setup-project-agents/references/public_assets.json \
-  agents/skills/setup-project-agents/assets/templates/project-config/codex.hooks.json \
-  agents/skills/setup-project-agents/assets/templates/project-config/cursor.hooks.json \
-  agents/skills/setup-project-agents/assets/templates/project-config/copilot.tool-check.hooks.json \
-  agents/skills/setup-project-agents/scripts/check_recommended_tools.py \
-  agents/skills/setup-project-agents/scripts/check_recommended_tools.sh \
-  agents/skills/setup-project-agents/scripts/check_recommended_tools.ps1 \
-  agents/skills/setup-project-agents/assets/templates/recommended-tools \
-  tests/test_public_agent_assets.py
-git diff --cached --check
-git commit -m "feat: add explicit agent tool maintenance workflow"
+git add config catalog/project-assets.json skills/manage-agent-tools \
+  tests/test_manage_agent_tools.py
+git commit -m "refactor: centralize recommended agent tool policy"
 ```
 
 ---
 
-### Task 3: Prefer Installed Plugin Sources and Pin Legacy Fallbacks
+### Task 9: Cut Over, Remove the Legacy Synchronizer, and Prove End-to-End Behavior
 
 **Files:**
-- Modify: `agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py`
-- Create: `agents/skills/setup-project-agents/scripts/sync_public_agent_assets.sh`
-- Create: `agents/skills/setup-project-agents/scripts/sync_public_agent_assets.ps1`
-- Modify: `agents/skills/setup-project-agents/references/public_assets.json`
-- Modify: `tests/test_public_agent_assets.py`
+- Delete: `skills/setup-project-agents/scripts/sync_public_agent_assets.py`
+- Delete: `skills/setup-project-agents/references/public_assets.json`
+- Delete: `skills/setup-project-agents/references/project-config.schema.json`
+- Delete: `skills/setup-project-agents/assets/`
+- Delete: `skills/setup-project-agents/scripts/_vendor/`
+- Delete: `tests/test_public_agent_assets.py`
+- Expand: `tests/test_setup_cli.py`
+- Expand: `tests/test_setup_source.py`
+- Expand: `tests/test_setup_transaction.py`
 
 **Interfaces:**
-- Produces: `_public_source_root(path: Path) -> Path`, `validate_source_root(path: Path) -> Path`, `find_plugin_source(installed_skill_root: Path) -> Path | None`, and `resolve_source(public_config, installed_skill_root, explicit_source_root=None) -> Path`.
-- CLI produces: `--source-root PATH` override for development and testing.
+- Consumes: all new modules and tests from Tasks 2-8.
+- Produces: no legacy path, no archive fallback, and one end-to-end setup implementation.
 
-- [ ] **Step 1: Replace archive-only source tests with precedence and immutability tests**
+- [ ] **Step 1: Add end-to-end tests before deleting legacy code**
 
-Add these methods inside the existing `SyncPublicAgentAssetsTest` class and update former
-archive-only expectations:
+Use a temporary origin and target to prove:
 
-```python
-    def test_resolve_source_prefers_explicit_validated_source(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            source = Path(temp_dir) / 'source'
-            skill = source / 'agents' / 'skills' / 'setup-project-agents'
-            (skill / 'references').mkdir(parents=True)
-            (skill / 'references' / 'public_assets.json').write_text('{}\n')
-            result = sync.resolve_source({}, REPO_SKILL_ROOT, source)
-        self.assertEqual(result, source.resolve())
+- installed bootstrap fetches the current `main` commit and applies it;
+- a later `main` commit changes only lock-owned files;
+- a second run is idempotent;
+- network unavailability uses installed source with a warning;
+- invalid fetched source causes zero target mutation;
+- unmanaged collision blocks the transaction;
+- injected failure restores every original byte;
+- Hooks off/on and all three platform outputs match the approved matrix;
+- setup control-plane files are absent from the project snapshot.
 
-    def test_resolve_source_finds_repository_plugin_root_without_fetching(self):
-        with mock.patch.object(sync, '_fetch_archive_source') as fetch:
-            result = sync.resolve_source(
-                sync.load_json(REPO_REFERENCES / 'public_assets.json'),
-                REPO_SKILL_ROOT,
-            )
-        self.assertEqual(result, (REPO_ROOT / 'agents').resolve())
-        fetch.assert_not_called()
+- [ ] **Step 2: Run the new test modules and verify they pass while legacy files still exist**
 
-    def test_resolve_source_finds_installed_plugin_with_arbitrary_cache_name(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            plugin = Path(temp_dir) / 'cache-entry-42'
-            skill = plugin / 'skills' / 'setup-project-agents'
-            (skill / 'references').mkdir(parents=True)
-            (skill / 'references' / 'public_assets.json').write_text('{}\n')
-            with mock.patch.object(sync, '_fetch_archive_source') as fetch:
-                result = sync.resolve_source({}, skill)
-        self.assertEqual(result, plugin.resolve())
-        fetch.assert_not_called()
-
-    def test_resolve_source_rejects_invalid_explicit_source_before_fetch(self):
-        with tempfile.TemporaryDirectory() as temp_dir, mock.patch.object(
-            sync, '_fetch_archive_source'
-        ) as fetch:
-            with self.assertRaises(sync.SyncError):
-                sync.resolve_source({}, REPO_SKILL_ROOT, Path(temp_dir))
-        fetch.assert_not_called()
-
-    def test_source_archive_url_requires_release_tag_or_commit(self):
-        with self.assertRaises(sync.SyncError):
-            sync._source_archive_url({
-                'source_repo': 'https://github.com/wenyue/agents',
-                'source_ref': 'master',
-            })
-        self.assertEqual(
-            sync._source_archive_url({
-                'source_repo': 'https://github.com/wenyue/agents',
-                'source_ref': 'v0.1.0',
-            }),
-            'https://github.com/wenyue/agents/archive/v0.1.0.zip',
-        )
-```
-
-Replace `test_parser_rejects_local_source_argument` with:
-
-```python
-    def test_parser_accepts_source_root_and_rejects_obsolete_source(self):
-        parser = sync.build_parser()
-        self.assertEqual(
-            parser.parse_args(['--source-root', 'local-agents']).source_root,
-            Path('local-agents'),
-        )
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            parser.parse_args(['--source', 'local-agents'])
-```
-
-In each existing archive fallback test, create
-`legacy_skill_root = root / 'legacy' / 'setup-project-agents'`, pass it as the second argument to
-`resolve_source`, and patch `_source_archive_url` to return `archive.resolve().as_uri()`. For example,
-replace `source = sync.resolve_source(public_config)` with:
-
-```python
-with mock.patch.object(
-    sync,
-    '_source_archive_url',
-    return_value=archive.resolve().as_uri(),
-):
-    source = sync.resolve_source(public_config, legacy_skill_root)
-```
-
-Apply the same signature update to `first` and `second` in
-`test_resolve_source_refetches_archive_every_time`. Use
-`{'source_repo': 'https://github.com/wenyue/agents', 'source_ref': 'v0.1.0'}` as the config in all
-three archive tests; `source_archive_url` is no longer a supported public escape hatch.
-
-- [ ] **Step 2: Run the suite and verify the new source tests fail**
-
-Run the repository-wide Python 3.11 test command.
-
-Expected: new source-resolution tests fail on missing signatures/options; the 9 unrelated baseline errors remain.
-
-- [ ] **Step 3: Implement validated source discovery and immutable archive URLs**
-
-Add this minimal implementation near the existing source functions:
-
-```python
-_RELEASE_REF_PATTERN = re.compile(r'^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$')
-_COMMIT_REF_PATTERN = re.compile(r'^[0-9a-fA-F]{40}$')
-
-
-def _public_source_root(path: Path) -> Path:
-    root = path.expanduser().resolve()
-    for candidate in (root, root / _PUBLIC_SOURCE_DIRECTORY):
-        manifest = (
-            candidate
-            / 'skills'
-            / 'setup-project-agents'
-            / 'references'
-            / 'public_assets.json'
-        )
-        if manifest.is_file():
-            return candidate
-    raise SyncError(f'Public source is missing setup-project-agents: {root}')
-
-
-def validate_source_root(path: Path) -> Path:
-    root = path.expanduser().resolve()
-    _public_source_root(root)
-    return root
-
-
-def find_plugin_source(installed_skill_root: Path) -> Path | None:
-    installed = installed_skill_root.resolve()
-    for candidate in installed.parents:
-        try:
-            public_root = _public_source_root(candidate)
-        except SyncError:
-            continue
-        if (public_root / 'skills' / 'setup-project-agents').resolve() == installed:
-            return validate_source_root(candidate)
-    return None
-
-
-def resolve_source(
-    public_config: dict[str, Any],
-    installed_skill_root: Path,
-    explicit_source_root: Path | None = None,
-) -> Path:
-    if explicit_source_root is not None:
-        return validate_source_root(explicit_source_root)
-    plugin_source = find_plugin_source(installed_skill_root)
-    if plugin_source is not None:
-        return plugin_source
-    return _fetch_archive_source(public_config)
-```
-
-Remove `_DEFAULT_SOURCE_REF` and the `source_archive_url` branch. Replace `_source_archive_url`
-with the immutable-ref implementation below:
-
-```python
-def _source_archive_url(public_config: dict[str, Any]) -> str:
-    repo = public_config.get('source_repo')
-    if not isinstance(repo, str) or not repo:
-        raise SyncError('public_assets.json requires source_repo')
-    ref = public_config.get('source_ref')
-    if not isinstance(ref, str) or not (
-        _RELEASE_REF_PATTERN.fullmatch(ref) or _COMMIT_REF_PATTERN.fullmatch(ref)
-    ):
-        raise SyncError('source_ref must be a release tag or 40-character commit')
-    encoded_ref = urllib.parse.quote(ref, safe='')
-    return f'{repo.rstrip("/")}/archive/{encoded_ref}.zip'
-```
-
-Add `--source-root` as `type=Path` to `build_parser`, and call:
-
-```python
-source_root = resolve_source(
-    installed_config,
-    installed_skill_root,
-    args.source_root,
-)
-```
-
-Set `source_ref` in `public_assets.json` to `v0.1.0`.
-
-Replace the five hard-coded `source_root / _PUBLIC_SOURCE_DIRECTORY` lookups in archive validation,
-`_public_skill_source`, rule copying, agent-prompt copying, and `main` with
-`_public_source_root(source_root)` (or `_public_source_root(context.source_root)`) before appending
-`skills`, `rules`, or `agents`. This keeps existing repository/archive fixtures valid while also
-supporting an installed plugin whose cache directory is not literally named `agents`.
-
-- [ ] **Step 4: Add paired platform entry points for the shared setup workflow**
-
-Create `sync_public_agent_assets.sh`:
+Run:
 
 ```sh
-#!/bin/sh
-set -eu
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec python3 "$script_dir/sync_public_agent_assets.py" "$@"
+uv run --python 3.11 --no-project python -m unittest \
+  tests.test_setup_catalog tests.test_setup_planner tests.test_setup_renderer \
+  tests.test_setup_transaction tests.test_setup_source tests.test_setup_cli \
+  tests.test_manage_agent_tools
 ```
 
-Create `sync_public_agent_assets.ps1`:
+Expected: PASS.
 
-```powershell
-$ErrorActionPreference = 'Stop'
-$scriptPath = Join-Path $PSScriptRoot 'sync_public_agent_assets.py'
-python $scriptPath @args
-exit $LASTEXITCODE
-```
+- [ ] **Step 3: Delete every legacy implementation and compatibility assertion**
 
-- [ ] **Step 5: Run the suite and exercise the local plugin source path**
-
-Run the repository-wide Python 3.11 test command.
-
-Then run:
+Remove only the paths listed above. Search and require no matches outside history:
 
 ```sh
-sh agents/skills/setup-project-agents/scripts/sync_public_agent_assets.sh --help
+rg -n 'sync_public_agent_assets|public_assets\.json|master\.zip|source_ref.*v0\.1\.0|legacy.*setup' \
+  --hidden -g '!.git/**' -g '!docs/superpowers/**'
 ```
 
-Expected: all source-resolution and parser tests pass; help includes `--source-root`; no network is accessed; the 9 unrelated baseline errors remain.
+Expected: no runtime, test, Rule, Skill, template, or README match. The design and implementation plan may mention removed names only in historical/non-goal text.
 
-- [ ] **Step 6: Commit only source-selection files**
+- [ ] **Step 4: Run all tests and commit the cutover**
 
 ```sh
-git add -- agents/skills/setup-project-agents/scripts/sync_public_agent_assets.py \
-  agents/skills/setup-project-agents/scripts/sync_public_agent_assets.sh \
-  agents/skills/setup-project-agents/scripts/sync_public_agent_assets.ps1 \
-  agents/skills/setup-project-agents/references/public_assets.json \
-  tests/test_public_agent_assets.py
-git diff --cached --check
-git commit -m "feat: sync projects from installed plugin releases"
+git add -A skills/setup-project-agents tests
+git commit -m "refactor: replace legacy agent synchronization runtime"
 ```
 
 ---
 
-### Task 4: Record the Synchronized Catalog Version
+### Task 10: Move the Chinese Mirror to Documentation and Update Repository Rules
 
 **Files:**
-- Modify: `agents/skills/setup-project-agents/references/public_assets.json`
-- Modify: `agents/skills/setup-project-agents/assets/templates/project-config/agents.config.json`
-- Modify: `agents/skills/setup-project-agents/references/project-config.schema.json`
-- Modify: `tests/test_public_agent_assets.py`
+- Move: `agents-zh/README.md` to `docs/zh-CN/README.md`
+- Move: `agents-zh/**/*.md` to matching `docs/zh-CN/**` paths
+- Delete: `agents-zh/`
+- Modify: `README.md`
+- Modify: `AGENTS.md`
+- Modify: `.agents/rules/00-global-rule-config.md`
+- Modify: `.agents/rules/20-project-tools.md`
+- Modify: `.agents/rules/21-project-rules.md`
+- Modify: `.agents/rules/22-project-structure.md`
+- Delete: `.agents/skills/write-rule/`
+- Delete: `.agents/skills/write-skill/`
+- Create: `.github/workflows/test.yml`
 - Modify: `tests/test_plugin_manifests.py`
 
 **Interfaces:**
-- Produces: managed `.agents/config.json.catalog` object `{id, version, revision}`.
-- Consumes: plugin version `0.1.0` and release revision `v0.1.0`.
+- Produces: public installation/update docs, docs-only Chinese content, minimal repository development rules, and three-OS CI.
 
-- [ ] **Step 1: Write failing version-alignment and synchronization tests**
+- [ ] **Step 1: Add failing documentation and repository-boundary tests**
 
-Add this method inside `PluginManifestTest` in `tests/test_plugin_manifests.py`:
+Assert `agents-zh` is absent; every file under `docs/zh-CN` is Markdown; root runtime directories contain no Chinese mirror; `.agents` contains only `plugins/` and `rules/`; README names all three hosts, explicit setup, remote `main`, explicit Hooks, and native tool maintenance.
 
-```python
-    def test_public_catalog_matches_native_plugin_version(self):
-        public = load_json(
-            'agents/skills/setup-project-agents/references/public_assets.json'
-        )
-        self.assertEqual(
-            public['catalog'],
-            {'id': 'agents', 'version': PLUGIN_VERSION, 'revision': 'v0.1.0'},
-        )
-```
+- [ ] **Step 2: Run the boundary tests and verify they fail on old paths**
 
-Add these methods inside `SyncPublicAgentAssetsTest` in
-`tests/test_public_agent_assets.py`:
+- [ ] **Step 3: Move and rewrite documentation**
 
-```python
-    def test_agents_config_template_records_managed_catalog_version(self):
-        template = json.loads(
-            (
-                REPO_TEMPLATES
-                / 'project-config'
-                / 'agents.config.json'
-            ).read_text(encoding='utf-8')
-        )
-        self.assertEqual(
-            template['catalog'],
-            {'id': 'agents', 'version': '0.1.0', 'revision': 'v0.1.0'},
-        )
+Move only Markdown. Rewrite `README.md` around plugin installation, manual per-project setup, `main`-tracking upgrades, Hook trust, tool doctor/upgrade, and the repository layout. Update `docs/zh-CN/README.md` as a natural Chinese document rather than a runtime mirror contract. Remove machine paths and obsolete nested-root commands.
 
-    def test_agents_config_schema_requires_catalog_identity(self):
-        schema = json.loads(
-            (REPO_REFERENCES / 'project-config.schema.json').read_text(
-                encoding='utf-8'
-            )
-        )
-        catalog = schema['properties']['catalog']
-        self.assertEqual(catalog['required'], ['id', 'version', 'revision'])
-        self.assertFalse(catalog['additionalProperties'])
-```
+- [ ] **Step 4: Rewrite project-maintenance rules for the new owners**
 
-In `test_agents_project_config_template_preserves_project_owned_fields`, add this stale value to
-the JSON object written to the target:
+Keep `.agents/rules/` as this repository's source of truth. Replace references to `agents/`, `agents-zh/`, `public_assets.json`, and the old synchronizer with `rules/`, `skills/`, `agents/`, `catalog/project-assets.json`, `templates/project/`, and `docs/zh-CN/`. Keep the verification command and Python 3.11 floor. Remove `.agents/skills/` so this repository is not a generated project snapshot.
 
-```python
-'catalog': {
-    'id': 'agents',
-    'version': '0.0.1',
-    'revision': 'v0.0.1',
-},
-```
+- [ ] **Step 5: Add cross-platform CI**
 
-After the existing `project_owned` assertion, add:
+Create `.github/workflows/test.yml` with `ubuntu-latest`, `macos-latest`, and `windows-latest`,
+`actions/setup-python` version `3.11`, the unittest discovery command, and `git diff --check` on all
+three runners.
 
-```python
-self.assertEqual(
-    result['catalog'],
-    {'id': 'agents', 'version': '0.1.0', 'revision': 'v0.1.0'},
-)
-```
-
-This reuses the existing reconciliation fixture, which already proves that unknown target-owned
-fields and external Skill declarations survive managed template updates.
-
-- [ ] **Step 2: Run the suite and verify catalog tests fail**
-
-Run the repository-wide Python 3.11 test command.
-
-Expected: catalog tests fail because catalog metadata is absent; the 9 unrelated baseline errors remain.
-
-- [ ] **Step 3: Add the catalog identity to public and project manifests**
-
-Add to the top of `public_assets.json` after `source_ref`:
-
-```json
-"catalog": {
-  "id": "agents",
-  "version": "0.1.0",
-  "revision": "v0.1.0"
-},
-```
-
-Change `agents.config.json` to:
-
-```json
-{
-  "$schema": "skills/setup-project-agents/references/project-config.schema.json",
-  "version": 1,
-  "catalog": {
-    "id": "agents",
-    "version": "0.1.0",
-    "revision": "v0.1.0"
-  }
-}
-```
-
-Add this schema property:
-
-```json
-"catalog": {
-  "type": "object",
-  "required": ["id", "version", "revision"],
-  "properties": {
-    "id": {"const": "agents"},
-    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
-    "revision": {"type": "string", "minLength": 1}
-  },
-  "additionalProperties": false
-}
-```
-
-- [ ] **Step 4: Run the suite and verify drift behavior**
-
-Run the repository-wide Python 3.11 test command.
-
-Expected: catalog alignment, preservation, and repair tests pass; the same 9 unrelated baseline errors remain.
-
-- [ ] **Step 5: Commit the catalog contract**
+- [ ] **Step 6: Run all tests and commit**
 
 ```sh
-git add -- agents/skills/setup-project-agents/references/public_assets.json \
-  agents/skills/setup-project-agents/assets/templates/project-config/agents.config.json \
-  agents/skills/setup-project-agents/references/project-config.schema.json \
-  tests/test_public_agent_assets.py tests/test_plugin_manifests.py
-git diff --cached --check
-git commit -m "feat: record synchronized agent catalog versions"
+git add -A README.md AGENTS.md .agents docs agents-zh .github/workflows tests \
+  rules skills agents catalog templates config
+git commit -m "docs: publish the agents plugin architecture"
 ```
 
 ---
 
-### Task 5: Update Setup Workflow and Public Documentation
+### Task 11: Final Contract Audit and Release-Readiness Verification
 
 **Files:**
-- Modify: `agents/skills/setup-project-agents/SKILL.md`
-- Modify: `agents-zh/skills/setup-project-agents/SKILL.md`
-- Modify: `README.md`
-- Modify: `agents-zh/README.md`
+- Modify only files revealed by this audit.
 
 **Interfaces:**
-- Consumes: paired sync entry points, plugin marketplaces, `manage-agent-tools`, and catalog metadata.
-- Produces: one concise installation and update path for each platform; one explicit per-project setup path.
+- Consumes: completed Tasks 1-10.
+- Produces: verified root plugin with no obsolete paths, no unmanaged drift, and passing platform contracts.
 
-- [ ] **Step 1: Rewrite setup commands around the active Skill root**
-
-In the English and Chinese setup Skills, replace direct assumptions about `.agents/skills/setup-project-agents` with this executable rule:
-
-```text
-Resolve the directory containing the active setup-project-agents SKILL.md. On POSIX run its
-scripts/sync_public_agent_assets.sh entry point; on Windows run
-scripts/sync_public_agent_assets.ps1. Keep one model-config path for both stages.
-```
-
-Use these POSIX examples in the English source and mirror the commands unchanged in Chinese:
-
-```sh
-MODEL_CONFIG="$(python -c 'import os, tempfile; print(os.path.join(tempfile.gettempdir(), "setup-project-agent-models.json"))')"
-sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/sync_public_agent_assets.sh" \
-  --model-request "$MODEL_CONFIG"
-
-sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/sync_public_agent_assets.sh" \
-  --model-config "$MODEL_CONFIG"
-
-sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/sync_public_agent_assets.sh" \
-  --check --model-config "$MODEL_CONFIG"
-```
-
-State that `SETUP_PROJECT_AGENTS_ROOT` is derived from the Skill file the host loaded; never persist a machine-specific path.
-
-- [ ] **Step 2: Replace README onboarding with plugin-first installation**
-
-Replace the current `## New Project Setup` and `## Review Project Hooks` sections in `README.md`
-with this exact content:
-
-````markdown
-## Install the Plugin
-
-Install `agents` once for the host you use.
-
-Codex:
-
-```sh
-codex plugin marketplace add wenyue/agents
-codex plugin add agents@wenyue-agents
-```
-
-Cursor: add `https://github.com/wenyue/agents` as a plugin source, then install `agents`.
-
-GitHub Copilot CLI:
-
-```sh
-copilot plugin marketplace add wenyue/agents
-copilot plugin install agents@wenyue-agents
-```
-
-Installing the plugin only makes its Skills available; it does not modify repositories. Open each
-target repository and ask the installed plugin to use `setup-project-agents`. Run that Skill again
-whenever you want to synchronize the repository with the installed catalog version.
-
-## Review Project Hooks
-
-`setup-project-agents` installs a project-health `sessionStart` Hook for each supported host. The
-Hook checks recommended tools and effective runtime requirements at most once per project per day;
-it reports drift but never installs, upgrades, or trusts tools. Review the command using the host's
-normal trust flow before allowing it to run.
-
-| Agent | Project Hook | Required user action |
-| --- | --- | --- |
-| Codex | `.codex/hooks.json` | Start `codex`, enter `/hooks`, inspect the project Hook, and trust its exact definition. |
-| Cursor | `.cursor/hooks.json` | Open the repository as a trusted workspace and inspect the Hook under `Cursor Settings > Hooks`. |
-| GitHub Copilot | `.github/hooks/*.json` | Start `copilot` in the repository and accept the prompt to trust the current directory. |
-
-Hook support is enabled explicitly for all three hosts. Multi-agent support is not force-enabled by
-project configuration; the health check validates each host's effective default state and reports
-when it has been disabled.
-````
-
-- [ ] **Step 3: Update the Simplified-Chinese README mirror**
-
-Replace the current `## 审查项目 Hook` section in `agents-zh/README.md`, and insert the installation
-section immediately before it, using this exact content:
-
-````markdown
-## 安装插件
-
-为你使用的平台安装一次 `agents`。
-
-Codex：
-
-```sh
-codex plugin marketplace add wenyue/agents
-codex plugin add agents@wenyue-agents
-```
-
-Cursor：将 `https://github.com/wenyue/agents` 添加为插件源，然后安装 `agents`。
-
-GitHub Copilot CLI：
-
-```sh
-copilot plugin marketplace add wenyue/agents
-copilot plugin install agents@wenyue-agents
-```
-
-安装插件只会让平台能够使用其中的 Skill，不会修改任何仓库。打开每个目标仓库，并要求已安装
-的插件使用 `setup-project-agents`。需要将仓库同步到已安装的目录版本时，再次运行该 Skill。
-
-## 审查项目 Hook
-
-`setup-project-agents` 会为每个受支持的平台安装一个项目健康检查 `sessionStart` Hook。该 Hook
-每个项目每天最多检查一次推荐工具和有效运行时要求；它只报告漂移，绝不安装、升级或信任
-工具。允许运行前，请通过平台的正常信任流程审查命令。
-
-| 智能体 | 项目 Hook | 用户需要执行的操作 |
-| --- | --- | --- |
-| Codex | `.codex/hooks.json` | 启动 `codex`，输入 `/hooks`，检查项目 Hook，并信任其当前的精确定义。 |
-| Cursor | `.cursor/hooks.json` | 将仓库作为受信任工作区打开，然后在 `Cursor Settings > Hooks` 中检查该 Hook。 |
-| GitHub Copilot | `.github/hooks/*.json` | 在仓库中启动 `copilot`，并在提示时确认信任当前目录。 |
-
-三个平台都显式启用 Hook 支持。项目配置不会强制启用多智能体能力；健康检查会验证各平台的
-有效默认状态，并在它被禁用时发出报告。
-````
-
-- [ ] **Step 4: Review complete Skills and documentation without the diff**
-
-Read both complete Skill pairs and README files. Confirm:
-
-- setup begins from an installed plugin and still supports project-local legacy execution;
-- all executable paths are derived, not machine-specific;
-- tool mutation belongs only to `manage-agent-tools`;
-- plugin installation is not described as project setup;
-- English and Chinese commands and behavioral gates match.
-
-- [ ] **Step 5: Run the repository-wide checks**
+- [ ] **Step 1: Require a clean starting tree and validate source-of-truth uniqueness**
 
 Run:
 
 ```sh
-python3 \
-  -m unittest discover -s tests -p 'test_*.py'
+test -z "$(git status --short)"
+test ! -d agents-zh
+test ! -f skills/setup-project-agents/scripts/sync_public_agent_assets.py
+test ! -f skills/setup-project-agents/references/public_assets.json
+rg -n '/home/|[A-Za-z]:\\Users\\|source.*\./agents' --hidden -g '!.git/**' || true
+```
+
+Expected: obsolete files are absent and no machine-specific or nested-plugin path is reported.
+
+- [ ] **Step 2: Validate root manifests and Catalog ownership**
+
+Run manifest tests and a setup dry run against a temporary project. Confirm the lock has the fetched 40-character commit, all managed paths are repository-relative, Hooks are absent by default, and setup control-plane files are absent.
+
+- [ ] **Step 3: Run complete verification twice**
+
+Run:
+
+```sh
+uv run --python 3.11 --no-project python -m unittest discover -s tests -p 'test_*.py'
 git diff --check
 ```
 
-Expected: 167+ public/plugin tests pass; only the 9 pre-existing absolute-path errors in `test_report_session_usage.py` remain; `git diff --check` exits `0`.
+Run the same commands a second time. Expected both times: all tests pass with only intentional, named skips; no working-tree changes are created.
 
-- [ ] **Step 6: Commit only documentation and setup workflow files**
+- [ ] **Step 4: Review the complete branch diff against the design**
+
+Check every section of `docs/superpowers/specs/2026-08-03-agents-plugin-design.md` against the implementation. Correct only concrete gaps, rerun Step 3, and ensure `git status --short` contains only the current audit correction, if any.
+
+- [ ] **Step 5: Commit audit corrections when Step 4 changed tracked files**
 
 ```sh
-git add -- README.md agents-zh/README.md \
-  agents/skills/setup-project-agents/SKILL.md \
-  agents-zh/skills/setup-project-agents/SKILL.md
+git add -u
 git diff --cached --check
-git commit -m "docs: document plugin-first project setup"
+git commit -m "fix: close agents plugin release audit gaps"
 ```
 
----
-
-### Task 6: Final Cross-Platform Contract Verification
-
-**Files:**
-- No file changes expected. If verification exposes a regression, return to the task that owns the
-  failing file and repeat that task's test, implementation, and commit cycle.
-
-**Interfaces:**
-- Consumes: all manifests, Skills, source selection, catalog metadata, generated project assets, and docs.
-- Produces: one verified change set with no plugin-specific or public-sync regressions.
-
-- [ ] **Step 1: Validate Codex plugin structure with the plugin-creator validator**
-
-Run:
-
-```sh
-python3 "$CODEX_HOME/skills/.system/plugin-creator/scripts/validate_plugin.py" agents
-```
-
-Expected: exit `0`, with no incomplete manifest values or missing Skill root. On any nonzero exit,
-record the validator output and return to Task 1; do not weaken the manifest contract during final
-verification.
-
-- [ ] **Step 2: Run all repository verification**
-
-Run:
-
-```sh
-python3 \
-  -m unittest discover -s tests -p 'test_*.py'
-git diff --check
-```
-
-Expected: no failures in `test_plugin_manifests.py` or `test_public_agent_assets.py`; only the 9 known unrelated `test_report_session_usage.py` path errors remain; diff integrity passes.
-
-- [ ] **Step 3: Audit mutation boundaries**
-
-Run:
-
-```sh
-rg -n "install|upgrade|marketplace add|plugin add|npm install" \
-  agents/skills/manage-agent-tools \
-  agents/skills/setup-project-agents/assets/templates/project-config
-```
-
-Expected: install and upgrade commands appear only in interactive Skill guidance or policy guidance; no SessionStart Hook template directly executes them.
-
-- [ ] **Step 4: Audit the final staged scope before the final commit**
-
-```sh
-git status --short
-git diff --cached --name-only
-git diff --check
-```
-
-Expected: no unrelated file is staged, conflict markers are absent, and pre-existing unrelated work remains preserved.
-
-- [ ] **Step 5: Report the release prerequisite**
-
-Report that remote legacy fallback points to `v0.1.0`; it becomes externally usable only after the maintainer creates and publishes that tag. Do not create or push the tag without an explicit user request.
+Because Step 1 requires a clean tree, `git add -u` can stage only Task 11 corrections. If Step 4 did
+not change tracked files, do not run Step 5 and do not create an empty commit.
