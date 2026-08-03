@@ -102,6 +102,7 @@ class SetupCliTest(unittest.TestCase):
                     {
                         'agent': 'change-set-verifier',
                         'platform': 'cursor',
+                        'model_key': 'cursor',
                         'required_fields': ['model'],
                     }
                 ],
@@ -298,6 +299,56 @@ class SetupCliTest(unittest.TestCase):
             check_result = json.loads(check_output.getvalue())
             self.assertEqual(check_result['phase'], 'check')
             self.assertEqual(check_result['changed_paths'], [])
+
+    def test_copilot_model_key_is_validated_and_rendered_into_its_agent_wrapper(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            session = self.private_session(root)
+            prepare_args = [
+                'prepare', '--target', str(target), '--session', str(session),
+                '--platform', 'codex', '--platform', 'cursor', '--platform', 'copilot',
+                '--hooks', 'disabled', *self.source_args(),
+            ]
+            self.assertEqual(setup_project_agents.main(prepare_args), 0)
+            request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
+            copilot_request = next(
+                item for item in request['model_requests'] if item['platform'] == 'copilot'
+            )
+            self.assertEqual(copilot_request['model_key'], 'github')
+            self.write_generated_outputs(session)
+            models = session / 'models.json'
+            models.write_text(
+                json.dumps(
+                    {
+                        'agents': {
+                            'change-set-verifier': {
+                                'codex': {'model': 'codex-model'},
+                                'cursor': {'model': 'cursor-model'},
+                                'github': {'model': 'copilot-model'},
+                            }
+                        }
+                    }
+                ),
+                encoding='utf-8',
+            )
+
+            with redirect_stdout(StringIO()):
+                self.assertEqual(
+                    setup_project_agents.main(
+                        [
+                            'apply', '--target', str(target), '--session', str(session),
+                            '--models', str(models), *self.source_args(),
+                        ]
+                    ),
+                    0,
+                )
+            wrapper = (target / '.github/agents/change-set-verifier.agent.md').read_text(
+                encoding='utf-8'
+            )
+            self.assertIn('model: copilot-model\n', wrapper)
+            self.assertNotIn('model: \n', wrapper)
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX session ownership checks')
     def test_rejects_nonprivate_session_before_target_mutation(self):

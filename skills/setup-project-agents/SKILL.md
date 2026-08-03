@@ -48,10 +48,23 @@ installs itself into the target, edits host trust or plugin caches, or upgrades 
 3. Read `SESSION/request.json`. It is the authority for this session's normalized target, source
    root and commit, platform and Hook choices, selected assets, model requests, and five generated
    outputs. Write one JSON-object `SESSION/models.json` that satisfies every listed agent/platform
-   request: each platform object needs a non-empty `model`; Codex optional
+   request at its requested `model_key`: Codex and Cursor use `codex` and `cursor`, while Copilot
+   uses `github`. Each platform object needs a non-empty `model`; Codex optional
    `model_reasoning_effort` and `sandbox_mode` are strings when present, and Cursor optional
    `readonly` is Boolean when present. Do not use a models file outside `SESSION` or change the
    request after preparation.
+
+   ```json
+   {
+     "agents": {
+       "change-set-verifier": {
+         "codex": {"model": "codex-model"},
+         "cursor": {"model": "cursor-model"},
+         "github": {"model": "copilot-model"}
+       }
+     }
+   }
+   ```
 
 4. Generate every request output in `SESSION/generated`, not in the target project. Use `write-rule`
    for the three requested Rule Blueprints and `write-skill` for the two requested Skill Blueprints.

@@ -34,6 +34,11 @@ _BLUEPRINT_TARGETS = (
     PurePosixPath('.agents/skills/change-set-verification/SKILL.md'),
     PurePosixPath('.agents/skills/worktree-environment-setup/SKILL.md'),
 )
+_MODEL_KEYS = {
+    Platform.CODEX: 'codex',
+    Platform.CURSOR: 'cursor',
+    Platform.COPILOT: 'github',
+}
 
 
 class SetupError(ValueError):
@@ -180,6 +185,7 @@ def _model_requests(config: ProjectConfig) -> list[dict[str, object]]:
         {
             'agent': agent,
             'platform': platform.value,
+            'model_key': _MODEL_KEYS[platform],
             'required_fields': ['model'],
         }
         for agent in sorted(config.selected_agents)
@@ -323,23 +329,24 @@ def _models_for_rendering(
     for request in _model_requests(config):
         agent_name = request['agent']
         platform_name = request['platform']
+        model_key = request['model_key']
         agent = agents.get(agent_name)
         if not isinstance(agent, Mapping):
             raise SetupError(f'models agent is missing: {agent_name}')
-        platform = agent.get(platform_name)
+        platform = agent.get(model_key)
         if not isinstance(platform, Mapping):
-            raise SetupError(f'models platform is missing: {agent_name}:{platform_name}')
+            raise SetupError(f'models platform is missing: {agent_name}:{model_key}')
         model = platform.get('model')
         if not isinstance(model, str) or not model.strip():
-            raise SetupError(f'models model is missing: {agent_name}:{platform_name}')
+            raise SetupError(f'models model is missing: {agent_name}:{model_key}')
         if platform_name == Platform.CODEX.value:
             for key in ('model_reasoning_effort', 'sandbox_mode'):
                 if key in platform and not isinstance(platform[key], str):
-                    raise SetupError(f'models {key} must be a string: {agent_name}:{platform_name}')
+                    raise SetupError(f'models {key} must be a string: {agent_name}:{model_key}')
         if platform_name == Platform.CURSOR.value and (
             'readonly' in platform and type(platform['readonly']) is not bool
         ):
-            raise SetupError(f'models readonly must be a boolean: {agent_name}:{platform_name}')
+            raise SetupError(f'models readonly must be a boolean: {agent_name}:{model_key}')
     return {key: value for key, value in models.items() if key != 'runner'}
 
 

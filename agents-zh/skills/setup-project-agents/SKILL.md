@@ -43,9 +43,22 @@ description: 初始化或更新仓库的 Agents Rule、Skill、Agent 与显式�
 
 3. 读取 `SESSION/request.json`。它是本会话规范化目标、来源根与 commit、平台与 Hook 选择、资产
    选择、模型请求和五个生成输出的唯一依据。写入一个 JSON object `SESSION/models.json`，满足每个
-   Agent/平台请求：每个目标平台 object 必须有非空 `model`；Codex 可选
+   Agent/平台请求中指定的 `model_key`：Codex 与 Cursor 分别使用 `codex`、`cursor`，Copilot 使用
+   `github`。每个目标平台 object 必须有非空 `model`；Codex 可选
    `model_reasoning_effort` 和 `sandbox_mode` 存在时必须为字符串，Cursor 可选 `readonly` 存在时必须
    为 Boolean。不得使用 `SESSION` 外的模型文件，也不得在 prepare 后修改 request。
+
+   ```json
+   {
+     "agents": {
+       "change-set-verifier": {
+         "codex": {"model": "codex-model"},
+         "cursor": {"model": "cursor-model"},
+         "github": {"model": "copilot-model"}
+       }
+     }
+   }
+   ```
 
 4. 在 `SESSION/generated` 生成 request 中的每个输出，绝不直接写入目标项目。三条 Rule Blueprint
    必须使用 `write-rule`，两条 Skill Blueprint 必须使用 `write-skill`。只能生成下列路径，不能有
