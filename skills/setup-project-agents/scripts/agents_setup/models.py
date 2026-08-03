@@ -74,6 +74,40 @@ class LockState:
         )
 
 
+class ChangeKind(str, Enum):
+    CREATE = 'create'
+    UPDATE = 'update'
+    DELETE = 'delete'
+    UNCHANGED = 'unchanged'
+
+
+@dataclass(frozen=True)
+class DesiredFile:
+    path: PurePosixPath
+    content: bytes
+
+
+@dataclass(frozen=True)
+class DesiredField:
+    path: PurePosixPath
+    key: str
+    value: object
+    format: str
+
+
+@dataclass(frozen=True)
+class Change:
+    kind: ChangeKind
+    path: PurePosixPath
+    content: bytes | None
+
+
+@dataclass(frozen=True)
+class Plan:
+    changes: tuple[Change, ...]
+    next_lock: LockState
+
+
 @dataclass(frozen=True)
 class Catalog:
     plugin_id: str
