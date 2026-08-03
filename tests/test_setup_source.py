@@ -243,7 +243,7 @@ class SetupSourceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             with mock.patch.object(
                 source_module,
-                '_safe_remove_created_checkout',
+                '_safe_remove_staging',
                 side_effect=OSError('cleanup failed'),
             ):
                 with self.assertRaises(SourceUnavailable):
@@ -257,54 +257,97 @@ class SetupSourceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'
             workspace.mkdir()
-            checkout = workspace / 'source'
-            checkout.mkdir()
-            original = workspace / 'original'
-
-            def replace_source() -> None:
-                checkout.rename(original)
-                checkout.mkdir()
-                (checkout / 'sentinel').write_text('keep\n', encoding='utf-8')
-
             workspace_state = source_module._open_safe_workspace(workspace)
             try:
-                identity = source_module._entry_identity(workspace_state.fd, 'source')
-                with mock.patch.object(source_module, '_before_cleanup_quarantine', replace_source):
-                    source_module._safe_remove_created_checkout(workspace_state, identity)
+                staging = source_module._create_staging(workspace_state)
+                try:
+                    source = workspace / 'source'
+                    source.mkdir()
+                    (source / 'sentinel').write_text('keep\n', encoding='utf-8')
+                    source_module._safe_remove_staging(workspace_state, staging)
+                finally:
+                    staging.close()
             finally:
                 workspace_state.close()
 
-            sentinels = list(workspace.rglob('sentinel'))
-            self.assertEqual(len(sentinels), 1)
-            self.assertEqual(sentinels[0].read_text(encoding='utf-8'), 'keep\n')
+            self.assertEqual((workspace / 'source' / 'sentinel').read_text(encoding='utf-8'), 'keep\n')
             self.assertTrue(workspace.is_dir())
 
-    def test_fetch_main_rejects_preexisting_checkouts_without_touching_them(self):
+    def test_fetch_main_never_overwrites_a_preexisting_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            workspace = Path(temp_dir) / 'session'
-            checkout = workspace / 'source'
-            checkout.mkdir(parents=True)
-            marker = checkout / 'keep'
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            workspace = temporary / 'session'
+            source = workspace / 'source'
+            source.mkdir(parents=True)
+            marker = source / 'keep'
             marker.write_text('preserve\n', encoding='utf-8')
-            with mock.patch('agents_setup.source.subprocess.run') as run:
-                with self.assertRaises(InvalidFetchedSource):
-                    fetch_main('file:///origin.git', work_root=workspace)
+            with self.assertRaises(InvalidFetchedSource):
+                fetch_main(origin.as_uri(), work_root=workspace)
             self.assertEqual(marker.read_text(encoding='utf-8'), 'preserve\n')
-            run.assert_not_called()
 
-    def test_fetch_main_rejects_preexisting_symlink_checkout_without_touching_it(self):
+    def test_fetch_main_no_replace_publish_leaves_a_source_symlink_target_untouched(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            workspace = Path(temp_dir) / 'session'
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            workspace = temporary / 'session'
             workspace.mkdir()
-            outside = Path(temp_dir) / 'outside'
+            outside = temporary / 'outside'
             outside.mkdir()
             marker = outside / 'keep'
             marker.write_text('preserve\n', encoding='utf-8')
             (workspace / 'source').symlink_to(outside, target_is_directory=True)
-            with mock.patch('agents_setup.source.subprocess.run') as run:
+            with self.assertRaises(InvalidFetchedSource):
+                fetch_main(origin.as_uri(), work_root=workspace)
+            self.assertEqual(marker.read_text(encoding='utf-8'), 'preserve\n')
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
+    def test_git_uses_the_held_staging_fd_path_and_passes_that_fd(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir) / 'session'
+            commands = [
+                subprocess.CompletedProcess(('git', 'init'), 0),
+                subprocess.CompletedProcess(('git', 'remote'), 1),
+            ]
+            with mock.patch.object(source_module.subprocess, 'run', side_effect=commands) as run:
+                with self.assertRaises(SourceUnavailable):
+                    fetch_main('file:///origin.git', work_root=workspace)
+
+            argv = run.call_args_list[0].args[0]
+            self.assertRegex(argv[-1], r'^/proc/self/fd/[0-9]+$')
+            self.assertEqual(run.call_args_list[0].kwargs['pass_fds'], (int(argv[-1].rsplit('/', 1)[1]),))
+            self.assertFalse((workspace / 'source').exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
+    def test_workspace_namespace_replacement_never_redirects_git_into_an_external_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            workspace = temporary / 'session'
+            external = temporary / 'external'
+            external.mkdir()
+            moved = temporary / 'moved-session'
+
+            def replace_namespace() -> None:
+                workspace.rename(moved)
+                workspace.symlink_to(external, target_is_directory=True)
+
+            with mock.patch.object(source_module, '_before_first_git', replace_namespace):
                 with self.assertRaises(InvalidFetchedSource):
                     fetch_main('file:///origin.git', work_root=workspace)
-            self.assertEqual(marker.read_text(encoding='utf-8'), 'preserve\n')
+
+            self.assertFalse(any(external.iterdir()))
+
+    def test_unavailable_secure_staging_primitives_do_not_mutate_or_run_git(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir) / 'session'
+            with (
+                mock.patch.object(source_module, '_secure_fetch_supported', return_value=False),
+                mock.patch.object(source_module.os, 'mkdir') as mkdir,
+                mock.patch.object(source_module.subprocess, 'run') as run,
+            ):
+                with self.assertRaises(SourceUnavailable):
+                    fetch_main('file:///origin.git', work_root=workspace)
+            mkdir.assert_not_called()
             run.assert_not_called()
 
     def test_fetch_main_classifies_post_fetch_git_failures_as_invalid(self):

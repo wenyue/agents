@@ -6,6 +6,7 @@ import re
 import secrets
 import stat
 import subprocess
+import ctypes
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Mapping
@@ -47,11 +48,22 @@ class SourceSnapshot:
 class _Workspace:
     path: Path
     fd: int | None
+    identity: tuple[int, int] | None = None
 
     def close(self) -> None:
         if self.fd is not None:
             os.close(self.fd)
             self.fd = None
+
+
+@dataclass
+class _Staging:
+    name: str
+    fd: int
+    identity: tuple[int, int]
+
+    def close(self) -> None:
+        os.close(self.fd)
 
 
 def _safe_root(value: Path, label: str) -> Path:
@@ -116,9 +128,11 @@ def _validate_catalog_sources(root: Path, catalog_sources: tuple[PurePosixPath, 
             raise InvalidFetchedSource(f'catalog source is missing: {relative.as_posix()}')
 
 
-def validate_source(source_root: Path) -> Path:
+def _validate_source(source_root: Path, *, fd_root: bool) -> Path:
     """Validate a local plugin root before it can control project setup."""
-    root = _safe_root(source_root, 'source root')
+    root = Path(source_root) if fd_root else _safe_root(source_root, 'source root')
+    if fd_root and not root.is_dir():
+        raise InvalidFetchedSource('held source root is not a directory')
     _reject_source_symlinks(root)
     version_path = _safe_required(root, PurePosixPath('VERSION'))
     try:
@@ -159,10 +173,19 @@ def validate_source(source_root: Path) -> Path:
     return root
 
 
+def validate_source(source_root: Path) -> Path:
+    return _validate_source(source_root, fd_root=False)
+
+
+def _validate_held_source(fd: int) -> None:
+    _validate_source(Path(f'/proc/self/fd/{fd}'), fd_root=True)
+
+
 def _run_git(
     argv: tuple[str, ...],
     *,
     failure: type[SourceUnavailable] | type[InvalidFetchedSource],
+    pass_fds: tuple[int, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
     try:
         completed = subprocess.run(
@@ -172,6 +195,7 @@ def _run_git(
             stderr=subprocess.DEVNULL,
             text=True,
             env=_git_environment(),
+            pass_fds=pass_fds,
         )
     except OSError as error:
         raise SourceUnavailable('Git is unavailable') from error
@@ -199,6 +223,23 @@ def _git_environment() -> dict[str, str]:
 def _secure_dirfd_supported() -> bool:
     return os.name == 'posix' and all(
         hasattr(os, name) for name in ('O_DIRECTORY', 'O_NOFOLLOW')
+    )
+
+
+def _renameat2_available() -> bool:
+    if os.name != 'posix' or not hasattr(os, 'uname') or os.uname().sysname != 'Linux':
+        return False
+    try:
+        return hasattr(ctypes.CDLL(None, use_errno=True), 'renameat2')
+    except OSError:
+        return False
+
+
+def _secure_fetch_supported() -> bool:
+    return (
+        _secure_dirfd_supported()
+        and _renameat2_available()
+        and Path('/proc/self/fd').is_dir()
     )
 
 
@@ -293,7 +334,7 @@ def _open_safe_workspace(value: Path) -> _Workspace:
                 raise
             os.close(fd)
             fd = child
-        return _Workspace(path, fd)
+        return _Workspace(path, fd, _identity(os.fstat(fd)))
     except BaseException:
         os.close(fd)
         raise
@@ -339,42 +380,67 @@ def _remove_directory_contents(fd: int) -> None:
                     continue
 
 
-_before_cleanup_quarantine = lambda: None
-
-
-def _safe_remove_created_checkout(
-    workspace: _Workspace,
-    identity: tuple[int, int] | None,
-) -> None:
-    """Safely remove only the inode this call created, preserving every replacement."""
-    try:
-        if identity is None or workspace.fd is None:
-            return
-        if _entry_identity(workspace.fd, 'source') != identity:
-            return
-        _before_cleanup_quarantine()
-        quarantine = f'.agents-setup-quarantine-{secrets.token_hex(16)}'
-        if _entry_status(workspace.fd, quarantine) is not None:
-            return
-        os.rename(
-            'source',
-            quarantine,
-            src_dir_fd=workspace.fd,
-            dst_dir_fd=workspace.fd,
-        )
-        if _entry_identity(workspace.fd, quarantine) != identity:
-            return
-        directory = _open_directory_nofollow(workspace.fd, quarantine)
+def _create_staging(workspace: _Workspace) -> _Staging:
+    if workspace.fd is None:
+        raise SourceUnavailable('secure source staging is unavailable')
+    for _ in range(16):
+        name = f'.agents-setup-source-{secrets.token_hex(16)}'
         try:
-            if _identity(os.fstat(directory)) != identity:
-                return
-            _remove_directory_contents(directory)
-        finally:
-            os.close(directory)
-        if _entry_identity(workspace.fd, quarantine) == identity:
-            os.rmdir(quarantine, dir_fd=workspace.fd)
+            os.mkdir(name, mode=0o700, dir_fd=workspace.fd)
+        except FileExistsError:
+            continue
+        except OSError as error:
+            raise SourceUnavailable('cannot create secure source staging') from error
+        try:
+            fd = _open_directory_nofollow(workspace.fd, name)
+        except OSError as error:
+            raise SourceUnavailable('cannot open secure source staging') from error
+        return _Staging(name, fd, _identity(os.fstat(fd)))
+    raise SourceUnavailable('cannot allocate secure source staging')
+
+
+def _safe_remove_staging(workspace: _Workspace, staging: _Staging) -> None:
+    """Best-effort cleanup through the held staging fd; never touch SESSION/source."""
+    try:
+        if workspace.fd is None or _entry_identity(workspace.fd, staging.name) != staging.identity:
+            return
+        if _identity(os.fstat(staging.fd)) != staging.identity:
+            return
+        _remove_directory_contents(staging.fd)
+        if _entry_identity(workspace.fd, staging.name) == staging.identity:
+            os.rmdir(staging.name, dir_fd=workspace.fd)
     except Exception:
         return
+
+
+def _rename_noreplace(fd: int, old: str, new: str) -> None:
+    library = ctypes.CDLL(None, use_errno=True)
+    renameat2 = library.renameat2
+    renameat2.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
+    renameat2.restype = ctypes.c_int
+    if renameat2(fd, old.encode(), fd, new.encode(), 1) != 0:
+        error = ctypes.get_errno()
+        if error == getattr(os, 'EEXIST', 17):
+            raise InvalidFetchedSource('source checkout already exists')
+        raise InvalidFetchedSource('cannot publish secure source snapshot')
+
+
+def _publish_staging(workspace: _Workspace, staging: _Staging) -> Path:
+    if workspace.fd is None or workspace.identity is None:
+        raise SourceUnavailable('secure source publishing is unavailable')
+    if _identity(os.fstat(workspace.fd)) != workspace.identity:
+        raise InvalidFetchedSource('source workspace changed during fetch')
+    if _directory_identity(workspace.path) != workspace.identity:
+        raise InvalidFetchedSource('source workspace namespace changed during fetch')
+    _rename_noreplace(workspace.fd, staging.name, 'source')
+    if _entry_identity(workspace.fd, 'source') != staging.identity:
+        raise InvalidFetchedSource('published source identity mismatch')
+    if _directory_identity(workspace.path) != workspace.identity:
+        raise InvalidFetchedSource('source workspace namespace changed during publish')
+    return workspace.path / 'source'
+
+
+_before_first_git = lambda: None
 
 
 def _validate_repository(repository: str) -> str:
@@ -391,57 +457,61 @@ def _validate_repository(repository: str) -> str:
 def fetch_main(repository: str, *, work_root: Path) -> SourceSnapshot:
     """Fetch one depth-one `main` snapshot into ``work_root / 'source'``."""
     repository = _validate_repository(repository)
+    if not _secure_fetch_supported():
+        raise SourceUnavailable('secure remote source fetch is unavailable on this platform')
     workspace = _open_safe_workspace(work_root)
-    checkout = workspace.path / 'source'
-    checkout_identity: tuple[int, int] | None = None
+    staging: _Staging | None = None
     try:
-        if workspace.fd is not None:
-            source_exists = _entry_status(workspace.fd, 'source') is not None
-        else:
-            source_exists = checkout.exists() or checkout.is_symlink()
-        if source_exists:
-            raise InvalidFetchedSource(f'source checkout already exists: {checkout}')
+        staging = _create_staging(workspace)
+        git_root = f'/proc/self/fd/{staging.fd}'
+        _before_first_git()
+        if _directory_identity(workspace.path) != workspace.identity:
+            raise InvalidFetchedSource('source workspace namespace changed before fetch')
         try:
             _run_git(
-                ('git', 'init', '--quiet', str(checkout)),
+                ('git', 'init', '--quiet', git_root),
                 failure=SourceUnavailable,
+                pass_fds=(staging.fd,),
             )
         except (SourceUnavailable, InvalidFetchedSource):
-            checkout_identity = (
-                _entry_identity(workspace.fd, 'source')
-                if workspace.fd is not None else _directory_identity(checkout)
-            )
             raise
-        checkout_identity = (
-            _entry_identity(workspace.fd, 'source')
-            if workspace.fd is not None else _directory_identity(checkout)
-        )
         _run_git(
-            ('git', '-C', str(checkout), 'remote', 'add', 'origin', repository),
+            ('git', '-C', git_root, 'remote', 'add', 'origin', repository),
             failure=SourceUnavailable,
+            pass_fds=(staging.fd,),
         )
         _run_git(
-            ('git', '-C', str(checkout), 'fetch', '--depth=1', 'origin', 'main'),
+            ('git', '-C', git_root, 'fetch', '--depth=1', 'origin', 'main'),
             failure=SourceUnavailable,
+            pass_fds=(staging.fd,),
         )
         _run_git(
-            ('git', '-C', str(checkout), 'checkout', '--quiet', '--detach', 'FETCH_HEAD'),
+            ('git', '-C', git_root, 'checkout', '--quiet', '--detach', 'FETCH_HEAD'),
             failure=InvalidFetchedSource,
+            pass_fds=(staging.fd,),
         )
         commit = _run_git(
-            ('git', '-C', str(checkout), 'rev-parse', 'HEAD'),
+            ('git', '-C', git_root, 'rev-parse', 'HEAD'),
             failure=InvalidFetchedSource,
+            pass_fds=(staging.fd,),
         ).stdout.strip()
         if not _COMMIT.fullmatch(commit):
             raise InvalidFetchedSource('Git returned an invalid source commit')
-        return SourceSnapshot(validate_source(checkout), commit.lower())
+        _validate_held_source(staging.fd)
+        return SourceSnapshot(_publish_staging(workspace, staging), commit.lower())
     except (SourceUnavailable, InvalidFetchedSource):
-        try:
-            _safe_remove_created_checkout(workspace, checkout_identity)
-        except Exception:
-            pass
+        if staging is not None:
+            try:
+                _safe_remove_staging(workspace, staging)
+            except Exception:
+                pass
         raise
     finally:
+        if staging is not None:
+            try:
+                staging.close()
+            except OSError:
+                pass
         try:
             workspace.close()
         except OSError:
