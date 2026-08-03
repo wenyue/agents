@@ -1912,8 +1912,36 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     'project-config.schema.json'
                 ),
                 'version': 1,
+                'catalog': {
+                    'id': 'agents',
+                    'version': '0.1.0',
+                    'revision': 'v0.1.0',
+                },
             },
         )
+
+    def test_agents_config_template_records_managed_catalog_version(self):
+        template = json.loads(
+            (
+                REPO_TEMPLATES
+                / 'project-config'
+                / 'agents.config.json'
+            ).read_text(encoding='utf-8')
+        )
+        self.assertEqual(
+            template['catalog'],
+            {'id': 'agents', 'version': '0.1.0', 'revision': 'v0.1.0'},
+        )
+
+    def test_agents_config_schema_requires_catalog_identity(self):
+        schema = json.loads(
+            (REPO_REFERENCES / 'project-config.schema.json').read_text(
+                encoding='utf-8'
+            )
+        )
+        catalog = schema['properties']['catalog']
+        self.assertEqual(catalog['required'], ['id', 'version', 'revision'])
+        self.assertFalse(catalog['additionalProperties'])
 
     def test_project_config_schema_describes_external_skills(self):
         schema = json.loads(
@@ -2447,6 +2475,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 json.dumps(
                     {
                         'version': 0,
+                        'catalog': {
+                            'id': 'agents',
+                            'version': '0.0.1',
+                            'revision': 'v0.0.1',
+                        },
                         'skills': {
                             'external': [
                                 {
@@ -2495,6 +2528,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 ],
             )
             self.assertEqual(result['project_owned'], {'kept': True})
+            self.assertEqual(
+                result['catalog'],
+                {'id': 'agents', 'version': '0.1.0', 'revision': 'v0.1.0'},
+            )
             self.assertEqual(
                 sync.load_external_skill_specs(target, public_config),
                 [

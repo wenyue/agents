@@ -15,6 +15,15 @@ def load_json(relative_path: str) -> dict:
 
 
 class PluginManifestTest(unittest.TestCase):
+    def test_public_catalog_matches_native_plugin_version(self):
+        public = load_json(
+            'agents/skills/setup-project-agents/references/public_assets.json'
+        )
+        self.assertEqual(
+            public['catalog'],
+            {'id': 'agents', 'version': PLUGIN_VERSION, 'revision': 'v0.1.0'},
+        )
+
     def test_native_plugin_manifests_share_identity_version_and_skills(self):
         for path in (
             'agents/.codex-plugin/plugin.json',
