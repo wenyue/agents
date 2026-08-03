@@ -17,7 +17,7 @@
 - SessionStart hooks may detect and report tool drift but must never install, upgrade, or trust tools automatically.
 - The installed plugin source takes precedence over network retrieval; legacy network fallback must use `v0.1.0` or a 40-character commit, never `master`.
 - Existing uncommitted work is preserved. Stage only the files listed by the current task and inspect `git diff --cached` before every commit.
-- Use `/home/jinwenhuang/.local/share/uv/python/cpython-3.11.14-linux-x86_64-gnu/bin/python3.11` in this environment. The repository-wide test baseline currently has 167 passing tests and 9 unrelated `test_report_session_usage.py` errors caused by the stale `/home/jinwenhuang/work/wenyue_agents/agents/skills/report-session-usage/scripts/timing.py` path.
+- Use `python3` with Python 3.11 or newer. The repository-wide test baseline initially had 167 passing tests and 9 unrelated `test_report_session_usage.py` errors caused by a stale sibling-repository path.
 - Every completed change set must run the full repository test command and `git diff --check`.
 
 ## File Map
@@ -129,7 +129,7 @@ if __name__ == '__main__':
 Run:
 
 ```sh
-/home/jinwenhuang/.local/share/uv/python/cpython-3.11.14-linux-x86_64-gnu/bin/python3.11 \
+python3 \
   -m unittest discover -s tests -p 'test_*.py'
 ```
 
@@ -285,9 +285,8 @@ Create `.github/plugin/marketplace.json`:
 Run:
 
 ```sh
-/home/jinwenhuang/.local/share/uv/python/cpython-3.11.14-linux-x86_64-gnu/bin/python3.11 \
-  /home/jinwenhuang/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py agents
-/home/jinwenhuang/.local/share/uv/python/cpython-3.11.14-linux-x86_64-gnu/bin/python3.11 \
+python3 "$CODEX_HOME/skills/.system/plugin-creator/scripts/validate_plugin.py" agents
+python3 \
   -m unittest tests.test_plugin_manifests
 ```
 
@@ -1067,7 +1066,7 @@ Read both complete Skill pairs and README files. Confirm:
 Run:
 
 ```sh
-/home/jinwenhuang/.local/share/uv/python/cpython-3.11.14-linux-x86_64-gnu/bin/python3.11 \
+python3 \
   -m unittest discover -s tests -p 'test_*.py'
 git diff --check
 ```
@@ -1101,8 +1100,7 @@ git commit -m "docs: document plugin-first project setup"
 Run:
 
 ```sh
-/home/jinwenhuang/.local/share/uv/python/cpython-3.11.14-linux-x86_64-gnu/bin/python3.11 \
-  /home/jinwenhuang/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py agents
+python3 "$CODEX_HOME/skills/.system/plugin-creator/scripts/validate_plugin.py" agents
 ```
 
 Expected: exit `0`, with no incomplete manifest values or missing Skill root. On any nonzero exit,
@@ -1114,7 +1112,7 @@ verification.
 Run:
 
 ```sh
-/home/jinwenhuang/.local/share/uv/python/cpython-3.11.14-linux-x86_64-gnu/bin/python3.11 \
+python3 \
   -m unittest discover -s tests -p 'test_*.py'
 git diff --check
 ```

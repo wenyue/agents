@@ -7,9 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 TIMING_SCRIPT = (
-    Path(__file__).resolve().parents[2]
-    / 'wenyue_agents'
+    REPO_ROOT
     / 'agents'
     / 'skills'
     / 'report-session-usage'
