@@ -42,6 +42,7 @@ class SyncContext:
     skill_root: Path
     check: bool
     changes: list[Change]
+    installed_skill_root: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,9 @@ class ExternalSkillPreflight:
 
 _TEMPLATE_PATTERN = re.compile(r'{{\s*([a-zA-Z0-9_.]+)\s*}}')
 _PUBLIC_SOURCE_DIRECTORY = 'agents'
+_PLUGIN_NAME = 'agents'
+_PLUGIN_REPOSITORY = 'https://github.com/wenyue/agents'
+_PLUGIN_SKILLS_PATH = './skills/'
 _RELEASE_REF_PATTERN = re.compile(r'^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$')
 _COMMIT_REF_PATTERN = re.compile(r'^[0-9a-fA-F]{40}$')
 _ASSET_NAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+$')
@@ -898,9 +902,23 @@ def validate_source_root(path: Path) -> Path:
     return root
 
 
+def _is_plugin_root(path: Path) -> bool:
+    try:
+        manifest = load_json(path / 'plugin.json')
+    except SyncError:
+        return False
+    return (
+        manifest.get('name') == _PLUGIN_NAME
+        and manifest.get('repository') == _PLUGIN_REPOSITORY
+        and manifest.get('skills') == _PLUGIN_SKILLS_PATH
+    )
+
+
 def find_plugin_source(installed_skill_root: Path) -> Path | None:
     installed = installed_skill_root.resolve()
     for candidate in installed.parents:
+        if not _is_plugin_root(candidate):
+            continue
         try:
             public_root = _public_source_root(candidate)
         except SyncError:
@@ -1748,8 +1766,13 @@ def _public_skill_source(context: SyncContext, name: str) -> Path:
     source = _public_source_root(context.source_root) / 'skills' / name
     if (source / 'SKILL.md').is_file():
         return source
-    if context.skill_root.name == name and context.skill_root.is_dir():
-        return context.skill_root
+    installed = context.installed_skill_root
+    if (
+        installed is not None
+        and installed.name == name
+        and (installed / 'SKILL.md').is_file()
+    ):
+        return installed
     return source
 
 
@@ -2258,6 +2281,7 @@ def main(argv: list[str] | None = None) -> int:
             skill_root=source_skill_root,
             check=args.check,
             changes=[],
+            installed_skill_root=installed_skill_root,
         )
         changes = sync_public_assets(
             context,

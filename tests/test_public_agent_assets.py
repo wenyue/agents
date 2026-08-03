@@ -849,10 +849,40 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             skill = plugin / 'skills' / 'setup-project-agents'
             (skill / 'references').mkdir(parents=True)
             (skill / 'references' / 'public_assets.json').write_text('{}\n')
+            (plugin / 'plugin.json').write_text(
+                json.dumps({
+                    'name': 'agents',
+                    'repository': 'https://github.com/wenyue/agents',
+                    'skills': './skills/',
+                }),
+                encoding='utf-8',
+            )
             with mock.patch.object(sync, '_fetch_archive_source') as fetch:
                 result = sync.resolve_source({}, skill)
         self.assertEqual(result, plugin.resolve())
         fetch.assert_not_called()
+
+    def test_resolve_source_fetches_for_target_local_legacy_skill(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir) / 'project'
+            installed_skill = (
+                project / '.agents' / 'skills' / 'setup-project-agents'
+            )
+            (installed_skill / 'references').mkdir(parents=True)
+            (installed_skill / 'references' / 'public_assets.json').write_text(
+                '{}\n',
+                encoding='utf-8',
+            )
+            archive_source = Path(temp_dir) / 'archive-source'
+            with mock.patch.object(
+                sync,
+                '_fetch_archive_source',
+                return_value=archive_source,
+            ) as fetch:
+                result = sync.resolve_source({}, installed_skill)
+
+        self.assertEqual(result, archive_source)
+        fetch.assert_called_once_with({})
 
     def test_resolve_source_rejects_invalid_explicit_source_before_fetch(self):
         with tempfile.TemporaryDirectory() as temp_dir, mock.patch.object(
@@ -1209,17 +1239,32 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = create_repository_source(root / 'agents')
             target = root / 'target'
-            skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            skill_root.mkdir(parents=True)
+            source_skill_root = (
+                source / 'agents' / 'skills' / 'setup-project-agents'
+            )
+            installed_skill_root = (
+                target / '.agents' / 'skills' / 'setup-project-agents'
+            )
+            installed_skill_root.mkdir(parents=True)
             (source / 'agents' / 'skills').mkdir(parents=True, exist_ok=True)
-            (skill_root / 'SKILL.md').write_text('running skill\n', encoding='utf-8')
+            (installed_skill_root / 'SKILL.md').write_text(
+                'running skill\n',
+                encoding='utf-8',
+            )
             public_config = {
                 'mirror_delete': True,
                 'rules': [],
                 'skills': [{'name': 'setup-project-agents'}],
                 'agent_prompts': [],
             }
-            context = sync.SyncContext(target, source, skill_root, False, [])
+            context = sync.SyncContext(
+                target_root=target,
+                source_root=source,
+                skill_root=source_skill_root,
+                installed_skill_root=installed_skill_root,
+                check=False,
+                changes=[],
+            )
 
             sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
 
