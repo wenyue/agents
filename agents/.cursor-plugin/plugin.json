@@ -1,0 +1,14 @@
+{
+  "name": "agents",
+  "displayName": "wenyue/agents",
+  "version": "0.1.0",
+  "description": "Install and maintain shared project-agent workflows across repositories.",
+  "author": {
+    "name": "wenyue"
+  },
+  "homepage": "https://github.com/wenyue/agents",
+  "repository": "https://github.com/wenyue/agents",
+  "keywords": ["coding-agents", "project-setup", "skills"],
+  "category": "developer-tools",
+  "skills": "./skills/"
+}

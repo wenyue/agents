@@ -1,0 +1,20 @@
+{
+  "name": "wenyue-agents",
+  "interface": {
+    "displayName": "wenyue/agents"
+  },
+  "plugins": [
+    {
+      "name": "agents",
+      "source": {
+        "source": "local",
+        "path": "./agents"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
