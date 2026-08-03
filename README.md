@@ -6,18 +6,46 @@ repositories under `.agents/`, while blueprints guide creation of target-owned `
 this repository keeps a curated local runtime configuration in `.agents/` rather than mirroring the
 public catalog.
 
-## New Project Setup
+## Install the Plugin
 
-From the target project root, ask the coding agent to use `setup-project-agents`:
+Install `agents` once for the host you use.
 
-```text
-wenyue/agents/agents/skills/setup-project-agents/SKILL.md
+Codex:
+
+```sh
+codex plugin marketplace add wenyue/agents
+codex plugin add agents@wenyue-agents
 ```
 
-The skill fetches this public source when needed, syncs only manifest-listed public assets,
-deletes declared legacy project skills, refreshes local project assets from target repository
-evidence, and regenerates thin wrappers. It generates `worktree-environment-setup` for an existing
-worktree and syncs the public `worktree-integrate` completion workflow.
+Cursor: add `https://github.com/wenyue/agents` as a plugin source, then install `agents`.
+
+GitHub Copilot CLI:
+
+```sh
+copilot plugin marketplace add wenyue/agents
+copilot plugin install agents@wenyue-agents
+```
+
+Installing the plugin only makes its Skills available; it does not modify repositories. Open each
+target repository and ask the installed plugin to use `setup-project-agents`. Run that Skill again
+whenever you want to synchronize the repository with the installed catalog version.
+
+## Review Project Hooks
+
+`setup-project-agents` installs a project-health `sessionStart` Hook for each supported host. The
+Hook checks recommended tools and effective runtime requirements at most once per project per day;
+it reports drift but never installs, upgrades, or trusts tools. Review the command using the host's
+normal trust flow before allowing it to run.
+
+| Agent | Project Hook | Required user action |
+| --- | --- | --- |
+| Codex | `.codex/hooks.json` | Start `codex`, enter `/hooks`, inspect the project Hook, and trust its exact definition. |
+| Cursor | `.cursor/hooks.json` | Open the repository as a trusted workspace and inspect the Hook under `Cursor Settings > Hooks`. |
+| GitHub Copilot | `.github/hooks/*.json` | Start `copilot` in the repository and accept the prompt to trust the current directory. |
+
+Hook support is enabled explicitly for all three hosts. Multi-agent support is not force-enabled by
+project configuration; the health check validates each host's effective default state and reports
+when it has been disabled.
 
 ## Boundaries
 
