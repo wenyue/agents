@@ -584,13 +584,16 @@ cleanup only after the whole setup session ends.
 
 - [ ] **Step 3: Implement `fetch_main` with fixed argv arrays**
 
-Remote-bootstrap security boundary: `SESSION` is created by the bootstrap process and must remain
-owned by the current effective user with mode `0700`. Fetch uses a random 128-bit private candidate,
-held directory descriptors, inode guards, and no-replace publication to protect against other-user
-pathname races. A same-UID process that can actively alter `SESSION`, trace the process, or inject
-code is already trusted and is outside this filesystem protocol's threat model. Failed candidates
-remain for session-end cleanup; after publication bootstrap never renames or removes the current
-`SESSION/source` pathname.
+Remote-bootstrap security boundary: `bootstrap.py` accepts an external `--session` path and safely
+creates missing path components without following symlinks, but it always validates the final
+`SESSION` as current-effective-user-owned with exact mode `0700`. It does not blindly trust an
+external path. Normal Task 7 orchestration must create the session through `tempfile.mkdtemp` (or an
+equivalent system-temporary secure creator) before passing it to bootstrap. Fetch uses a random
+128-bit private candidate, held directory descriptors, inode guards, and no-replace publication to
+protect against other-user pathname races. A same-UID process that can actively alter `SESSION`,
+trace the process, or inject code is already trusted and is outside this filesystem protocol's threat
+model. Failed candidates remain for session-end cleanup; after publication bootstrap never renames
+or removes the current `SESSION/source` pathname.
 
 Run these commands without Shell interpolation:
 
@@ -653,6 +656,8 @@ git commit -m "feat: bootstrap project setup from remote main"
 - [ ] **Step 1: Write failing CLI integration tests**
 
 Assert `prepare` writes a session request with source commit, selected platforms, Hook choice, model requests, and five generation requests. Assert `apply` refuses missing generated outputs, writes a complete project, and `check` returns `0` unchanged or `1` on drift without writing.
+Assert normal orchestration creates its system-temporary session as current-euid-owned exact `0700`,
+and that a session with any other owner or mode is rejected before source fetch or project mutation.
 
 ```python
 self.assertEqual(main(['check', '--session', str(session), *source_args]), 0)
@@ -665,6 +670,11 @@ self.assertEqual(snapshot_tree(target), before)
 - [ ] **Step 2: Run focused tests and verify the CLI is absent**
 
 - [ ] **Step 3: Implement the session protocol and commands**
+
+Normal orchestration must allocate `SESSION` with `tempfile.mkdtemp` (or an equivalent secure
+system-temporary creator), retain that private directory for `prepare`, `apply`, and `check`, and
+pass it to bootstrap. Bootstrap still validates the supplied `--session` path on every fetch rather
+than relying on the caller's creation step.
 
 The parser must require exactly one subcommand:
 
@@ -685,7 +695,8 @@ destinations under `SESSION/generated/.agents/rules/` and `SESSION/generated/.ag
 The Skill workflow must:
 
 1. Ask once for enabled platforms and explicit Hook enablement, defaulting to all platforms and Hooks off when `.agents/config.json` is absent.
-2. Run `bootstrap.py prepare` into a system temporary session; this fetches and retains
+2. Create a current-euid-owned exact-`0700` session using `tempfile.mkdtemp` (or an equivalent
+   system-temporary secure creator), then run `bootstrap.py prepare` with that session; this fetches and retains
    `SESSION/source` at one fixed commit.
 3. Fill `models.json` from `request.json`.
 4. Execute each Rule Blueprint with `write-rule` and each Skill Blueprint with `write-skill`, targeting `SESSION/generated` rather than the project.

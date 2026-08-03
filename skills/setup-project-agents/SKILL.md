@@ -35,9 +35,12 @@ values. User configuration remains outside this workflow.
 
 ## Remote Bootstrap Security Boundary
 
-The remote `main` bootstrap creates its `SESSION` directory for the current process and requires it
-to remain owned by the current effective user with mode `0700`. It creates a random 128-bit candidate
-directory, writes and validates through a held directory descriptor, and publishes it to
+The remote `main` bootstrap accepts an external `--session` path. It safely creates missing session
+path components without following symlinks, then always requires the final `SESSION` to be owned by
+the current effective user with exact mode `0700`; bootstrap never blindly trusts the supplied path.
+Normal orchestration must create its session with `tempfile.mkdtemp` (or an equivalent
+system-temporary secure creator) before passing it to bootstrap. Bootstrap creates a random 128-bit
+candidate directory, writes and validates through a held directory descriptor, and publishes it to
 `SESSION/source` with no-replace rename. Failed pre-publication candidates remain for session-end
 cleanup; bootstrap never removes or renames the current `SESSION/source` pathname after publication.
 

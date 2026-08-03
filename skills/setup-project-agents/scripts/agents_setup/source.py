@@ -1,7 +1,8 @@
 """Fetch and validate the remote setup source.
 
-Security boundary: ``work_root`` is a session directory created by this process, owned by the
-current effective UID, and mode ``0700``. Random candidate names, descriptor-held operations,
+Security boundary: callers may supply ``work_root``. Missing path components are created without
+following symlinks, but the final session is always verified as current-effective-UID-owned and
+exactly mode ``0700`` before it is trusted. Random candidate names, descriptor-held operations,
 inode guards, and no-replace publication protect this boundary against pathname races from other
 users. A same-UID process that can actively alter the session or inject code into this process is
 already trusted and is outside this filesystem protocol's threat model.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -137,6 +138,19 @@ class SetupSourceTest(unittest.TestCase):
             self.assertNotEqual(first.commit, second.commit)
             self.assertEqual(second.commit, run_git(origin_work, 'rev-parse', 'main').strip())
             self.assertEqual(second.root.joinpath('new-main.txt').read_text(), 'new main\n')
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX session ownership')
+    def test_fetch_main_creates_a_missing_private_session(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            session = temporary / 'missing-session'
+
+            fetch_main(origin.as_uri(), work_root=session)
+
+            status = session.stat()
+            self.assertEqual(status.st_uid, os.geteuid())
+            self.assertEqual(stat.S_IMODE(status.st_mode), 0o700)
 
     def test_fetched_invalid_catalog_fails_closed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
