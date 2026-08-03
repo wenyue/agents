@@ -99,9 +99,13 @@ def _next_lock(
     fields: Sequence[DesiredField],
     source_commit: str | None,
 ) -> LockState:
+    field_paths = {
+        field.path for field in fields if field.path.suffix in {'.json', '.toml'}
+    }
     managed_files = tuple(
         ManagedFile(path, sha256_bytes(desired.content))
         for path, desired in sorted(files.items(), key=lambda item: _path_key(item[0]))
+        if path not in field_paths
     )
     managed_fields = tuple(
         ManagedField(field.path, field.key, sha256_bytes(files[field.path].content))
@@ -141,7 +145,10 @@ def build_plan(
                 continue
             raise PlanningError(f'unmanaged collision: {_path_key(path)}')
 
-        if current is None or sha256_bytes(current) != expected_digest:
+        if (
+            current is None
+            or (path in managed_file_paths and sha256_bytes(current) != expected_digest)
+        ):
             raise PlanningError(f'managed content changed: {_path_key(path)}')
 
         if desired is None:

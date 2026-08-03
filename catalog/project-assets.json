@@ -35,7 +35,7 @@
     {"id": "config-agents", "kind": "template", "source": "templates/project/platform-config/agents.config.json", "target": ".agents/config.json", "mode": "render"},
     {"id": "config-codex", "kind": "template", "source": "templates/project/platform-config/codex.config.toml", "target": ".codex/config.toml", "platforms": ["codex"], "mode": "render"},
     {"id": "config-codex-dart-mcp", "kind": "template", "source": "templates/project/platform-config/codex.dart-mcp.toml", "target": ".codex/config.dart-mcp.toml", "platforms": ["codex"], "mode": "render"},
-    {"id": "config-codex-rules", "kind": "template", "source": "templates/project/platform-config/codex.rules", "target": ".codex/rules", "platforms": ["codex"], "mode": "render"},
+    {"id": "config-codex-rules", "kind": "template", "source": "templates/project/platform-config/codex.rules", "target": ".codex/rules/setup-project-agents.rules", "platforms": ["codex"], "mode": "render"},
     {"id": "config-cursor-cli", "kind": "template", "source": "templates/project/platform-config/cursor.cli.json", "target": ".cursor/cli.json", "platforms": ["cursor"], "mode": "render"},
     {"id": "config-copilot-settings", "kind": "template", "source": "templates/project/platform-config/copilot.settings.json", "target": ".github/copilot/settings.json", "platforms": ["copilot"], "mode": "render"},
     {"id": "hook-codex", "kind": "template", "source": "templates/project/hooks/codex.hooks.json", "target": ".codex/hooks.json", "platforms": ["codex"], "mode": "render"},

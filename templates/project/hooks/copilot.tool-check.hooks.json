@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "hooks": {"sessionStart": [{
+    "type": "command",
+    "bash": "python .agents/skills/manage-agent-tools/scripts/check_recommended_tools.py hook --platform copilot",
+    "cwd": ".",
+    "timeoutSec": 30
+  }]}
+}
