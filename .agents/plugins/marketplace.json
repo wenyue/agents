@@ -8,7 +8,7 @@
       "name": "agents",
       "source": {
         "source": "local",
-        "path": "./agents"
+        "path": "./"
       },
       "policy": {
         "installation": "AVAILABLE",

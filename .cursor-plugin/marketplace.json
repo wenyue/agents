@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "agents",
-      "source": "./agents",
+      "source": "./",
       "version": "0.1.0",
       "description": "Install and maintain shared project-agent workflows across repositories."
     }

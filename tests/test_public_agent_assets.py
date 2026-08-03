@@ -17,17 +17,17 @@ from pathlib import Path
 import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-REPO_SKILL_ROOT = REPO_ROOT / 'agents' / 'skills' / 'setup-project-agents'
+REPO_SKILL_ROOT = REPO_ROOT / 'skills' / 'setup-project-agents'
 REPO_REFERENCES = REPO_SKILL_ROOT / 'references'
 REPO_TEMPLATES = REPO_SKILL_ROOT / 'assets' / 'templates'
-MANAGE_AGENT_TOOLS_ROOT = REPO_ROOT / 'agents' / 'skills' / 'manage-agent-tools'
+MANAGE_AGENT_TOOLS_ROOT = REPO_ROOT / 'skills' / 'manage-agent-tools'
 RECOMMENDED_TOOL_CHECKER = (
     MANAGE_AGENT_TOOLS_ROOT / 'scripts' / 'check_recommended_tools.py'
 )
 RECOMMENDED_TOOL_POLICIES = (
     MANAGE_AGENT_TOOLS_ROOT / 'references' / 'recommended-tools'
 )
-REPORT_SESSION_USAGE_ROOT = REPO_ROOT / 'agents' / 'skills' / 'report-session-usage'
+REPORT_SESSION_USAGE_ROOT = REPO_ROOT / 'skills' / 'report-session-usage'
 sys.path.insert(0, str(REPO_SKILL_ROOT / 'scripts'))
 
 import sync_public_agent_assets as sync
@@ -40,7 +40,6 @@ def copy_repo_templates(destination: Path) -> None:
 def create_repository_source(source: Path) -> Path:
     manifest = (
         source
-        / 'agents'
         / 'skills'
         / 'setup-project-agents'
         / 'references'
@@ -858,7 +857,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_resolve_source_prefers_explicit_validated_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / 'source'
-            skill = source / 'agents' / 'skills' / 'setup-project-agents'
+            skill = source / 'skills' / 'setup-project-agents'
             (skill / 'references').mkdir(parents=True)
             (skill / 'references' / 'public_assets.json').write_text('{}\n')
             result = sync.resolve_source({}, REPO_SKILL_ROOT, source)
@@ -870,7 +869,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 sync.load_json(REPO_REFERENCES / 'public_assets.json'),
                 REPO_SKILL_ROOT,
             )
-        self.assertEqual(result, (REPO_ROOT / 'agents').resolve())
+        self.assertEqual(result, REPO_ROOT.resolve())
         fetch.assert_not_called()
 
     def test_resolve_source_finds_installed_plugin_with_arbitrary_cache_name(self):
@@ -1052,8 +1051,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target.mkdir()
             legacy_skill_root = root / 'legacy' / 'setup-project-agents'
             local_source = root / 'agents'
-            (local_source / 'agents' / 'rules').mkdir(parents=True)
-            (local_source / 'agents' / 'rules' / '10-base-code.md').write_text('local\n', encoding='utf-8')
+            (local_source / 'rules').mkdir(parents=True)
+            (local_source / 'rules' / '10-base-code.md').write_text('local\n', encoding='utf-8')
             archive = root / 'agents.zip'
             with zipfile.ZipFile(archive, 'w') as package:
                 package.writestr('agents-master/agents/rules/10-base-code.md', 'archive\n')
@@ -1175,14 +1174,14 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            (source / 'agents' / 'rules').mkdir(parents=True)
-            (source / 'agents' / 'skills' / 'rename').mkdir(parents=True)
-            (source / 'agents' / 'agents').mkdir(parents=True)
+            (source / 'rules').mkdir(parents=True)
+            (source / 'skills' / 'rename').mkdir(parents=True)
+            (source / 'agents').mkdir(parents=True)
             (target / '.agents' / 'rules').mkdir(parents=True)
             skill_root.mkdir(parents=True)
-            (source / 'agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
-            (source / 'agents' / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
-            (source / 'agents' / 'agents' / 'sample-agent.md').write_text(
+            (source / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
+            (source / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
+            (source / 'agents' / 'sample-agent.md').write_text(
                 'agent\n',
                 encoding='utf-8',
             )
@@ -1210,10 +1209,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            (source / 'agents' / 'rules').mkdir(parents=True)
+            (source / 'rules').mkdir(parents=True)
             (target / '.agents' / 'rules').mkdir(parents=True)
             skill_root.mkdir(parents=True)
-            (source / 'agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
+            (source / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
             (target / '.agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
             public_config = {
                 'mirror_delete': True,
@@ -1351,7 +1350,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = create_repository_source(root / 'source')
-            public_root = source / 'agents'
+            public_root = source
             external_source = root / 'external-source'
             external_source.mkdir()
             (external_source / 'safe.md').write_text('external source\n', encoding='utf-8')
@@ -1381,7 +1380,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = create_repository_source(root / 'source')
-            source_rule = source / 'agents' / 'rules' / 'safe.md'
+            source_rule = source / 'rules' / 'safe.md'
             source_rule.parent.mkdir(parents=True)
             source_rule.write_text('public rule\n', encoding='utf-8')
             target = root / 'target'
@@ -1420,7 +1419,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = create_repository_source(root / 'source')
-            source_rule = source / 'agents' / 'rules' / 'safe.md'
+            source_rule = source / 'rules' / 'safe.md'
             source_rule.parent.mkdir(parents=True)
             source_rule.write_text('public rule\n', encoding='utf-8')
             skill_root = root / 'skill'
@@ -1477,10 +1476,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            (source / 'agents' / 'skills' / 'rename').mkdir(parents=True)
+            (source / 'skills' / 'rename').mkdir(parents=True)
             (target / '.agents' / 'skills' / 'rename').mkdir(parents=True)
             skill_root.mkdir(parents=True)
-            (source / 'agents' / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
+            (source / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
             extra = target / '.agents' / 'skills' / 'rename' / 'extra.md'
             extra.write_text('local\n', encoding='utf-8')
             public_config = {
@@ -1501,10 +1500,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            (source / 'agents' / 'skills' / 'rename').mkdir(parents=True)
+            (source / 'skills' / 'rename').mkdir(parents=True)
             (target / '.agents' / 'skills' / 'rename').mkdir(parents=True)
             skill_root.mkdir(parents=True)
-            (source / 'agents' / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
+            (source / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
             extra = target / '.agents' / 'skills' / 'rename' / 'extra.md'
             extra.write_text('local\n', encoding='utf-8')
             public_config = {
@@ -1525,10 +1524,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            (source / 'agents' / 'skills' / 'rename').mkdir(parents=True)
+            (source / 'skills' / 'rename').mkdir(parents=True)
             (target / '.agents' / 'skills' / 'rename' / 'unused' / 'nested').mkdir(parents=True)
             skill_root.mkdir(parents=True)
-            (source / 'agents' / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
+            (source / 'skills' / 'rename' / 'SKILL.md').write_text('skill\n', encoding='utf-8')
             public_config = {
                 'mirror_delete': True,
                 'rules': [],
@@ -1547,7 +1546,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_skill = source / 'agents' / 'skills' / 'setup-project-agents'
+            source_skill = source / 'skills' / 'setup-project-agents'
             legacy_skill = target / '.agents' / 'skills' / 'old-setup-agent'
             source_skill.mkdir(parents=True, exist_ok=True)
             legacy_skill.mkdir(parents=True)
@@ -1622,13 +1621,13 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = create_repository_source(root / 'agents')
             target = root / 'target'
             source_skill_root = (
-                source / 'agents' / 'skills' / 'setup-project-agents'
+                source / 'skills' / 'setup-project-agents'
             )
             installed_skill_root = (
                 target / '.agents' / 'skills' / 'setup-project-agents'
             )
             installed_skill_root.mkdir(parents=True)
-            (source / 'agents' / 'skills').mkdir(parents=True, exist_ok=True)
+            (source / 'skills').mkdir(parents=True, exist_ok=True)
             (installed_skill_root / 'SKILL.md').write_text(
                 'running skill\n',
                 encoding='utf-8',
@@ -1661,7 +1660,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_skill = source / 'agents' / 'skills' / 'rename'
+            source_skill = source / 'skills' / 'rename'
             target_skill = target / '.agents' / 'skills' / 'rename'
             (source_skill / 'scripts' / '__pycache__').mkdir(parents=True)
             (target_skill / 'scripts' / '__pycache__').mkdir(parents=True)
@@ -1699,9 +1698,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            (source / 'agents' / 'rules').mkdir(parents=True)
+            (source / 'rules').mkdir(parents=True)
             copy_repo_templates(templates)
-            (source / 'agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
+            (source / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
             public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
             public_config['rules'] = [rule for rule in public_config['rules'] if rule['file'] == '10-base-code.md']
             public_config['skills'] = []
@@ -1732,9 +1731,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            (source / 'agents' / 'rules').mkdir(parents=True)
+            (source / 'rules').mkdir(parents=True)
             copy_repo_templates(templates)
-            (source / 'agents' / 'rules' / '00-global-rule-config.md').write_text('rule\n', encoding='utf-8')
+            (source / 'rules' / '00-global-rule-config.md').write_text('rule\n', encoding='utf-8')
             stale_wrapper = target / '.cursor' / 'rules' / '10-base-code.mdc'
             stale_wrapper.parent.mkdir(parents=True)
             stale_wrapper.write_text(
@@ -1761,7 +1760,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            source_agents = source / 'agents' / 'agents'
+            source_agents = source / 'agents'
             source_agents.mkdir(parents=True)
             copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text(
@@ -1802,7 +1801,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            source_agents = source / 'agents' / 'agents'
+            source_agents = source / 'agents'
             source_agents.mkdir(parents=True)
             copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text(
@@ -1862,7 +1861,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            source_agents = source / 'agents' / 'agents'
+            source_agents = source / 'agents'
             source_agents.mkdir(parents=True)
             copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
@@ -1904,7 +1903,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            source_agents = source / 'agents' / 'agents'
+            source_agents = source / 'agents'
             source_agents.mkdir(parents=True)
             copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
@@ -1931,7 +1930,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            source_agents = source / 'agents' / 'agents'
+            source_agents = source / 'agents'
             source_agents.mkdir(parents=True)
             copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
@@ -1980,7 +1979,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            source_agents = source / 'agents' / 'agents'
+            source_agents = source / 'agents'
             source_agents.mkdir(parents=True)
             copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
@@ -2030,7 +2029,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            source_agents = source / 'agents' / 'agents'
+            source_agents = source / 'agents'
             source_agents.mkdir(parents=True)
             copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
@@ -2108,7 +2107,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            source_agents = source / 'agents' / 'agents'
+            source_agents = source / 'agents'
             source_agents.mkdir(parents=True)
             copy_repo_templates(templates)
             (source_agents / 'change-set-verifier.md').write_text('agent\n', encoding='utf-8')
@@ -3341,7 +3340,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
-            source_agents = source / 'agents' / 'agents'
+            source_agents = source / 'agents'
             target_agents = target / '.agents' / 'agents'
             source_agents.mkdir(parents=True)
             target_agents.mkdir(parents=True)
@@ -3417,7 +3416,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 '# Project Agent Entry\n\n{{global_rule_rows}}\n{{base_rule_rows}}\n{{project_rule_rows}}\n',
                 encoding='utf-8',
             )
-            source_rules = source / 'agents' / 'rules'
+            source_rules = source / 'rules'
             source_rules.mkdir(parents=True)
             (source_rules / '00-global-rule-config.md').write_text('rule\n', encoding='utf-8')
             (source_rules / '20-project-tools.md').write_text('rule\n', encoding='utf-8')
@@ -3515,7 +3514,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = root / 'agents'
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_blueprints = source / 'agents' / 'blueprints' / 'rules'
+            source_blueprints = source / 'blueprints' / 'rules'
             source_blueprints.mkdir(parents=True)
             skill_root.mkdir(parents=True)
             (source_blueprints / '20-project-tools.md').write_text(
@@ -3543,7 +3542,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_skill = (
-                source / 'agents' / 'blueprints' / 'skills' / 'worktree-environment-setup'
+                source / 'blueprints' / 'skills' / 'worktree-environment-setup'
             )
             legacy_skill = target / '.agents' / 'skills' / 'project-development-workflow'
             source_skill.mkdir(parents=True)
@@ -3595,7 +3594,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_skill = (
-                source / 'agents' / 'blueprints' / 'skills' / 'change-set-verification'
+                source / 'blueprints' / 'skills' / 'change-set-verification'
             )
             legacy_skill = target / '.agents' / 'skills' / 'project-verification'
             source_skill.mkdir(parents=True)
@@ -3645,11 +3644,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            source_rule = source / 'agents' / 'blueprints' / 'rules' / '20-project-tools.md'
+            source_rule = source / 'blueprints' / 'rules' / '20-project-tools.md'
             source_skill = (
-                source / 'agents' / 'blueprints' / 'skills' / 'change-set-verification'
+                source / 'blueprints' / 'skills' / 'change-set-verification'
             )
-            source_setup_skill = source / 'agents' / 'skills' / 'setup-project-agents'
+            source_setup_skill = source / 'skills' / 'setup-project-agents'
             source_rule.parent.mkdir(parents=True)
             source_skill.mkdir(parents=True)
             source_setup_skill.mkdir(parents=True, exist_ok=True)
@@ -3722,7 +3721,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
     def test_retired_project_development_workflow_is_absent(self):
         self.assertFalse(
-            (REPO_ROOT / 'agents' / 'skills' / 'project-development-workflow').exists()
+            (REPO_ROOT / 'skills' / 'project-development-workflow').exists()
         )
 
     def test_public_config_lists_skill_blueprints(self):
@@ -3748,26 +3747,25 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             '21-project-rules.md',
             '22-project-structure.md',
         ):
-            for catalog in ('agents', 'agents-zh'):
+            for catalog in (REPO_ROOT, REPO_ROOT / 'agents-zh'):
                 self.assertTrue(
-                    (REPO_ROOT / catalog / 'blueprints' / 'rules' / filename).is_file()
+                    (catalog / 'blueprints' / 'rules' / filename).is_file()
                 )
-            self.assertFalse((REPO_ROOT / 'agents' / 'rules' / filename).exists())
+            self.assertFalse((REPO_ROOT / 'rules' / filename).exists())
             self.assertFalse((REPO_ROOT / 'agents-zh' / 'rules' / filename).exists())
 
         for name in ('worktree-environment-setup', 'change-set-verification'):
-            for catalog in ('agents', 'agents-zh'):
+            for catalog in (REPO_ROOT, REPO_ROOT / 'agents-zh'):
                 self.assertTrue(
                     (
-                        REPO_ROOT
-                        / catalog
+                        catalog
                         / 'blueprints'
                         / 'skills'
                         / name
                         / 'SKILL.md'
                     ).is_file()
                 )
-            self.assertFalse((REPO_ROOT / 'agents' / 'skills' / name).exists())
+            self.assertFalse((REPO_ROOT / 'skills' / name).exists())
             self.assertFalse((REPO_ROOT / 'agents-zh' / 'skills' / name).exists())
 
     def test_public_config_owns_rule_blueprint_routing(self):
@@ -3975,7 +3973,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             ],
         )
         self.assertFalse(
-            (REPO_ROOT / 'agents' / 'skills' / 'debug-mode' / 'SKILL.md').exists()
+            (REPO_ROOT / 'skills' / 'debug-mode' / 'SKILL.md').exists()
         )
         self.assertFalse(
             (REPO_ROOT / 'agents-zh' / 'skills' / 'debug-mode' / 'SKILL.md').exists()
@@ -3983,7 +3981,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
     def test_setup_project_agents_docs_keep_only_external_skill_decision_boundary(self):
         english = (
-            REPO_ROOT / 'agents' / 'skills' / 'setup-project-agents' / 'SKILL.md'
+            REPO_ROOT / 'skills' / 'setup-project-agents' / 'SKILL.md'
         ).read_text(encoding='utf-8')
         chinese = (
             REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
@@ -4005,7 +4003,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertNotIn('预检公共及项目第三方 Skill', chinese)
 
     def test_global_rules_separate_personality_workflow_and_skill_configuration(self):
-        source_root = REPO_ROOT / 'agents' / 'rules'
+        source_root = REPO_ROOT / 'rules'
         mirror_root = REPO_ROOT / 'agents-zh' / 'rules'
         personality = (source_root / '01-global-personality.md').read_text(encoding='utf-8')
         workflow = (source_root / '03-global-reasoning-workflow.md').read_text(
@@ -4052,7 +4050,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         self.assertTrue(mirror_skill_config.startswith('# 工作流配置\n'))
 
     def test_response_format_uses_one_language_rule_for_all_user_facing_text(self):
-        source = (REPO_ROOT / 'agents' / 'rules' / '02-global-response-format.md').read_text(
+        source = (REPO_ROOT / 'rules' / '02-global-response-format.md').read_text(
             encoding='utf-8'
         )
         mirror = (
@@ -4169,7 +4167,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             return '\n'.join(lines[start:end])
 
         for path in (
-            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md',
+            REPO_ROOT / 'skills' / 'write-skill' / 'SKILL.md',
             REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md',
         ):
             content = path.read_text(encoding='utf-8')
@@ -4244,7 +4242,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             return '\n'.join(lines[start:end])
 
         for path in (
-            REPO_ROOT / 'agents' / 'skills' / 'write-rule' / 'SKILL.md',
+            REPO_ROOT / 'skills' / 'write-rule' / 'SKILL.md',
             REPO_ROOT / '.agents' / 'skills' / 'write-rule' / 'SKILL.md',
         ):
             content = path.read_text(encoding='utf-8')
@@ -4308,7 +4306,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         for skill_name, contract in cases.items():
             for path in (
-                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / 'skills' / skill_name / 'SKILL.md',
                 REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
             ):
                 with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -4329,7 +4327,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_write_authoring_skills_do_not_duplicate_type_rules_in_summary_tables(self):
         for skill_name in ('write-skill', 'write-rule'):
             for path in (
-                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / 'skills' / skill_name / 'SKILL.md',
                 REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
                 REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md',
             ):
@@ -4379,7 +4377,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         for skill_name, expected in cases.items():
             for path in (
-                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / 'skills' / skill_name / 'SKILL.md',
                 REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
             ):
                 with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -4411,7 +4409,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         for skill_name, expected in cases.items():
             for path in (
-                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / 'skills' / skill_name / 'SKILL.md',
                 REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
             ):
                 with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -4477,7 +4475,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         for skill_name, expected in cases.items():
             for path in (
-                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / 'skills' / skill_name / 'SKILL.md',
                 REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
             ):
                 with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -4575,7 +4573,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         for skill_name, expected in cases.items():
             for path in (
-                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / 'skills' / skill_name / 'SKILL.md',
                 REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
             ):
                 with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -4694,7 +4692,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         for skill_name, expected in cases.items():
             for path in (
-                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / 'skills' / skill_name / 'SKILL.md',
                 REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
             ):
                 with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -4735,7 +4733,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         for skill_name, expected in cases.items():
             for path in (
-                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / 'skills' / skill_name / 'SKILL.md',
                 REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
             ):
                 with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -4758,7 +4756,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             'Keep one source of truth for each instruction',
         )
         for path in (
-            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md',
+            REPO_ROOT / 'skills' / 'write-skill' / 'SKILL.md',
             REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md',
         ):
             with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -4788,7 +4786,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
     def test_write_skill_keeps_shared_orchestrator_contract_complete(self):
         for path in (
-            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md',
+            REPO_ROOT / 'skills' / 'write-skill' / 'SKILL.md',
             REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md',
         ):
             with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -4837,7 +4835,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         for skill_name in ('write-rule', 'write-skill'):
             with self.subTest(skill=skill_name):
                 source = (
-                    REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md'
+                    REPO_ROOT / 'skills' / skill_name / 'SKILL.md'
                 ).read_text(encoding='utf-8')
                 mirror = (
                     REPO_ROOT / 'agents-zh' / 'skills' / skill_name / 'SKILL.md'
@@ -4848,7 +4846,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
     def test_shared_skill_generation_contract_requires_acceptance(self):
         for path in (
-            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md',
+            REPO_ROOT / 'skills' / 'write-skill' / 'SKILL.md',
             REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md',
         ):
             with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -4916,7 +4914,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
     def test_write_skill_selects_script_runtime_by_artifact_ownership(self):
         for path in (
-            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md',
+            REPO_ROOT / 'skills' / 'write-skill' / 'SKILL.md',
             REPO_ROOT / '.agents' / 'skills' / 'write-skill' / 'SKILL.md',
         ):
             with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -5026,7 +5024,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             '只有文件或资源本身归当前契约管理，而且位置就是契约的一部分时，才使用路径。'
         )
         public_write_rule = (
-            REPO_ROOT / 'agents' / 'skills' / 'write-rule' / 'SKILL.md'
+            REPO_ROOT / 'skills' / 'write-rule' / 'SKILL.md'
         ).read_text(encoding='utf-8')
         local_write_rule = (
             REPO_ROOT / '.agents' / 'skills' / 'write-rule' / 'SKILL.md'
@@ -5035,7 +5033,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             REPO_ROOT / 'agents-zh' / 'skills' / 'write-rule' / 'SKILL.md'
         ).read_text(encoding='utf-8')
         public_write_skill = (
-            REPO_ROOT / 'agents' / 'skills' / 'write-skill' / 'SKILL.md'
+            REPO_ROOT / 'skills' / 'write-skill' / 'SKILL.md'
         ).read_text(encoding='utf-8')
         mirror_write_skill = (
             REPO_ROOT / 'agents-zh' / 'skills' / 'write-skill' / 'SKILL.md'
@@ -5064,7 +5062,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         for skill_name in ('write-rule', 'write-skill'):
             for path in (
-                REPO_ROOT / 'agents' / 'skills' / skill_name / 'SKILL.md',
+                REPO_ROOT / 'skills' / skill_name / 'SKILL.md',
                 REPO_ROOT / '.agents' / 'skills' / skill_name / 'SKILL.md',
             ):
                 with self.subTest(path=path.relative_to(REPO_ROOT)):
@@ -5078,7 +5076,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
     def test_change_set_verifier_defers_fixer_policy_to_owning_skill(self):
         source = (
-            REPO_ROOT / 'agents' / 'agents' / 'change-set-verifier.md'
+            REPO_ROOT / 'agents' / 'change-set-verifier.md'
         ).read_text(encoding='utf-8')
         mirror = (
             REPO_ROOT / 'agents-zh' / 'agents' / 'change-set-verifier.md'
@@ -5098,7 +5096,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
     def test_rule_and_skill_responsibility_references_use_canonical_names(self):
         cases = {
-            REPO_ROOT / 'agents' / 'blueprints' / 'rules' / '20-project-tools.md': {
+            REPO_ROOT / 'blueprints' / 'rules' / '20-project-tools.md': {
                 'expected': (
                     '`Project Rules`',
                     '`Project Structure`',
@@ -5112,17 +5110,15 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     '`.agents/skills/change-set-verification/`',
                 ),
             },
-            REPO_ROOT / 'agents' / 'blueprints' / 'rules' / '21-project-rules.md': {
+            REPO_ROOT / 'blueprints' / 'rules' / '21-project-rules.md': {
                 'expected': ('`Project Tools`', '`Project Structure`'),
                 'forbidden': ('`20-project-tools.md`', '`22-project-structure.md`'),
             },
-            REPO_ROOT / 'agents' / 'blueprints' / 'rules' / '22-project-structure.md': {
+            REPO_ROOT / 'blueprints' / 'rules' / '22-project-structure.md': {
                 'expected': ('`Project Tools`', '`Project Rules`'),
                 'forbidden': ('`20-project-tools.md`', '`21-project-rules.md`'),
             },
-            REPO_ROOT
-            / 'agents'
-            / 'blueprints'
+            REPO_ROOT / 'blueprints'
             / 'skills'
             / 'worktree-environment-setup'
             / 'SKILL.md': {
@@ -5192,7 +5188,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
     def test_public_blueprints_keep_required_contract_shapes_and_gates(self):
         rule_contracts = {
-            REPO_ROOT / 'agents': (
+            REPO_ROOT: (
                 '## Generation Contract',
                 '## Evidence',
                 '## Content',
@@ -5218,7 +5214,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     self.assertEqual(positions, sorted(positions))
 
         skill_contracts = {
-            REPO_ROOT / 'agents': (
+            REPO_ROOT: (
                 (
                     '## Evidence',
                     '## Authoring Workflow',
@@ -5251,9 +5247,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                     self.assertNotIn(obsolete_combined_gate, content)
 
         worktree_source = (
-            REPO_ROOT
-            / 'agents'
-            / 'blueprints'
+            REPO_ROOT / 'blueprints'
             / 'skills'
             / 'worktree-environment-setup'
             / 'SKILL.md'
@@ -5277,7 +5271,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
     def test_write_rule_skill_allows_project_local_boundaries_when_needed(self):
         source = (
-            REPO_ROOT / 'agents' / 'skills' / 'write-rule' / 'SKILL.md'
+            REPO_ROOT / 'skills' / 'write-rule' / 'SKILL.md'
         ).read_text(encoding='utf-8')
         mirror = (
             REPO_ROOT / 'agents-zh' / 'skills' / 'write-rule' / 'SKILL.md'
@@ -5319,7 +5313,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_skill = (
-                source / 'agents' / 'blueprints' / 'skills' / 'worktree-environment-setup'
+                source / 'blueprints' / 'skills' / 'worktree-environment-setup'
             )
             target_skill = target / '.agents' / 'skills' / 'worktree-environment-setup'
             source_skill.mkdir(parents=True)
@@ -5380,7 +5374,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_skill = (
-                source / 'agents' / 'blueprints' / 'skills' / 'change-set-verification'
+                source / 'blueprints' / 'skills' / 'change-set-verification'
             )
             target_skill = target / '.agents' / 'skills' / 'change-set-verification'
             source_skill.mkdir(parents=True)
@@ -5439,7 +5433,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_skill = (
-                source / 'agents' / 'blueprints' / 'skills' / 'change-set-verification'
+                source / 'blueprints' / 'skills' / 'change-set-verification'
             )
             source_skill.mkdir(parents=True)
             skill_root.mkdir(parents=True)
@@ -5525,7 +5519,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             templates = skill_root / 'assets' / 'templates'
             rules_root = target / '.agents' / 'rules'
             cursor_root = target / '.cursor' / 'rules'
-            (source / 'agents' / 'rules').mkdir(parents=True)
+            (source / 'rules').mkdir(parents=True)
             templates.mkdir(parents=True)
             rules_root.mkdir(parents=True)
             cursor_root.mkdir(parents=True)
@@ -5602,9 +5596,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
-            (source / 'agents' / 'rules').mkdir(parents=True)
+            (source / 'rules').mkdir(parents=True)
             skill_root.mkdir(parents=True)
-            (source / 'agents' / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
+            (source / 'rules' / '10-base-code.md').write_text('rule\n', encoding='utf-8')
             public_config = {
                 'mirror_delete': True,
                 'rules': [{'file': '10-base-code.md'}],
@@ -5654,10 +5648,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_main_check_returns_one_when_changes_are_needed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = root / 'source'
             target = root / 'target'
-            source.mkdir()
-            shutil.copytree(REPO_ROOT / 'agents', source / 'agents')
+            shutil.copytree(REPO_ROOT, source)
             target.mkdir()
             previous_cwd = Path.cwd()
             stdout = io.StringIO()
@@ -5925,8 +5918,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             root = Path(temp_dir)
             source = create_repository_source(root / 'source')
             target = root / 'target'
-            source_rule = source / 'agents' / 'rules' / 'new-rule.md'
-            source_skill = source / 'agents' / 'skills' / 'setup-project-agents'
+            source_rule = source / 'rules' / 'new-rule.md'
+            source_skill = source / 'skills' / 'setup-project-agents'
             source_rule.parent.mkdir(parents=True)
             source_skill.mkdir(parents=True, exist_ok=True)
             target.mkdir()
@@ -6169,7 +6162,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         ), mock.patch.object(
             sync,
             'resolve_source',
-            return_value=REPO_ROOT / 'agents',
+            return_value=REPO_ROOT,
         ), mock.patch.object(
             sync.Path,
             'cwd',
@@ -6212,7 +6205,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         ), mock.patch.object(
             sync,
             'resolve_source',
-            return_value=REPO_ROOT / 'agents',
+            return_value=REPO_ROOT,
         ), mock.patch.object(
             sync.Path,
             'cwd',
