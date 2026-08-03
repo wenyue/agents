@@ -1,45 +1,35 @@
 {
-  "platform": "copilot",
+  "platform": "cursor",
   "tools": [
     {
-      "id": "copilot",
-      "name": "GitHub Copilot CLI",
-      "target_version": "1.0.58",
+      "id": "cursor-agent",
+      "name": "Cursor Agent CLI",
+      "target_version": "2026.01.27",
       "comparison": ">",
       "detectors": [
         {
           "kind": "command-regex",
-          "command": ["copilot", "--version"],
-          "pattern": "([0-9]+(?:\\.[0-9]+)+)"
+          "command": ["agent", "--version"],
+          "pattern": "([0-9]+(?:\\.[0-9]+)+(?:-[0-9A-Za-z.-]+)?)"
         }
       ],
-      "install": "Install GitHub Copilot CLI from the official GitHub distribution.",
-      "upgrade": "Run copilot update or use the package manager used to install Copilot CLI."
+      "install": "Install a Cursor Agent CLI release with default subagent support from the official Cursor distribution.",
+      "upgrade": "Upgrade Cursor Agent CLI with the official Cursor updater so the required default subagent capability is available."
     },
     {
       "id": "superpowers",
-      "name": "Superpowers for GitHub Copilot",
+      "name": "Superpowers for Cursor",
       "target_version": "6.1.1",
       "comparison": ">",
       "detectors": [
         {
-          "kind": "command-regex",
-          "command": ["copilot", "plugin", "list"],
-          "pattern": "superpowers@[^ ]+ \\(v([0-9]+(?:\\.[0-9]+)+)\\)"
-        },
-        {
           "kind": "json-manifest-glob",
-          "glob": "{home}/.copilot/installed-plugins/*/superpowers/package.json",
-          "json_path": "version"
-        },
-        {
-          "kind": "json-manifest-glob",
-          "glob": "{home}/.cache/copilot/marketplaces/*/package.json",
+          "glob": "{home}/.cursor/plugins/cache/*/superpowers/*/package.json",
           "json_path": "version"
         }
       ],
-      "install": "Install Superpowers from the configured Copilot plugin marketplace.",
-      "upgrade": "Update the Superpowers plugin with GitHub Copilot CLI."
+      "install": "Install the Superpowers plugin from the Cursor marketplace.",
+      "upgrade": "Update the Superpowers plugin in Cursor."
     },
     {
       "id": "codegraph",
@@ -53,7 +43,7 @@
           "pattern": "([0-9]+(?:\\.[0-9]+)+)"
         }
       ],
-      "install": "Install CodeGraph and expose the codegraph command to Copilot CLI.",
+      "install": "Install CodeGraph and expose the codegraph command to Cursor.",
       "upgrade": "Upgrade CodeGraph with its installation package manager."
     },
     {

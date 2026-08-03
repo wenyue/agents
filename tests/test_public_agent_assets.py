@@ -20,7 +20,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 REPO_SKILL_ROOT = REPO_ROOT / 'agents' / 'skills' / 'setup-project-agents'
 REPO_REFERENCES = REPO_SKILL_ROOT / 'references'
 REPO_TEMPLATES = REPO_SKILL_ROOT / 'assets' / 'templates'
-RECOMMENDED_TOOL_CHECKER = REPO_SKILL_ROOT / 'scripts' / 'check_recommended_tools.py'
+MANAGE_AGENT_TOOLS_ROOT = REPO_ROOT / 'agents' / 'skills' / 'manage-agent-tools'
+RECOMMENDED_TOOL_CHECKER = (
+    MANAGE_AGENT_TOOLS_ROOT / 'scripts' / 'check_recommended_tools.py'
+)
+RECOMMENDED_TOOL_POLICIES = (
+    MANAGE_AGENT_TOOLS_ROOT / 'references' / 'recommended-tools'
+)
 REPORT_SESSION_USAGE_ROOT = REPO_ROOT / 'agents' / 'skills' / 'report-session-usage'
 sys.path.insert(0, str(REPO_SKILL_ROOT / 'scripts'))
 
@@ -45,6 +51,24 @@ def load_recommended_tool_checker_module():
 
 
 class SyncPublicAgentAssetsTest(unittest.TestCase):
+    def test_manage_agent_tools_owns_checker_policy_and_project_hook_commands(self):
+        public_config = sync.load_json(REPO_REFERENCES / 'public_assets.json')
+        self.assertIn({'name': 'manage-agent-tools'}, public_config['skills'])
+        for platform in ('codex', 'cursor', 'copilot'):
+            self.assertTrue(
+                (RECOMMENDED_TOOL_POLICIES / f'{platform}.json').is_file()
+            )
+        hook_templates = (
+            REPO_TEMPLATES / 'project-config' / 'codex.hooks.json',
+            REPO_TEMPLATES / 'project-config' / 'cursor.hooks.json',
+            REPO_TEMPLATES / 'project-config' / 'copilot.tool-check.hooks.json',
+        )
+        for template in hook_templates:
+            self.assertIn(
+                '.agents/skills/manage-agent-tools/scripts/',
+                template.read_text(encoding='utf-8'),
+            )
+
     def test_sync_script_uses_bundled_tomli_when_tomllib_is_unavailable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1562,7 +1586,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             codex_config = tomllib.loads(
                 (target / '.codex' / 'config.toml').read_text(encoding='utf-8')
             )
-            self.assertIs(codex_config['features']['multi_agent'], True)
+            self.assertEqual(codex_config['features'], {'hooks': True})
             self.assertIs(codex_config['sandbox_workspace_write']['network_access'], True)
             self.assertEqual(
                 (target / '.codex' / 'rules' / 'setup-project-agents.rules').read_text(
@@ -1760,9 +1784,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'project-config/copilot.tool-check.hooks.json',
                 'project-config/cursor.cli.json',
                 'project-config/cursor.hooks.json',
-                'recommended-tools/codex.json',
-                'recommended-tools/copilot.json',
-                'recommended-tools/cursor.json',
                 'rule-wrappers/cursor.mdc',
                 'rule-wrappers/github.instructions.md',
             },
@@ -1787,7 +1808,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 'approvals_reviewer': 'auto_review',
                 'sandbox_mode': 'workspace-write',
                 'sandbox_workspace_write': {'network_access': True},
-                'features': {'multi_agent': True, 'hooks': True},
+                'features': {'hooks': True},
             },
         )
 
@@ -1837,6 +1858,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         )
         for model_preference in ('model', 'effortLevel', 'contextTier'):
             self.assertNotIn(model_preference, copilot)
+        self.assertIs(copilot.get('disableAllHooks'), False)
         self.assertEqual(
             copilot['enabledPlugins'],
             {'superpowers@superpowers-marketplace': True},
@@ -1951,7 +1973,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         )
         self.assertEqual(
             set(copilot_hooks[0]),
-            {'type', 'name', 'bash', 'powershell', 'cwd', 'timeoutSec'},
+            {'type', 'bash', 'powershell', 'cwd', 'timeoutSec'},
         )
 
     def test_codex_hook_finds_nested_project_checker_from_session_subdirectory(self):
@@ -1963,7 +1985,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 project_root
                 / '.agents'
                 / 'skills'
-                / 'setup-project-agents'
+                / 'manage-agent-tools'
                 / 'scripts'
                 / 'check_recommended_tools.sh'
             )
@@ -2054,7 +2076,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             parsed = tomllib.loads(content)
             self.assertEqual(parsed['model'], 'old')
             self.assertEqual(parsed['custom'], 'keep')
-            self.assertIs(parsed['features']['multi_agent'], True)
+            self.assertIs(parsed['features']['hooks'], True)
+            self.assertIs(parsed['features']['multi_agent'], False)
             self.assertIs(parsed['features']['custom_feature'], True)
             self.assertIn('# keep this comment', content)
 
@@ -2086,7 +2109,8 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             content = config_path.read_text(encoding='utf-8')
             parsed = tomllib.loads(content)
             self.assertEqual(parsed['model'], 'old')
-            self.assertIs(parsed['features']['multi_agent'], True)
+            self.assertIs(parsed['features']['hooks'], True)
+            self.assertIs(parsed['features']['multi_agent'], False)
             self.assertIs(parsed['features']['custom_feature'], True)
             self.assertIn('# keep model comment', content)
             self.assertIn('# keep feature comment', content)
@@ -2480,6 +2504,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             'model = "project-model"\n[features]\nother = true\nmulti_agent = false\n',
             'model = "project-model"\nfeatures.multi_agent = false\n',
             '[features]\nmulti_agent = true\n',
+            '[features]\nhooks = false\n',
         )
         for config_content in cases:
             with (
@@ -2514,7 +2539,13 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 parsed = tomllib.loads(
                     (target / '.codex' / 'config.toml').read_text(encoding='utf-8')
                 )
-                self.assertIs(parsed['features']['multi_agent'], True)
+                self.assertIs(parsed['features']['hooks'], True)
+                if config_content and 'multi_agent = false' in config_content:
+                    self.assertIs(parsed['features']['multi_agent'], False)
+                elif config_content and 'multi_agent = true' in config_content:
+                    self.assertIs(parsed['features']['multi_agent'], True)
+                else:
+                    self.assertNotIn('multi_agent', parsed['features'])
                 if config_content and 'model = "project-model"' in config_content:
                     self.assertEqual(parsed['model'], 'project-model')
                 else:
@@ -5733,7 +5764,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             self.checker.parse_version('unknown')
 
     def test_platform_policies_keep_all_thresholds_out_of_python(self):
-        policies = REPO_TEMPLATES / 'recommended-tools'
+        policies = RECOMMENDED_TOOL_POLICIES
         expected = {
             'codex': {
                 'codex': '0.144.0',
@@ -5761,6 +5792,12 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 {tool['id']: tool['target_version'] for tool in policy['tools']},
                 targets,
             )
+        codex_policy = json.loads((policies / 'codex.json').read_text(encoding='utf-8'))
+        self.assertEqual(
+            [requirement['id'] for requirement in codex_policy['required_values']],
+            ['multi_agent'],
+        )
+        self.assertEqual(codex_policy['required_values'][0]['expected'], 'true')
 
     def test_command_and_manifest_detectors_are_data_driven(self):
         checker = self.checker
@@ -5854,6 +5891,48 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             ],
         )
 
+    def test_policy_checks_required_effective_values(self):
+        checker = self.checker
+        base_requirement = {
+            'id': 'multi_agent',
+            'name': 'Codex multi-agent',
+            'expected': 'true',
+            'guidance': 'Enable multi-agent and start a new session.',
+        }
+
+        matching = checker.check_policy(
+            {
+                'platform': 'codex',
+                'tools': [],
+                'required_values': [
+                    {
+                        **base_requirement,
+                        'detectors': [{'kind': 'fixed', 'value': 'true'}],
+                    }
+                ],
+            }
+        )
+        mismatching = checker.check_policy(
+            {
+                'platform': 'codex',
+                'tools': [],
+                'required_values': [
+                    {
+                        **base_requirement,
+                        'detectors': [{'kind': 'fixed', 'value': 'false'}],
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(matching, [])
+        self.assertEqual(len(mismatching), 1)
+        self.assertEqual(mismatching[0].code, 'required-value-mismatch')
+        self.assertEqual(
+            mismatching[0].message,
+            'is false; it must be true for this project',
+        )
+
     def test_detector_timeout_is_retryable_and_equal_differs_from_lower(self):
         checker = self.checker
         tool = {
@@ -5910,14 +5989,22 @@ class RecommendedToolCheckerTest(unittest.TestCase):
 
         process.kill.assert_called()
 
-    def test_daily_state_is_cross_project_and_independent_per_platform(self):
+    def test_daily_state_is_independent_per_project_and_platform(self):
         checker = self.checker
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             cache = root / 'cache'
-            codex_policy = root / 'codex.json'
-            cursor_policy = root / 'cursor.json'
+            first_project = root / 'first-project'
+            second_project = root / 'second-project'
+            first_project.mkdir()
+            second_project.mkdir()
+            codex_policy = first_project / 'codex.json'
+            other_codex_policy = second_project / 'codex.json'
+            cursor_policy = first_project / 'cursor.json'
             codex_policy.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            other_codex_policy.write_text(
+                '{"platform":"codex","tools":[]}\n', encoding='utf-8'
+            )
             cursor_policy.write_text('{"platform":"cursor","tools":[]}\n', encoding='utf-8')
             calls = []
 
@@ -5928,12 +6015,16 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             today = datetime(2026, 7, 21, 9, tzinfo=timezone.utc)
             first = checker.run_hook('codex', codex_policy, cache, today, evaluator=evaluator)
             second = checker.run_hook('codex', codex_policy, cache, today, evaluator=evaluator)
+            other_project = checker.run_hook(
+                'codex', other_codex_policy, cache, today, evaluator=evaluator
+            )
             cursor = checker.run_hook('cursor', cursor_policy, cache, today, evaluator=evaluator)
 
             self.assertTrue(first.ran)
             self.assertFalse(second.ran)
+            self.assertTrue(other_project.ran)
             self.assertTrue(cursor.ran)
-            self.assertEqual(calls, ['codex', 'cursor'])
+            self.assertEqual(calls, ['codex', 'codex', 'cursor'])
 
     def test_daily_state_reruns_next_day_after_policy_change_and_with_force(self):
         checker = self.checker
@@ -6098,7 +6189,9 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             cache.mkdir()
             policy_path = root / 'codex.json'
             policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
-            lock = cache / 'codex.lock'
+            project_cache = cache / checker._project_cache_key(policy_path)
+            project_cache.mkdir()
+            lock = project_cache / 'codex.lock'
             lock.write_text('live\n', encoding='utf-8')
             calls = []
 
@@ -6123,8 +6216,9 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             policy_path = root / 'codex.json'
             policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
             cache = root / 'cache'
-            cache.mkdir()
-            (cache / 'codex.json').write_text('{bad', encoding='utf-8')
+            project_cache = cache / checker._project_cache_key(policy_path)
+            project_cache.mkdir(parents=True)
+            (project_cache / 'codex.json').write_text('{bad', encoding='utf-8')
             calls = []
 
             malformed = checker.run_hook(

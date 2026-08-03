@@ -216,6 +216,9 @@
       "name": "rename"
     },
     {
+      "name": "manage-agent-tools"
+    },
+    {
       "name": "setup-project-agents"
     },
     {

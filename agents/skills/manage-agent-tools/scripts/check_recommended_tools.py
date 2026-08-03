@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check platform-recommended tools without inspecting user configuration."""
+"""Check platform recommendations and required effective runtime values."""
 
 from __future__ import annotations
 
@@ -70,9 +70,9 @@ def is_strictly_greater(installed: str, target: str) -> bool:
     installed_parts = parse_version(installed)
     target_parts = parse_version(target)
     width = max(len(installed_parts), len(target_parts))
-    return installed_parts + (0,) * (width - len(installed_parts)) > target_parts + (
-        0,
-    ) * (width - len(target_parts))
+    return installed_parts + (0,) * (width - len(installed_parts)) > target_parts + (0,) * (
+        width - len(target_parts)
+    )
 
 
 def _json_path(value: Any, dotted_path: str) -> Any:
@@ -173,8 +173,10 @@ def run_detector(detector: dict[str, Any]) -> str | None:
         return None
     if kind in {'command-regex', 'json-command'}:
         command = detector.get('command')
-        if not isinstance(command, list) or not command or not all(
-            isinstance(argument, str) and argument for argument in command
+        if (
+            not isinstance(command, list)
+            or not command
+            or not all(isinstance(argument, str) and argument for argument in command)
         ):
             raise PolicyError('command detector requires a non-empty command array')
         timeout = detector.get('timeout_seconds', 5)
@@ -217,6 +219,55 @@ def _validate_tool(tool: Any) -> dict[str, Any]:
         raise PolicyError('tool detectors must be a non-empty array')
     parse_version(tool['target_version'])
     return tool
+
+
+def _validate_required_value(requirement: Any) -> dict[str, Any]:
+    if not isinstance(requirement, dict):
+        raise PolicyError('each required value must be an object')
+    for field in ('id', 'name', 'expected', 'guidance'):
+        if not isinstance(requirement.get(field), str) or not requirement[field]:
+            raise PolicyError(f'required value field {field} must be a non-empty string')
+    detectors = requirement.get('detectors')
+    if not isinstance(detectors, list) or not detectors:
+        raise PolicyError('required value detectors must be a non-empty array')
+    return requirement
+
+
+def _check_required_values(policy: dict[str, Any]) -> list[Finding]:
+    requirements = policy.get('required_values', [])
+    if not isinstance(requirements, list):
+        raise PolicyError('policy required_values must be an array')
+    findings: list[Finding] = []
+    for raw_requirement in requirements:
+        requirement = _validate_required_value(raw_requirement)
+        actual = None
+        for detector in requirement['detectors']:
+            try:
+                actual = run_detector(detector)
+            except (PolicyError, re.error):
+                continue
+            if actual is not None:
+                break
+        if actual is None:
+            findings.append(
+                Finding(
+                    'detector-error',
+                    requirement['name'],
+                    'effective value detection failed',
+                    requirement['guidance'],
+                )
+            )
+            continue
+        if actual != requirement['expected']:
+            findings.append(
+                Finding(
+                    'required-value-mismatch',
+                    requirement['name'],
+                    f'is {actual}; it must be {requirement["expected"]} for this project',
+                    requirement['guidance'],
+                )
+            )
+    return findings
 
 
 def check_policy(policy: dict[str, Any]) -> list[Finding]:
@@ -277,7 +328,11 @@ def check_policy(policy: dict[str, Any]) -> list[Finding]:
             width = max(len(installed_parts), len(target_parts))
             normalized_installed = installed_parts + (0,) * (width - len(installed_parts))
             normalized_target = target_parts + (0,) * (width - len(target_parts))
-            relation = 'equals the target version' if normalized_installed == normalized_target else 'is older than the target version'
+            relation = (
+                'equals the target version'
+                if normalized_installed == normalized_target
+                else 'is older than the target version'
+            )
             findings.append(
                 Finding(
                     'version-not-greater',
@@ -286,6 +341,7 @@ def check_policy(policy: dict[str, Any]) -> list[Finding]:
                     tool['upgrade'],
                 )
             )
+    findings.extend(_check_required_values(policy))
     return findings
 
 
@@ -302,7 +358,12 @@ def load_policy(path: Path, platform: str | None = None) -> dict[str, Any]:
 
 
 def default_policy_path(platform: str) -> Path:
-    return Path(__file__).resolve().parent.parent / 'assets' / 'templates' / 'recommended-tools' / f'{platform}.json'
+    return (
+        Path(__file__).resolve().parent.parent
+        / 'references'
+        / 'recommended-tools'
+        / f'{platform}.json'
+    )
 
 
 def default_cache_root() -> Path:
@@ -322,6 +383,16 @@ def _fingerprint(policy_path: Path, checker_path: Path) -> str:
     digest.update(policy_path.read_bytes())
     digest.update(checker_path.read_bytes())
     return digest.hexdigest()
+
+
+def _project_cache_key(policy_path: Path) -> str:
+    resolved = policy_path.resolve()
+    project_root = next(
+        (parent.parent for parent in resolved.parents if parent.name == '.agents'),
+        resolved.parent,
+    )
+    normalized = os.path.normcase(str(project_root))
+    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
 
 def _load_state(
@@ -412,8 +483,9 @@ def run_hook(
 ) -> HookResult:
     cache_root = cache_root or default_cache_root()
     now = now or datetime.now().astimezone()
-    state_path = cache_root / f'{platform}.json'
-    lock_path = cache_root / f'{platform}.lock'
+    project_cache = cache_root / _project_cache_key(policy_path)
+    state_path = project_cache / f'{platform}.json'
+    lock_path = project_cache / f'{platform}.lock'
     try:
         fingerprint = _fingerprint(policy_path, Path(__file__))
         date = now.date().isoformat()
@@ -475,10 +547,10 @@ def render_hook_result(result: HookResult, platform: str) -> str:
             message = (
                 f'{findings}\n'
                 '[setup-project-agents] Stop the current task now. Ask the user whether to '
-                'install or upgrade the listed tools, end this turn after the question, and '
-                'wait for the next user message. If that message requests installation, '
-                'perform it and force this check again. Any other user message may continue '
-                'normally; no explicit decline is required.'
+                'apply the listed fixes, end this turn after the question, and wait for the '
+                'next user message. If that message requests the fixes, perform them and force '
+                'this check again. Any other user message may continue normally; no explicit '
+                'decline is required.'
             )
         else:
             message = findings

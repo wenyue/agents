@@ -1,5 +1,20 @@
 {
   "platform": "codex",
+  "required_values": [
+    {
+      "id": "multi_agent",
+      "name": "Codex multi-agent",
+      "expected": "true",
+      "detectors": [
+        {
+          "kind": "command-regex",
+          "command": ["codex", "features", "list"],
+          "pattern": "(?m)^multi_agent\\s+.+\\s+(true|false)\\s*$"
+        }
+      ],
+      "guidance": "Enable multi-agent in the applicable Codex configuration, or ask your administrator if managed requirements disable it, then start a new session."
+    }
+  ],
   "tools": [
     {
       "id": "codex",

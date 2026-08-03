@@ -4,7 +4,7 @@
     "sessionStart": [
       {
         "name": "setup-project-agents recommended-tool check",
-        "command": "python .agents/skills/setup-project-agents/scripts/check_recommended_tools.py hook --platform cursor"
+        "command": "python .agents/skills/manage-agent-tools/scripts/check_recommended_tools.py hook --platform cursor"
       }
     ]
   }
