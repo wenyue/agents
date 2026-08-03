@@ -3979,29 +3979,6 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             (REPO_ROOT / 'agents-zh' / 'skills' / 'debug-mode' / 'SKILL.md').exists()
         )
 
-    def test_setup_project_agents_docs_keep_only_external_skill_decision_boundary(self):
-        english = (
-            REPO_ROOT / 'skills' / 'setup-project-agents' / 'SKILL.md'
-        ).read_text(encoding='utf-8')
-        chinese = (
-            REPO_ROOT / 'agents-zh' / 'skills' / 'setup-project-agents' / 'SKILL.md'
-        ).read_text(encoding='utf-8')
-
-        self.assertNotIn('## Public Bundle External Skills', english)
-        self.assertIn('Public bundle external Skills are installed automatically.', english)
-        self.assertIn(
-            'do not repeat public bundle declarations',
-            english,
-        )
-        self.assertNotIn('## 公共包第三方 Skill', chinese)
-        self.assertIn('公共包第三方 Skill 会自动安装。', chinese)
-        self.assertIn(
-            '不要重复声明公共包 Skill',
-            chinese,
-        )
-        self.assertNotIn('preflights the public and project external Skills', english)
-        self.assertNotIn('预检公共及项目第三方 Skill', chinese)
-
     def test_global_rules_separate_personality_workflow_and_skill_configuration(self):
         source_root = REPO_ROOT / 'rules'
         mirror_root = REPO_ROOT / 'agents-zh' / 'rules'

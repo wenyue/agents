@@ -731,15 +731,20 @@ class SetupSourceTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             setup_project_agents.normalize_source_commit('main')
 
-    def test_entrypoint_validates_the_pinned_protocol_without_claiming_orchestration(self):
+    def test_entrypoint_prepares_a_valid_pinned_session(self):
         with tempfile.TemporaryDirectory() as temp_dir:
+            session = Path(temp_dir) / 'session'
+            session.mkdir(mode=0o700)
             result = setup_project_agents.main(
                 [
-                    'prepare', '--target', temp_dir, '--session', temp_dir,
-                    '--source-root', str(REPO_ROOT), '--source-commit', 'offline', '--no-bootstrap',
+                    'prepare', '--target', temp_dir, '--session', str(session),
+                    '--hooks', 'disabled', '--source-root', str(REPO_ROOT),
+                    '--source-commit', 'offline', '--no-bootstrap',
                 ]
             )
-        self.assertEqual(result, 1)
+            self.assertEqual(result, 0)
+            request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
+        self.assertIsNone(request['source_commit'])
 
 
 if __name__ == '__main__':

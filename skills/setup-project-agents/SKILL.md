@@ -1,165 +1,104 @@
 ---
 name: setup-project-agents
-description: Use when initializing or updating a repository from the wenyue/agents public catalog.
+description: Use when initializing or updating a repository with the Agents Rules, Skills, Agents, and explicitly enabled Hooks snapshot.
 ---
 
 # Setup Project Agents
 
-Let the synchronization script maintain deterministic configuration. Use the LLM to choose
-subagent models and generate the five repository-specific assets declared by this workflow.
+Create or update one target repository's managed Agent snapshot from the current canonical `main`.
+This shared operational skill owns the setup session and project reconciliation workflow; it never
+installs itself into the target, edits host trust or plugin caches, or upgrades external tools.
 
-Start from the active Skill supplied by the installed plugin. A previously installed project-local
-copy remains a supported legacy entry point when that is the Skill the host loaded.
+## Preconditions
 
-Template-owned project configuration gives every developer the same repository defaults. The
-script applies a partial deep merge: template fields overwrite drift, fields absent from a template
-remain untouched, and normal synchronization automatically repairs missing or outdated managed
-values. User configuration remains outside this workflow.
+- Start at the target repository root and identify the loaded Skill directory as
+  `SETUP_PROJECT_AGENTS_ROOT`.
+- Ask once which platforms to enable and whether to enable Hooks. When
+  `.agents/config.json` is absent, default to Codex, Cursor, and Copilot with Hooks disabled.
+  When it exists, use its selected platforms, asset selections, and Hook choice unless the user
+  changes them.
+- Keep the selected platforms and Hook decision unchanged for this one session. Hooks require an
+  explicit enabled choice; multi-agent capability is checked from effective host state and is not
+  written as a replacement default.
 
-## Ownership
+## Workflow
 
-- The script owns deterministic configuration for every supported platform.
-- Literal templates own project configuration values and native startup-hook entries; Python
-  contains only generic reconciliation logic.
-- The public manifest owns bundle-required third-party Skill declarations.
-- The public manifest owns the catalog identity and version recorded in `.agents/config.json`.
-- The target repository owns optional third-party Skill declarations in `.agents/config.json`; the
-  script owns fetching and reconciling every public and project declaration.
-- The LLM owns model selection and repository-specific Rule and Skill generation.
-- `manage-agent-tools` owns interactive tool diagnosis and user-approved installation or upgrade;
-  project startup hooks only report drift and never mutate tools.
-- Each startup hook checks the current platform's recommended tools and policy-declared effective
-  runtime values once per project per local date. It evaluates declared detector output instead of
-  parsing raw project or user configuration. On findings, the agent stops the current task and asks
-  whether to use `manage-agent-tools`; any next user reply may continue.
-
-## Remote Bootstrap Security Boundary
-
-The remote `main` bootstrap accepts an external `--session` path. It safely creates missing session
-path components without following symlinks, then always requires the final `SESSION` to be owned by
-the current effective user with exact mode `0700`; bootstrap never blindly trusts the supplied path.
-Normal orchestration must create its session with `tempfile.mkdtemp` (or an equivalent
-system-temporary secure creator) before passing it to bootstrap. Bootstrap creates a random 128-bit
-candidate directory, writes and validates through a held directory descriptor, and publishes it to
-`SESSION/source` with no-replace rename. Failed pre-publication candidates remain for session-end
-cleanup; bootstrap never removes or renames the current `SESSION/source` pathname after publication.
-
-This protects against pathname races from other users who cannot write the private session. A process
-running as the same user that actively alters the session, traces the bootstrap, or injects code into
-it is already within the trusted execution boundary and is not defended by the filesystem protocol.
-
-## Managed Assets
-
-Generate these Rules from their public blueprints:
-
-- [`20-project-tools.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/20-project-tools.md)
-- [`21-project-rules.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/21-project-rules.md)
-- [`22-project-structure.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/22-project-structure.md)
-
-Generate these Skills from their public blueprints:
-
-- [`worktree-environment-setup`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/worktree-environment-setup/SKILL.md)
-- [`change-set-verification`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/change-set-verification/SKILL.md)
-
-## Project External Skills
-
-Public bundle external Skills are installed automatically. A repository may declare only additional
-project-selected Skills in `.agents/config.json`; do not repeat public bundle declarations:
-
-```json
-{
-  "version": 1,
-  "skills": {
-    "external": [
-      {
-        "name": "example-skill",
-        "repository": "owner/repository",
-        "ref": "main",
-        "path": "skills/example-skill"
-      }
-    ]
-  }
-}
-```
-
-Each public or project declaration owns the complete `.agents/skills/<name>/` directory.
-Synchronization replaces that directory from the selected GitHub repository, ref, and path,
-including overwriting local changes and removing files deleted upstream. Removing a project
-declaration does not delete an installed directory.
-
-The script downloads and validates every public and project source before writing public or external
-assets. If a source fails and the target has no valid installed copy, synchronization stops without
-applying changes. If a valid copy is already installed, the script keeps it, continues the remaining
-synchronization, and reports a warning; `--check` reports the same warning and exits with status 1.
-
-## Reconciliation Workflow
-
-1. From the target repository root, resolve the directory containing the active
-   `setup-project-agents` `SKILL.md` as `SETUP_PROJECT_AGENTS_ROOT`. Derive it from the Skill file the
-   host loaded; do not assume a repository-local `.agents/` path or persist a machine-specific path.
-   On POSIX run its `scripts/sync_public_agent_assets.sh` entry point; on Windows run
-   `scripts/sync_public_agent_assets.ps1`. Resolve one model-config path in the system temporary
-   directory and retain it for both stages:
+1. Create one private system-temporary session using `tempfile.mkdtemp`; on POSIX confirm it is
+   current-user-owned with exact mode `0700`. Keep this `SESSION` until validation is complete.
+   Do not create the session inside the target repository:
 
    ```sh
-   MODEL_CONFIG="$(python -c 'import os, tempfile; print(os.path.join(tempfile.gettempdir(), "setup-project-agent-models.json"))')"
-   sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/sync_public_agent_assets.sh" \
-     --model-request "$MODEL_CONFIG"
+   SESSION="$(python3 -c 'import tempfile; print(tempfile.mkdtemp(prefix="setup-project-agents-"))')"
    ```
 
-   The entry point uses the installed plugin or repository catalog containing the active Skill. A
-   project-local legacy copy fetches its pinned catalog source. It synchronizes every
-   catalog-declared platform and writes the model request.
-
-2. Fill every model field in `$MODEL_CONFIG`. Use each subagent's `required_intelligence` to select
-   `model` for Codex, Cursor, and GitHub, plus `model_reasoning_effort` for Codex. Existing wrappers
-   are not a value source.
-
-3. Open and execute each public blueprint enumerated under Managed Assets. Generate Rules
-   at `.agents/rules/<name>.md` and Skills at `.agents/skills/<name>/`. Apply `write-rule` when
-   generating each Rule and `write-skill` when generating each Skill. Use current repository
-   evidence; previous content may be used as a reference during generation, but it is not a source
-   of truth. Each blueprint owns its generation and validation.
-
-4. Apply the completed model configuration after all generated files exist:
+2. Invoke the platform wrapper in `SETUP_PROJECT_AGENTS_ROOT/scripts/` with `prepare`, `--target`,
+   `--session`, each selected `--platform`, and `--hooks enabled|disabled`. The wrapper only starts
+   `bootstrap.py`. Bootstrap fetches canonical `main`, pins one commit under `SESSION/source`, and
+   hands control to that pinned source. If the remote is unavailable it reports the installed-source
+   fallback; if fetched content is invalid, stop before any target write. For example on POSIX:
 
    ```sh
-   sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/sync_public_agent_assets.sh" \
-     --model-config "$MODEL_CONFIG"
+   sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" prepare \
+     --target "$PWD" --session "$SESSION" \
+     --platform codex --platform cursor --platform copilot --hooks disabled
    ```
 
-   This same synchronization creates or updates the native Codex, Cursor, and Copilot project
-   configuration and hook files from readable templates. Let synchronization own those managed
-   fields, including the recorded catalog version, while preserving user-level configuration and
-   template-external project fields.
+   On Windows, invoke `setup_project_agents.ps1` with the same arguments.
 
-## Review Gate
+3. Read `SESSION/request.json`. It is the authority for this session's normalized target, source
+   root and commit, platform and Hook choices, selected assets, model requests, and five generated
+   outputs. Write one JSON-object `SESSION/models.json` that satisfies the listed model requests.
+   Do not use a models file outside `SESSION` or change the request after preparation.
 
-- [ ] Review every generated Rule and Skill against its public blueprint.
-- [ ] Confirm unrelated target-owned files remain unchanged.
+4. Generate every request output in `SESSION/generated`, not in the target project. Use `write-rule`
+   for the three requested Rule Blueprints and `write-skill` for the two requested Skill Blueprints.
+   Produce exactly these paths and no extra files:
 
-## Acceptance Gate
+   - `.agents/rules/20-project-tools.md`
+   - `.agents/rules/21-project-rules.md`
+   - `.agents/rules/22-project-structure.md`
+   - `.agents/skills/change-set-verification/SKILL.md`
+   - `.agents/skills/worktree-environment-setup/SKILL.md`
 
-- [ ] Confirm every enumerated Rule and Skill is complete.
-- [ ] Confirm every required model field is resolved.
-- [ ] Confirm template-owned project configuration is reconciled.
-- [ ] Confirm `.agents/config.json` records the installed catalog identity and version.
+5. Read the source root and commit from `request.json`; use `offline` as the CLI commit argument
+   when its recorded commit is `null`. Run the pinned
+   `skills/setup-project-agents/scripts/setup_project_agents.py apply` with the same target,
+   session, `SESSION/models.json`, source root, source commit, and `--no-bootstrap`. Apply validates
+   the session request, generated tree, rendered state, and ownership plan before its single project
+   transaction:
 
-## Validation
+   ```sh
+   python3 "$SOURCE_ROOT/skills/setup-project-agents/scripts/setup_project_agents.py" apply \
+     --target "$TARGET" --session "$SESSION" --models "$SESSION/models.json" \
+     --source-root "$SOURCE_ROOT" --source-commit "$SOURCE_COMMIT" --no-bootstrap
+   ```
 
-Run the final check with the same temporary model configuration. The script checks that every
-enumerated output exists and that deterministic configuration has no drift, including templates
-and native hook registrations; each blueprint owns content validation. `--check` reports
-drift without writing.
+6. Run the same pinned entry point with `check` and the identical arguments, replacing only `apply`
+   with `check`. A zero exit status means the project is unchanged; status one reports drift without
+   writing. Report the pinned source commit and managed paths changed by the apply plan.
 
-```sh
-sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/sync_public_agent_assets.sh" \
-  --check --model-config "$MODEL_CONFIG"
-```
+7. Present any host adapter plugin-refresh command or official UI action. Execute a command only
+   after the user approves it. Report a host `needs_restart` or Hook-trust requirement separately;
+   neither is part of the project-file transaction.
 
-Stop on any synchronization or blueprint failure. Startup project-health checks and their internal
-failures do not block validation. Perform validation without invoking a real model.
+8. Delete `SESSION` only after apply and check have completed or after reporting a failure.
 
-## Output
+## Stop Conditions
 
-Report the changed managed files and any unresolved model or blueprint blocker.
+Stop without project writes when the session is not private, `request.json` does not match the
+invocation, `models.json` is not `SESSION/models.json`, generated outputs are incomplete or contain
+an extra path, the pinned source is invalid, or the ownership planner finds unmanaged drift.
+
+Do not use an archive fallback, a project-local setup copy, a host trust database, or a plugin cache
+as an alternative path. Use `manage-agent-tools` only for a separately approved external-tool
+diagnosis or upgrade.
+
+## Validation and Result
+
+- [ ] Confirm `check` used the same `SESSION`, source root, source commit, models file, renderer, and planner as `apply`; confirm exit status is zero.
+- [ ] Confirm `.agents/lock.json` records the pinned source commit and only lock-owned paths or fields changed.
+- [ ] Confirm setup-project-agents is absent from the target snapshot; confirm Hooks are present only when explicitly enabled.
+
+Report the pinned source commit, selected platforms, Hook choice, changed managed paths, capability
+or trust follow-up, and any unresolved failure. Do not report successful setup when validation was
+not run.
