@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ from agents_setup.planner import (  # noqa: E402
     build_plan,
     sha256_bytes,
 )
+from agents_setup.catalog import load_lock  # noqa: E402
 from agents_setup.models import (  # noqa: E402
     Change,
     ChangeKind,
@@ -198,6 +200,57 @@ class SetupPlannerTest(unittest.TestCase):
                     (),
                     LockState.empty(),
                     source_commit='not-a-commit',
+                )
+
+    def test_dotted_field_key_round_trips_through_lock_parser(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            desired_file = DesiredFile(
+                PurePosixPath('.agents/config.json'), b'{"catalog": {}}\n'
+            )
+            plan = build_plan(
+                target,
+                (desired_file,),
+                (DesiredField(desired_file.path, 'catalog.version', '1.0.0', 'json'),),
+                LockState.empty(),
+            )
+            lock_path = target / 'lock.json'
+            lock_path.write_text(
+                json.dumps(
+                    {
+                        'version': plan.next_lock.version,
+                        'source_commit': plan.next_lock.source_commit,
+                        'managed_files': [
+                            {'path': item.path.as_posix(), 'sha256': item.sha256}
+                            for item in plan.next_lock.managed_files
+                        ],
+                        'managed_fields': [
+                            {
+                                'path': item.path.as_posix(),
+                                'key': item.key,
+                                'sha256': item.sha256,
+                            }
+                            for item in plan.next_lock.managed_fields
+                        ],
+                    }
+                ),
+                encoding='utf-8',
+            )
+
+            self.assertEqual(load_lock(lock_path), plan.next_lock)
+
+    def test_rejects_unsafe_dotted_field_key(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            desired_file = DesiredFile(
+                PurePosixPath('.agents/config.json'), b'{"catalog": {}}\n'
+            )
+
+            with self.assertRaisesRegex(PlanningError, 'field key'):
+                build_plan(
+                    Path(temp_dir),
+                    (desired_file,),
+                    (DesiredField(desired_file.path, 'catalog..version', '1.0.0', 'json'),),
+                    LockState.empty(),
                 )
 
 

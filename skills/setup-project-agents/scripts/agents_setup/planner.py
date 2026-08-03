@@ -5,11 +5,13 @@ from collections.abc import Sequence
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 
+from .catalog import safe_field_key
 from .models import (
     Change,
     ChangeKind,
     DesiredField,
     DesiredFile,
+    ContractError,
     LockState,
     ManagedField,
     ManagedFile,
@@ -50,7 +52,11 @@ def _desired_fields(
     result: list[DesiredField] = []
     seen: set[tuple[PurePosixPath, str]] = set()
     for field in fields:
-        identity = (field.path, field.key)
+        try:
+            key = safe_field_key(field.key, 'desired field key')
+        except ContractError as error:
+            raise PlanningError(str(error)) from error
+        identity = (field.path, key)
         if identity in seen:
             raise PlanningError(
                 f'duplicate desired field: {_path_key(field.path)}:{field.key}'

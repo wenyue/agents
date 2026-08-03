@@ -70,6 +70,14 @@ def _name(value: object, label: str) -> str:
     return value
 
 
+def safe_field_key(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise ContractError(f'{label} must be a dotted safe name')
+    for segment in value.split('.'):
+        _name(segment, label)
+    return value
+
+
 def _object(value: object, label: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ContractError(f'{label} must be an object')
@@ -242,7 +250,7 @@ def _managed_field(value: object) -> ManagedField:
         raise ContractError('managed field path must be a relative path')
     return ManagedField(
         safe_relative(path, 'managed field path'),
-        _name(_required(item, 'key', 'managed field'), 'managed field key'),
+        safe_field_key(_required(item, 'key', 'managed field'), 'managed field key'),
         _sha256(_required(item, 'sha256', 'managed field'), 'managed field sha256'),
     )
 
