@@ -37,6 +37,21 @@ def copy_repo_templates(destination: Path) -> None:
     shutil.copytree(REPO_TEMPLATES, destination, dirs_exist_ok=True)
 
 
+def create_repository_source(source: Path) -> Path:
+    manifest = (
+        source
+        / 'agents'
+        / 'skills'
+        / 'setup-project-agents'
+        / 'references'
+        / 'public_assets.json'
+    )
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    if not manifest.exists():
+        manifest.write_text('{}\n', encoding='utf-8')
+    return source
+
+
 def load_recommended_tool_checker_module():
     spec = importlib.util.spec_from_file_location(
         'check_recommended_tools',
@@ -787,9 +802,14 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
         self.assertEqual(result['codex_agent_runtime_overrides'], {})
 
-    def test_parser_rejects_local_source_argument(self):
+    def test_parser_accepts_source_root_and_rejects_obsolete_source(self):
+        parser = sync.build_parser()
+        self.assertEqual(
+            parser.parse_args(['--source-root', 'local-agents']).source_root,
+            Path('local-agents'),
+        )
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            sync.build_parser().parse_args(['--source', 'local-agents'])
+            parser.parse_args(['--source', 'local-agents'])
 
     def test_parser_declares_two_stage_model_json_arguments(self):
         parser = sync.build_parser()
@@ -805,23 +825,86 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             'models.json',
         )
 
+    def test_resolve_source_prefers_explicit_validated_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / 'source'
+            skill = source / 'agents' / 'skills' / 'setup-project-agents'
+            (skill / 'references').mkdir(parents=True)
+            (skill / 'references' / 'public_assets.json').write_text('{}\n')
+            result = sync.resolve_source({}, REPO_SKILL_ROOT, source)
+        self.assertEqual(result, source.resolve())
+
+    def test_resolve_source_finds_repository_plugin_root_without_fetching(self):
+        with mock.patch.object(sync, '_fetch_archive_source') as fetch:
+            result = sync.resolve_source(
+                sync.load_json(REPO_REFERENCES / 'public_assets.json'),
+                REPO_SKILL_ROOT,
+            )
+        self.assertEqual(result, (REPO_ROOT / 'agents').resolve())
+        fetch.assert_not_called()
+
+    def test_resolve_source_finds_installed_plugin_with_arbitrary_cache_name(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin = Path(temp_dir) / 'cache-entry-42'
+            skill = plugin / 'skills' / 'setup-project-agents'
+            (skill / 'references').mkdir(parents=True)
+            (skill / 'references' / 'public_assets.json').write_text('{}\n')
+            with mock.patch.object(sync, '_fetch_archive_source') as fetch:
+                result = sync.resolve_source({}, skill)
+        self.assertEqual(result, plugin.resolve())
+        fetch.assert_not_called()
+
+    def test_resolve_source_rejects_invalid_explicit_source_before_fetch(self):
+        with tempfile.TemporaryDirectory() as temp_dir, mock.patch.object(
+            sync, '_fetch_archive_source'
+        ) as fetch:
+            with self.assertRaises(sync.SyncError):
+                sync.resolve_source({}, REPO_SKILL_ROOT, Path(temp_dir))
+        fetch.assert_not_called()
+
+    def test_source_archive_url_requires_release_tag_or_commit(self):
+        with self.assertRaises(sync.SyncError):
+            sync._source_archive_url({
+                'source_repo': 'https://github.com/wenyue/agents',
+                'source_ref': 'master',
+            })
+        self.assertEqual(
+            sync._source_archive_url({
+                'source_repo': 'https://github.com/wenyue/agents',
+                'source_ref': 'v0.1.0',
+            }),
+            'https://github.com/wenyue/agents/archive/v0.1.0.zip',
+        )
+
     def test_resolve_source_ignores_local_default_and_fetches_archive(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
             target.mkdir()
+            legacy_skill_root = root / 'legacy' / 'setup-project-agents'
             local_source = root / 'agents'
             (local_source / 'agents' / 'rules').mkdir(parents=True)
             (local_source / 'agents' / 'rules' / '10-base-code.md').write_text('local\n', encoding='utf-8')
             archive = root / 'agents.zip'
             with zipfile.ZipFile(archive, 'w') as package:
                 package.writestr('agents-master/agents/rules/10-base-code.md', 'archive\n')
+                package.writestr(
+                    'agents-master/agents/skills/setup-project-agents/'
+                    'references/public_assets.json',
+                    '{}\n',
+                )
             public_config = {
-                'source_archive_url': archive.resolve().as_uri(),
+                'source_repo': 'https://github.com/wenyue/agents',
+                'source_ref': 'v0.1.0',
             }
 
             try:
-                result = sync.resolve_source(public_config)
+                with mock.patch.object(
+                    sync,
+                    '_source_archive_url',
+                    return_value=archive.resolve().as_uri(),
+                ):
+                    result = sync.resolve_source(public_config, legacy_skill_root)
             except sync.SyncError as error:
                 self.fail(f'resolve_source should fetch archive: {error}')
 
@@ -830,19 +913,41 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_resolve_source_refetches_archive_every_time(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            legacy_skill_root = root / 'legacy' / 'setup-project-agents'
             archive = root / 'agents.zip'
             public_config = {
-                'source_archive_url': archive.resolve().as_uri(),
+                'source_repo': 'https://github.com/wenyue/agents',
+                'source_ref': 'v0.1.0',
             }
 
             with zipfile.ZipFile(archive, 'w') as package:
                 package.writestr('agents-master/agents/rules/10-base-code.md', 'first\n')
-            first = sync.resolve_source(public_config)
+                package.writestr(
+                    'agents-master/agents/skills/setup-project-agents/'
+                    'references/public_assets.json',
+                    '{}\n',
+                )
+            with mock.patch.object(
+                sync,
+                '_source_archive_url',
+                return_value=archive.resolve().as_uri(),
+            ):
+                first = sync.resolve_source(public_config, legacy_skill_root)
 
             archive.unlink()
             with zipfile.ZipFile(archive, 'w') as package:
                 package.writestr('agents-master/agents/rules/10-base-code.md', 'second\n')
-            second = sync.resolve_source(public_config)
+                package.writestr(
+                    'agents-master/agents/skills/setup-project-agents/'
+                    'references/public_assets.json',
+                    '{}\n',
+                )
+            with mock.patch.object(
+                sync,
+                '_source_archive_url',
+                return_value=archive.resolve().as_uri(),
+            ):
+                second = sync.resolve_source(public_config, legacy_skill_root)
 
         self.assertNotEqual(first, second)
         self.assertEqual((first / 'agents' / 'rules' / '10-base-code.md').read_text(), 'first\n')
@@ -855,6 +960,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             target.mkdir()
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             skill_root.mkdir(parents=True)
+            legacy_skill_root = root / 'legacy' / 'setup-project-agents'
             archive = root / 'agents.zip'
             with zipfile.ZipFile(archive, 'w') as package:
                 package.writestr('agents-master/README.md', 'public readme\n')
@@ -862,14 +968,25 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 package.writestr('agents-master/agents/skills/rename/SKILL.md', 'rename skill\n')
                 package.writestr('agents-master/agents/skills/unlisted/SKILL.md', 'unlisted skill\n')
                 package.writestr('agents-master/agents/agents/sample-agent.md', 'sample agent\n')
+                package.writestr(
+                    'agents-master/agents/skills/setup-project-agents/'
+                    'references/public_assets.json',
+                    '{}\n',
+                )
             public_config = {
-                'source_archive_url': archive.resolve().as_uri(),
+                'source_repo': 'https://github.com/wenyue/agents',
+                'source_ref': 'v0.1.0',
                 'mirror_delete': True,
                 'rules': [{'file': '10-base-code.md'}],
                 'skills': [{'name': 'rename'}],
                 'agent_prompts': [{'name': 'sample-agent'}],
             }
-            source = sync.resolve_source(public_config)
+            with mock.patch.object(
+                sync,
+                '_source_archive_url',
+                return_value=archive.resolve().as_uri(),
+            ):
+                source = sync.resolve_source(public_config, legacy_skill_root)
             context = sync.SyncContext(target, source, skill_root, False, [])
 
             sync.sync_public_assets(context, public_config, {'rules': [], 'agent_prompts': []})
@@ -886,7 +1003,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_copies_public_rule_skill_and_agent_prompt(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / 'agents' / 'rules').mkdir(parents=True)
@@ -921,7 +1038,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_marks_existing_unchanged_public_rule_as_unchanged(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / 'agents' / 'rules').mkdir(parents=True)
@@ -945,7 +1062,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_deletes_extra_file_inside_public_skill(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / 'agents' / 'skills' / 'rename').mkdir(parents=True)
@@ -969,7 +1086,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_preserves_extra_file_inside_public_skill_when_mirror_delete_is_false(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / 'agents' / 'skills' / 'rename').mkdir(parents=True)
@@ -993,7 +1110,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_deletes_extra_empty_directory_tree_inside_public_skill(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / 'agents' / 'skills' / 'rename').mkdir(parents=True)
@@ -1015,12 +1132,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_deletes_skill_declared_retired_by_catalog(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_skill = source / 'agents' / 'skills' / 'setup-project-agents'
             legacy_skill = target / '.agents' / 'skills' / 'old-setup-agent'
-            source_skill.mkdir(parents=True)
+            source_skill.mkdir(parents=True, exist_ok=True)
             legacy_skill.mkdir(parents=True)
             skill_root.mkdir(parents=True)
             (source_skill / 'SKILL.md').write_text('new skill\n', encoding='utf-8')
@@ -1090,11 +1207,11 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_uses_running_skill_when_source_archive_lacks_renamed_skill(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             skill_root.mkdir(parents=True)
-            (source / 'agents' / 'skills').mkdir(parents=True)
+            (source / 'agents' / 'skills').mkdir(parents=True, exist_ok=True)
             (skill_root / 'SKILL.md').write_text('running skill\n', encoding='utf-8')
             public_config = {
                 'mirror_delete': True,
@@ -1114,7 +1231,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_ignores_generated_files_inside_public_skill(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_skill = source / 'agents' / 'skills' / 'rename'
@@ -1151,7 +1268,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_generates_rule_wrapper_from_real_platform_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -1184,7 +1301,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_deletes_stale_rule_wrapper_when_rule_is_removed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -1213,7 +1330,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_defers_agent_wrappers_without_reviewed_models(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -1254,7 +1371,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_uses_explicit_codex_runtime_fields_instead_of_target_wrapper(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -1314,7 +1431,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_does_not_invent_missing_codex_model_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -1356,7 +1473,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_strict_sync_rejects_missing_reviewed_agent_models(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -1383,7 +1500,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_uses_explicit_cursor_model_instead_of_target_wrapper(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -1432,7 +1549,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_uses_explicit_github_model_instead_of_target_wrapper(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -1482,7 +1599,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_strict_sync_accepts_explicit_models_for_every_agent_wrapper(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -1560,7 +1677,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_reconciles_catalog_declared_config_templates(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -2728,7 +2845,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_deletes_agent_and_wrappers_declared_retired_by_catalog(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -2799,7 +2916,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_generates_configured_agents_entry_from_template(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             templates = skill_root / 'assets' / 'templates'
@@ -3033,7 +3150,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_sync_does_not_copy_project_blueprints_into_target(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             source_rule = source / 'agents' / 'blueprints' / 'rules' / '20-project-tools.md'
@@ -3043,7 +3160,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             source_setup_skill = source / 'agents' / 'skills' / 'setup-project-agents'
             source_rule.parent.mkdir(parents=True)
             source_skill.mkdir(parents=True)
-            source_setup_skill.mkdir(parents=True)
+            source_setup_skill.mkdir(parents=True, exist_ok=True)
             skill_root.mkdir(parents=True)
             source_rule.write_text('project rule contract\n', encoding='utf-8')
             (source_skill / 'SKILL.md').write_text(
@@ -4990,7 +5107,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_check_mode_does_not_write(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'agents'
+            source = create_repository_source(root / 'agents')
             target = root / 'target'
             skill_root = target / '.agents' / 'skills' / 'setup-project-agents'
             (source / 'agents' / 'rules').mkdir(parents=True)
@@ -5088,6 +5205,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_main_first_stage_writes_model_request_after_deterministic_sync(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            source = create_repository_source(root / 'source')
             target = root / 'target'
             target.mkdir()
             request_path = root / 'models.json'
@@ -5111,7 +5229,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 ), mock.patch.object(
                     sync,
                     'resolve_source',
-                    return_value=root / 'source',
+                    return_value=source,
                 ), mock.patch.object(
                     sync,
                     'sync_public_assets',
@@ -5135,6 +5253,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_main_preflights_external_skills_before_public_writes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            source = create_repository_source(root / 'source')
             target = root / 'target'
             target.mkdir()
             request_path = root / 'models.json'
@@ -5178,7 +5297,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             ), mock.patch.object(
                 sync,
                 'resolve_source',
-                return_value=root / 'source',
+                return_value=source,
             ), mock.patch.object(
                 sync,
                 'discover_local_assets',
@@ -5219,6 +5338,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_main_update_warning_succeeds_normally_but_fails_check(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            source = create_repository_source(root / 'source')
             target = root / 'target'
             target.mkdir()
             request_path = root / 'models.json'
@@ -5246,7 +5366,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 ), mock.patch.object(
                     sync,
                     'resolve_source',
-                    return_value=root / 'source',
+                    return_value=source,
                 ), mock.patch.object(
                     sync,
                     'discover_local_assets',
@@ -5304,12 +5424,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_main_uses_downloaded_manifest_instead_of_installed_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            source = root / 'source'
+            source = create_repository_source(root / 'source')
             target = root / 'target'
             source_rule = source / 'agents' / 'rules' / 'new-rule.md'
             source_skill = source / 'agents' / 'skills' / 'setup-project-agents'
             source_rule.parent.mkdir(parents=True)
-            source_skill.mkdir(parents=True)
+            source_skill.mkdir(parents=True, exist_ok=True)
             target.mkdir()
             source_rule.write_text('new rule\n', encoding='utf-8')
             request_path = root / 'models.json'
@@ -5407,6 +5527,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_main_second_stage_supplies_model_config_to_strict_sync(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            source = create_repository_source(root / 'source')
             target = root / 'target'
             target.mkdir()
             public_config = {
@@ -5440,7 +5561,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 ), mock.patch.object(
                     sync,
                     'resolve_source',
-                    return_value=root / 'source',
+                    return_value=source,
                 ), mock.patch.object(
                     sync,
                     'sync_public_assets',
@@ -5487,6 +5608,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         agent['cursor']['model'] = 'cursor-model'
         agent['github']['model'] = 'github-model'
         with tempfile.TemporaryDirectory() as temp_dir:
+            source = create_repository_source(Path(temp_dir) / 'source')
             model_path = Path(temp_dir) / 'models.json'
             model_path.write_text(json.dumps(model_config), encoding='utf-8')
             with mock.patch.object(
@@ -5502,7 +5624,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             ), mock.patch.object(
                 sync,
                 'resolve_source',
-                return_value=Path(temp_dir) / 'source',
+                return_value=source,
             ), mock.patch.object(
                 sync,
                 'sync_public_assets',
@@ -5548,7 +5670,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         ), mock.patch.object(
             sync,
             'resolve_source',
-            return_value=Path('/tmp/agents'),
+            return_value=REPO_ROOT / 'agents',
         ), mock.patch.object(
             sync.Path,
             'cwd',
@@ -5591,7 +5713,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
         ), mock.patch.object(
             sync,
             'resolve_source',
-            return_value=Path('/tmp/agents'),
+            return_value=REPO_ROOT / 'agents',
         ), mock.patch.object(
             sync.Path,
             'cwd',

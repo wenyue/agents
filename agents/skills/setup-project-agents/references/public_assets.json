@@ -1,6 +1,6 @@
 {
   "source_repo": "https://github.com/wenyue/agents",
-  "source_ref": "master",
+  "source_ref": "v0.1.0",
   "mirror_delete": true,
   "ignore": [
     "__pycache__",

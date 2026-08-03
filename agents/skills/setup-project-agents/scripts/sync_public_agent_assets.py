@@ -66,8 +66,9 @@ class ExternalSkillPreflight:
 
 
 _TEMPLATE_PATTERN = re.compile(r'{{\s*([a-zA-Z0-9_.]+)\s*}}')
-_DEFAULT_SOURCE_REF = 'master'
 _PUBLIC_SOURCE_DIRECTORY = 'agents'
+_RELEASE_REF_PATTERN = re.compile(r'^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$')
+_COMMIT_REF_PATTERN = re.compile(r'^[0-9a-fA-F]{40}$')
 _ASSET_NAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+$')
 _RULE_FILENAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+\.md$')
 _RETIRED_ASSET_KINDS = ('rules', 'skills', 'agents')
@@ -864,16 +865,49 @@ def _reconcile_config_templates(
 
 
 def _source_archive_url(public_config: dict[str, Any]) -> str:
-    configured_url = public_config.get('source_archive_url')
-    if isinstance(configured_url, str) and configured_url:
-        return configured_url
     repo = public_config.get('source_repo')
     if not isinstance(repo, str) or not repo:
-        raise SyncError('public_assets.json requires source_repo or source_archive_url')
+        raise SyncError('public_assets.json requires source_repo')
     ref = public_config.get('source_ref')
-    if not isinstance(ref, str) or not ref:
-        ref = _DEFAULT_SOURCE_REF
-    return f'{repo.rstrip("/")}/archive/refs/heads/{ref}.zip'
+    if not isinstance(ref, str) or not (
+        _RELEASE_REF_PATTERN.fullmatch(ref) or _COMMIT_REF_PATTERN.fullmatch(ref)
+    ):
+        raise SyncError('source_ref must be a release tag or 40-character commit')
+    encoded_ref = urllib.parse.quote(ref, safe='')
+    return f'{repo.rstrip("/")}/archive/{encoded_ref}.zip'
+
+
+def _public_source_root(path: Path) -> Path:
+    root = path.expanduser().resolve()
+    for candidate in (root, root / _PUBLIC_SOURCE_DIRECTORY):
+        manifest = (
+            candidate
+            / 'skills'
+            / 'setup-project-agents'
+            / 'references'
+            / 'public_assets.json'
+        )
+        if manifest.is_file():
+            return candidate
+    raise SyncError(f'Public source is missing setup-project-agents: {root}')
+
+
+def validate_source_root(path: Path) -> Path:
+    root = path.expanduser().resolve()
+    _public_source_root(root)
+    return root
+
+
+def find_plugin_source(installed_skill_root: Path) -> Path | None:
+    installed = installed_skill_root.resolve()
+    for candidate in installed.parents:
+        try:
+            public_root = _public_source_root(candidate)
+        except SyncError:
+            continue
+        if (public_root / 'skills' / 'setup-project-agents').resolve() == installed:
+            return validate_source_root(candidate)
+    return None
 
 
 def _find_archive_repo_root(extract_root: Path) -> Path:
@@ -909,7 +943,9 @@ def _fetch_archive_source(public_config: dict[str, Any]) -> Path:
     except zipfile.BadZipFile as error:
         shutil.rmtree(source_dir, ignore_errors=True)
         raise SyncError(f'Source archive is not a valid zip file: {archive_url}') from error
-    if not (source_root / _PUBLIC_SOURCE_DIRECTORY).is_dir():
+    try:
+        _public_source_root(source_root)
+    except SyncError:
         shutil.rmtree(source_dir, ignore_errors=True)
         raise SyncError(
             f'Downloaded source archive is missing '
@@ -918,7 +954,16 @@ def _fetch_archive_source(public_config: dict[str, Any]) -> Path:
     return source_root
 
 
-def resolve_source(public_config: dict[str, Any]) -> Path:
+def resolve_source(
+    public_config: dict[str, Any],
+    installed_skill_root: Path,
+    explicit_source_root: Path | None = None,
+) -> Path:
+    if explicit_source_root is not None:
+        return validate_source_root(explicit_source_root)
+    plugin_source = find_plugin_source(installed_skill_root)
+    if plugin_source is not None:
+        return plugin_source
     return _fetch_archive_source(public_config)
 
 
@@ -1700,8 +1745,8 @@ def _read_frontmatter_value(path: Path, key: str) -> str:
 
 
 def _public_skill_source(context: SyncContext, name: str) -> Path:
-    source = context.source_root / _PUBLIC_SOURCE_DIRECTORY / 'skills' / name
-    if source.is_dir():
+    source = _public_source_root(context.source_root) / 'skills' / name
+    if (source / 'SKILL.md').is_file():
         return source
     if context.skill_root.name == name and context.skill_root.is_dir():
         return context.skill_root
@@ -2100,7 +2145,7 @@ def sync_public_assets(
             raise SyncError('Each public rule requires file')
         _copy_file(
             context,
-            context.source_root / _PUBLIC_SOURCE_DIRECTORY / 'rules' / filename,
+            _public_source_root(context.source_root) / 'rules' / filename,
             context.target_root / '.agents' / 'rules' / filename,
         )
     for skill in _require_items(public_config, 'skills'):
@@ -2120,7 +2165,7 @@ def sync_public_assets(
             raise SyncError('Each public agent prompt requires name')
         _copy_file(
             context,
-            context.source_root / _PUBLIC_SOURCE_DIRECTORY / 'agents' / f'{name}.md',
+            _public_source_root(context.source_root) / 'agents' / f'{name}.md',
             context.target_root / '.agents' / 'agents' / f'{name}.md',
         )
     merged_local_config = _merge_local_assets(
@@ -2142,8 +2187,17 @@ def sync_public_assets(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description='Sync public agent assets from wenyue/agents.')
+    parser = argparse.ArgumentParser(
+        description='Sync public agent assets from wenyue/agents.',
+        allow_abbrev=False,
+    )
     parser.add_argument('--check', action='store_true', help='Report drift without writing files.')
+    parser.add_argument(
+        '--source-root',
+        type=Path,
+        metavar='PATH',
+        help='Use a validated local public source root.',
+    )
     model_group = parser.add_mutually_exclusive_group()
     model_group.add_argument(
         '--model-request',
@@ -2179,9 +2233,13 @@ def main(argv: list[str] | None = None) -> int:
         installed_config = load_json(
             installed_skill_root / 'references' / 'public_assets.json'
         )
-        source_root = resolve_source(installed_config)
+        source_root = resolve_source(
+            installed_config,
+            installed_skill_root,
+            args.source_root,
+        )
         source_skill_root = (
-            source_root / _PUBLIC_SOURCE_DIRECTORY / 'skills' / 'setup-project-agents'
+            _public_source_root(source_root) / 'skills' / 'setup-project-agents'
         )
         public_config = load_json(
             source_skill_root / 'references' / 'public_assets.json'
