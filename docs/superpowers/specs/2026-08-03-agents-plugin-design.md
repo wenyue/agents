@@ -19,25 +19,26 @@
 
 ## 包结构
 
-仓库根目录作为插件包，插件 ID 使用 `agents`，市场源名称使用 `wenyue-agents`。公共英文目录
-`agents/` 继续是运行资产的唯一事实源，各平台只增加薄清单：
+`agents/` 同时作为插件包根目录和公共英文运行资产的唯一事实源，插件 ID 使用 `agents`，市场
+源名称使用 `wenyue-agents`。这样 Codex 所要求的插件根 `skills/` 与现有公共 Skill 目录天然
+重合，不需要复制、符号链接或第二份清单。各平台只增加薄清单：
 
 ```text
 agents-repository/
-├── .agents/plugins/marketplace.json       # Codex 市场源
-├── .codex-plugin/plugin.json              # Codex 插件清单
-├── .cursor-plugin/marketplace.json         # Cursor 市场源
-├── .cursor-plugin/plugin.json              # Cursor 插件清单
-├── .github/plugin/marketplace.json         # Copilot 市场源
-├── plugin.json                             # Copilot 插件清单
+├── .agents/plugins/marketplace.json        # Codex 市场源，source 指向 ./agents
+├── .cursor-plugin/marketplace.json         # Cursor 市场源，source 指向 ./agents
+├── .github/plugin/marketplace.json         # Copilot 市场源，source 指向 ./agents
 └── agents/
-    ├── skills/                             # 三平台共享 Skills
+    ├── .codex-plugin/plugin.json           # Codex 插件清单
+    ├── .cursor-plugin/plugin.json          # Cursor 插件清单
+    ├── plugin.json                         # Copilot 插件清单
+    ├── skills/                             # 三平台共享 Skills，也是插件根 skills/
     ├── rules/                              # 公共 Rule 事实源
     ├── agents/                             # 公共 Agent 提示词事实源
     └── blueprints/                         # 项目生成契约
 ```
 
-三份插件清单都从 `./agents/skills/` 暴露符合 Agent Skills 规范的 Skills。Cursor 和 Copilot
+三份插件清单都从插件根的 `./skills/` 暴露符合 Agent Skills 规范的 Skills。Cursor 和 Copilot
 不会直接加载 `agents/rules/` 或 `agents/agents/`：这些资产仍由 `setup-project-agents` 生成或
 包装成项目原生格式，避免三平台行为分叉。
 
