@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
@@ -17,10 +18,21 @@ from .models import (
 )
 
 
-_SEMVER = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$')
+_SEMVER = re.compile(
+    r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)'
+    r'(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)'
+    r'(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?'
+    r'(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'
+)
 _HEX_40 = re.compile(r'^[0-9a-fA-F]{40}$')
 _HEX_64 = re.compile(r'^[0-9a-fA-F]{64}$')
 _NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')
+_WINDOWS_RESERVED_CHARACTERS = frozenset('<>:"\\|?*')
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {'CON', 'PRN', 'AUX', 'NUL'}
+    | {f'COM{number}' for number in range(1, 10)}
+    | {f'LPT{number}' for number in range(1, 10)}
+)
 _ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode', 'control_plane'})
 _CATALOG_FIELDS = frozenset({'plugin', 'assets'})
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
@@ -41,6 +53,14 @@ def safe_relative(value: str, label: str) -> PurePosixPath:
         or any(part in {'.', '..'} for part in value.split('/'))
     ):
         raise ContractError(f'{label} must be a relative path')
+    for part in value.split('/'):
+        if (
+            any(unicodedata.category(character) == 'Cc' for character in part)
+            or any(character in _WINDOWS_RESERVED_CHARACTERS for character in part)
+            or part.endswith((' ', '.'))
+            or part.split('.', 1)[0].upper() in _WINDOWS_RESERVED_NAMES
+        ):
+            raise ContractError(f'{label} must be a portable relative path')
     return path
 
 

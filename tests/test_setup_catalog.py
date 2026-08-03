@@ -14,6 +14,7 @@ from agents_setup.catalog import (  # noqa: E402
     load_lock,
     load_project_config,
     parse_asset,
+    safe_relative,
 )
 from agents_setup.models import Platform  # noqa: E402
 
@@ -107,6 +108,87 @@ class SetupCatalogTest(unittest.TestCase):
             )
             with self.assertRaisesRegex(ContractError, 'unknown project config fields'):
                 load_project_config(config_path, catalog=catalog)
+
+    def test_catalog_uses_semver_2_for_version_and_plugin_version(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / 'catalog').mkdir()
+            catalog_path = root / 'catalog' / 'project-assets.json'
+
+            for version in (
+                '1.0.0',
+                '1.0.0-alpha.1',
+                '1.0.0-rc.1+build.7',
+            ):
+                with self.subTest(valid=version):
+                    (root / 'VERSION').write_text(f'{version}\n', encoding='utf-8')
+                    catalog_path.write_text(
+                        json.dumps(
+                            {
+                                'plugin': {
+                                    'id': 'agents',
+                                    'version': version,
+                                    'repository': 'https://example.invalid/agents.git',
+                                    'ref': 'main',
+                                },
+                                'assets': [],
+                            }
+                        ),
+                        encoding='utf-8',
+                    )
+                    self.assertEqual(load_catalog(root).plugin_version, version)
+
+            for version in ('01.0.0', '1.01.0', '1.0.01', '1.0.0-alpha..1'):
+                with self.subTest(invalid=version):
+                    (root / 'VERSION').write_text(f'{version}\n', encoding='utf-8')
+                    catalog_path.write_text(
+                        json.dumps(
+                            {
+                                'plugin': {
+                                    'id': 'agents',
+                                    'version': version,
+                                    'repository': 'https://example.invalid/agents.git',
+                                    'ref': 'main',
+                                },
+                                'assets': [],
+                            }
+                        ),
+                        encoding='utf-8',
+                    )
+                    with self.assertRaisesRegex(ContractError, 'semantic version'):
+                        load_catalog(root)
+
+    def test_safe_relative_rejects_windows_unsafe_segments_and_keeps_wrappers(self):
+        for value in (
+            'rules/bad\x00name.md',
+            'rules/bad\nname.md',
+            'rules/bad:name.md',
+            'rules/bad?.md',
+            'rules/bad*.md',
+            'rules/bad".md',
+            'rules/bad<name>.md',
+            'rules/bad|name.md',
+            'rules/trailing .md ',
+            'rules/trailing..',
+            'rules/CON.md',
+            'rules/prn.txt',
+            'rules/AUX',
+            'rules/NUL.data',
+            'rules/COM1.json',
+            'rules/lpt9.cfg',
+        ):
+            with self.subTest(value=value):
+                with self.assertRaises(ContractError):
+                    safe_relative(value, 'path')
+
+        self.assertEqual(
+            safe_relative('.codex/agents/{agent-name}.toml', 'path').as_posix(),
+            '.codex/agents/{agent-name}.toml',
+        )
+        self.assertEqual(
+            safe_relative('.cursor/rules/{rule-name}.mdc', 'path').as_posix(),
+            '.cursor/rules/{rule-name}.mdc',
+        )
 
     def test_lock_validates_commit_and_owned_paths(self):
         with tempfile.TemporaryDirectory() as temp_dir:
