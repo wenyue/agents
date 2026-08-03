@@ -542,6 +542,34 @@ class SetupTransactionTest(unittest.TestCase):
             replace.assert_not_called()
             self.assertEqual(owned.read_bytes(), b'attacker')
 
+    def test_fallback_root_swap_does_not_rollback_into_new_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            container = Path(temp_dir)
+            target, moved = container / 'target', container / 'moved'
+            target.mkdir()
+            real_replace, calls = os.replace, 0
+
+            def replace_then_swap(source, destination, **kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    return real_replace(source, destination, **kwargs)
+                target.rename(moved)
+                target.mkdir()
+                (target / 'new').mkdir()
+                raise OSError('swap')
+
+            with mock.patch.object(transaction, '_SECURE_DIR_FDS', False), \
+                 mock.patch.object(transaction, '_replace', side_effect=replace_then_swap):
+                with self.assertRaisesRegex(TransactionError, 'fallback root') as raised:
+                    apply_plan(target, self.plan(
+                        Change(ChangeKind.CREATE, PurePosixPath('new/a'), b'a'),
+                        Change(ChangeKind.CREATE, PurePosixPath('new/b'), b'b'),
+                    ))
+            self.assertTrue((target / 'new').is_dir())
+            self.assertEqual(list((target / 'new').iterdir()), [])
+            self.assertIn('fallback root', str(raised.exception))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -568,6 +568,12 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
                     temporary.unlink(missing_ok=True)
     except BaseException as error:
         rollback_errors: list[BaseException] = []
+        try:
+            guard()
+        except BaseException as rollback_error:
+            rollback_errors.append(rollback_error)
+            original = error.original_error if isinstance(error, TransactionError) else error
+            raise TransactionError(original, tuple(rollback_errors)) from error
         for mutation in reversed(applied):
             try:
                 backup = mutation.backup
