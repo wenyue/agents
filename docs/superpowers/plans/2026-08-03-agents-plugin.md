@@ -633,8 +633,8 @@ git commit -m "feat: bootstrap project setup from remote main"
 
 **Files:**
 - Create: `skills/setup-project-agents/scripts/setup_project_agents.py`
-- Modify: `skills/setup-project-agents/scripts/sync_public_agent_assets.sh`
-- Modify: `skills/setup-project-agents/scripts/sync_public_agent_assets.ps1`
+- Create: `skills/setup-project-agents/scripts/setup_project_agents.sh`
+- Create: `skills/setup-project-agents/scripts/setup_project_agents.ps1`
 - Rewrite: `skills/setup-project-agents/SKILL.md`
 - Create: `tests/test_setup_cli.py`
 
@@ -689,7 +689,9 @@ The Skill workflow must:
    command, and report `needs_restart` without treating host refresh as part of the project-file
    transaction.
 
-The shell and PowerShell wrappers become thin launchers for `bootstrap.py`; remove every reference to archive fallback or project-local setup copies.
+The new shell and PowerShell wrappers are thin launchers for `bootstrap.py`; remove every reference
+to archive fallback or project-local setup copies. Task 9 deletes the old wrapper names during the
+final cutover.
 
 - [ ] **Step 5: Run tests and commit**
 
@@ -755,6 +757,8 @@ git commit -m "refactor: centralize recommended agent tool policy"
 
 **Files:**
 - Delete: `skills/setup-project-agents/scripts/sync_public_agent_assets.py`
+- Delete: `skills/setup-project-agents/scripts/sync_public_agent_assets.sh`
+- Delete: `skills/setup-project-agents/scripts/sync_public_agent_assets.ps1`
 - Delete: `skills/setup-project-agents/references/public_assets.json`
 - Delete: `skills/setup-project-agents/references/project-config.schema.json`
 - Delete: `skills/setup-project-agents/assets/`
