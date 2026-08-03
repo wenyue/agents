@@ -4,6 +4,7 @@ Thumbs.db
 # Local editor/runtime clutter.
 .idea/
 .vscode/
+.superpowers/
 *.log
 __pycache__/
 *.pyc
