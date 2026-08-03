@@ -22,6 +22,8 @@ from agents_setup.host_adapters.codex import CodexAdapter  # noqa: E402
 from agents_setup.host_adapters.copilot import CopilotAdapter  # noqa: E402
 from agents_setup.host_adapters.cursor import CursorAdapter  # noqa: E402
 from agents_setup.models import (  # noqa: E402
+    AssetSpec,
+    Catalog,
     ChangeKind,
     Platform,
     ProjectConfig,
@@ -319,6 +321,83 @@ class SetupRendererTest(unittest.TestCase):
 
             paths = tuple(path.as_posix() for path in files)
             self.assertEqual(paths, ('.agents/skills/example/SKILL.md',))
+
+    def test_generated_tree_rejects_control_plane_and_undeclared_paths(self):
+        rejected_paths = (
+            '.agents/skills/setup-project-agents/SKILL.md',
+            '.agents/lock.json',
+            '.agents/config.json',
+            '.agents/rules/undeclared.md',
+            '.agents/rules/00-global-rule-config.md',
+        )
+        for rejected in rejected_paths:
+            with self.subTest(path=rejected), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                generated = self.generated_tree(root)
+                path = generated.joinpath(*PurePosixPath(rejected).parts)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('must not enter desired state\n', encoding='utf-8')
+
+                with self.assertRaisesRegex(RenderError, 'undeclared generated path'):
+                    self.render(root / 'target', generated, False)
+
+    def test_declared_blueprint_generated_content_overlays_shared_target(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'source'
+            metadata = source / 'skills/setup-project-agents/references/public_assets.json'
+            metadata.parent.mkdir(parents=True)
+            metadata.write_text('{"rules": [], "agent_prompts": []}\n', encoding='utf-8')
+            shared_source = source / 'rules/shared.md'
+            shared_source.parent.mkdir(parents=True)
+            shared_source.write_text('shared\n', encoding='utf-8')
+            target_path = PurePosixPath('.agents/rules/shared.md')
+            catalog = Catalog(
+                'test',
+                '1.0.0',
+                'https://example.invalid/test.git',
+                'main',
+                (
+                    AssetSpec(
+                        'shared',
+                        'rule',
+                        PurePosixPath('rules/shared.md'),
+                        target_path,
+                        (Platform.CODEX,),
+                    ),
+                    AssetSpec(
+                        'generated-shared',
+                        'blueprint',
+                        PurePosixPath('blueprints/shared.md'),
+                        target_path,
+                        (Platform.CODEX,),
+                        'generate',
+                    ),
+                ),
+            )
+            generated = root / 'generated/.agents/rules'
+            generated.mkdir(parents=True)
+            (generated / 'shared.md').write_text('generated\n', encoding='utf-8')
+            config = ProjectConfig(
+                1,
+                (Platform.CODEX,),
+                False,
+                ('shared',),
+                (),
+                (),
+            )
+
+            rendered = render_desired_state(
+                source,
+                root / 'target',
+                catalog,
+                config,
+                root / 'generated',
+                {},
+                {Platform.CODEX: ReadyAdapter(Platform.CODEX)},
+            )
+
+            self.assertEqual(rendered.files_by_path[target_path.as_posix()], b'generated\n')
 
     def test_renderer_rejects_symlinked_target_reads(self):
         with tempfile.TemporaryDirectory() as temp_dir:

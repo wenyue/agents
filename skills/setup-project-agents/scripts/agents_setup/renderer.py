@@ -273,6 +273,13 @@ def render_desired_state(
                         'rule.github_apply_to': item.get('github', {}).get('applyTo', '**') if isinstance(item.get('github'), dict) else '**',
                     }))
 
+    generated_targets = {
+        asset.target
+        for asset in catalog.assets
+        if asset.kind == 'blueprint'
+        and not asset.control_plane
+        and asset.target is not None
+    }
     for path in sorted(
         (
             item
@@ -282,7 +289,9 @@ def render_desired_state(
         key=lambda item: item.as_posix(),
     ):
         relative = PurePosixPath(path.relative_to(generated_root).as_posix())
-        _copy_file(files, relative, path.read_bytes())
+        if relative not in generated_targets:
+            raise RenderError(f'undeclared generated path: {relative.as_posix()}')
+        files[relative] = path.read_bytes()
 
     for platform in config.platforms:
         adapter = adapters.get(platform)
