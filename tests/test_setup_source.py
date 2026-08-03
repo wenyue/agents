@@ -436,6 +436,29 @@ class SetupSourceTest(unittest.TestCase):
             )
             self.assertFalse((workspace / staging_name[0]).exists())
 
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
+    def test_post_publish_source_replacement_is_not_undone_over_the_sentinel(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            workspace = temporary / 'session'
+            moved = temporary / 'published-source-moved'
+
+            def replace_published_source() -> None:
+                (workspace / 'source').rename(moved)
+                (workspace / 'source').mkdir()
+                (workspace / 'source' / 'sentinel').write_text('independent\n', encoding='utf-8')
+
+            with mock.patch.object(source_module, '_after_publish_rename', replace_published_source):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main(origin.as_uri(), work_root=workspace)
+
+            self.assertEqual(
+                (workspace / 'source' / 'sentinel').read_text(encoding='utf-8'),
+                'independent\n',
+            )
+            self.assertTrue(moved.is_dir())
+
     def test_unavailable_secure_staging_primitives_do_not_mutate_or_run_git(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'

@@ -445,7 +445,7 @@ def _undo_publish_if_needed(
     staging_name: str,
     staging_identity: tuple[int, int],
     *,
-    published_success: bool,
+    published_identity: tuple[int, int] | None,
 ) -> Exception | None:
     """Restore names through the held workspace fd after any detected publish failure."""
     try:
@@ -453,13 +453,14 @@ def _undo_publish_if_needed(
             return InvalidFetchedSource('secure source undo is unavailable')
         staging_status = _entry_status(workspace.fd, staging_name)
         source_status = _entry_status(workspace.fd, 'source')
-        source_is_ours = (
-            source_status is not None
-            and not stat.S_ISLNK(source_status.st_mode)
-            and stat.S_ISDIR(source_status.st_mode)
-            and _identity(source_status) == staging_identity
+        source_identity = (
+            _identity(source_status) if source_status is not None else None
         )
-        should_undo = published_success or source_is_ours
+        should_undo = (
+            source_identity == published_identity
+            if published_identity is not None
+            else source_identity == staging_identity
+        )
         if should_undo and staging_status is None and source_status is not None:
             try:
                 _rename_noreplace(workspace.fd, 'source', staging_name)
@@ -482,11 +483,15 @@ def _publish_staging(
     staging_name: str,
     staging_identity: tuple[int, int],
 ) -> Path:
-    published_success = False
+    published_identity: tuple[int, int] | None = None
 
     def record_publish_success() -> None:
-        nonlocal published_success
-        published_success = True
+        nonlocal published_identity
+        if workspace.fd is None:
+            return
+        source_status = _entry_status(workspace.fd, 'source')
+        if source_status is not None:
+            published_identity = _identity(source_status)
 
     try:
         _assert_workspace_namespace(workspace)
@@ -513,7 +518,7 @@ def _publish_staging(
             workspace,
             staging_name,
             staging_identity,
-            published_success=published_success,
+            published_identity=published_identity,
         )
         if undo_error is not None:
             raise InvalidFetchedSource(
