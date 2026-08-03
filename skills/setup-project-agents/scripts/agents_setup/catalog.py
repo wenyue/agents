@@ -19,9 +19,9 @@ from .models import (
 
 
 _SEMVER = re.compile(
-    r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)'
-    r'(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)'
-    r'(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?'
+    r'^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'
+    r'(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+    r'(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?'
     r'(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'
 )
 _HEX_40 = re.compile(r'^[0-9a-fA-F]{40}$')
@@ -29,7 +29,7 @@ _HEX_64 = re.compile(r'^[0-9a-fA-F]{64}$')
 _NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')
 _WINDOWS_RESERVED_CHARACTERS = frozenset('<>:"\\|?*')
 _WINDOWS_RESERVED_NAMES = frozenset(
-    {'CON', 'PRN', 'AUX', 'NUL'}
+    {'CON', 'PRN', 'AUX', 'NUL', 'COM¹', 'COM²', 'COM³', 'LPT¹', 'LPT²', 'LPT³'}
     | {f'COM{number}' for number in range(1, 10)}
     | {f'LPT{number}' for number in range(1, 10)}
 )

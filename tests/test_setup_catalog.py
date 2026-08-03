@@ -138,7 +138,14 @@ class SetupCatalogTest(unittest.TestCase):
                     )
                     self.assertEqual(load_catalog(root).plugin_version, version)
 
-            for version in ('01.0.0', '1.01.0', '1.0.01', '1.0.0-alpha..1'):
+            for version in (
+                '01.0.0',
+                '1.01.0',
+                '1.0.01',
+                '1.0.0-alpha..1',
+                '1١.0.0',
+                '1.0.0-1١',
+            ):
                 with self.subTest(invalid=version):
                     (root / 'VERSION').write_text(f'{version}\n', encoding='utf-8')
                     catalog_path.write_text(
@@ -176,6 +183,12 @@ class SetupCatalogTest(unittest.TestCase):
             'rules/NUL.data',
             'rules/COM1.json',
             'rules/lpt9.cfg',
+            'rules/COM¹.txt',
+            'rules/COM²',
+            'rules/COM³.cfg',
+            'rules/LPT¹.txt',
+            'rules/lpt²',
+            'rules/LPT³.md',
         ):
             with self.subTest(value=value):
                 with self.assertRaises(ContractError):
