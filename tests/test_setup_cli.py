@@ -210,7 +210,76 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(setup_project_agents.main(check_args), 0)
             (target / '.agents/rules/00-global-rule-config.md').write_text('drift\n', encoding='utf-8')
             before = self.snapshot_tree(target)
-            self.assertEqual(setup_project_agents.main(check_args), 1)
+            drift_output = StringIO()
+            with redirect_stdout(drift_output):
+                self.assertEqual(setup_project_agents.main(check_args), 1)
+            drift = json.loads(drift_output.getvalue())
+            self.assertEqual(
+                drift['drift'],
+                {
+                    'kind': 'managed_content_changed',
+                    'message': 'managed content changed: .agents/rules/00-global-rule-config.md',
+                    'path': '.agents/rules/00-global-rule-config.md',
+                },
+            )
+            self.assertEqual(drift['changed_paths'], ['.agents/rules/00-global-rule-config.md'])
+            self.assertEqual(self.snapshot_tree(target), before)
+
+    def test_check_reports_managed_field_drift_without_writing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            session = self.private_session(root)
+            self.assertEqual(self.prepare(target, session), 0)
+            self.write_generated_outputs(session)
+            models = self.write_models(session)
+            apply_args = ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+            check_args = ['check', *apply_args[1:]]
+            with redirect_stdout(StringIO()):
+                self.assertEqual(setup_project_agents.main(apply_args), 0)
+            cursor_config = target / '.cursor/cli.json'
+            document = json.loads(cursor_config.read_text(encoding='utf-8'))
+            document['permissions']['allow'] = []
+            cursor_config.write_text(json.dumps(document), encoding='utf-8')
+            before = self.snapshot_tree(target)
+
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(setup_project_agents.main(check_args), 1)
+            result = json.loads(output.getvalue())
+            self.assertEqual(result['drift']['kind'], 'managed_field_changed')
+            self.assertEqual(result['drift']['path'], '.cursor/cli.json')
+            self.assertEqual(result['drift']['field'], 'permissions.allow')
+            self.assertEqual(result['changed_paths'], ['.cursor/cli.json'])
+            self.assertEqual(self.snapshot_tree(target), before)
+
+    def test_check_reports_unmanaged_collision_without_writing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            session = self.private_session(root)
+            self.assertEqual(self.prepare(target, session), 0)
+            self.write_generated_outputs(session)
+            models = self.write_models(session)
+            collision = target / '.agents/rules/00-global-rule-config.md'
+            collision.parent.mkdir(parents=True)
+            collision.write_text('user-owned\n', encoding='utf-8')
+            before = self.snapshot_tree(target)
+
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(
+                    setup_project_agents.main(
+                        ['check', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+                    ),
+                    1,
+                )
+            result = json.loads(output.getvalue())
+            self.assertEqual(result['drift']['kind'], 'unmanaged_collision')
+            self.assertEqual(result['drift']['path'], '.agents/rules/00-global-rule-config.md')
+            self.assertEqual(result['changed_paths'], ['.agents/rules/00-global-rule-config.md'])
             self.assertEqual(self.snapshot_tree(target), before)
 
     def test_apply_rejects_tampered_selections_or_model_requests_without_writing(self):
@@ -287,6 +356,7 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(apply_result['version'], 1)
             self.assertEqual(apply_result['phase'], 'apply')
             self.assertEqual(apply_result['source_commit'], self.source_commit)
+            self.assertIsNone(apply_result['drift'])
             self.assertEqual(apply_result['changed_paths'], sorted(apply_result['changed_paths']))
             self.assertIn('.agents/rules/00-global-rule-config.md', apply_result['changed_paths'])
             self.assertIn('cursor', apply_result['capabilities'])
@@ -299,6 +369,7 @@ class SetupCliTest(unittest.TestCase):
             check_result = json.loads(check_output.getvalue())
             self.assertEqual(check_result['phase'], 'check')
             self.assertEqual(check_result['changed_paths'], [])
+            self.assertIsNone(check_result['drift'])
 
     def test_copilot_model_key_is_validated_and_rendered_into_its_agent_wrapper(self):
         with tempfile.TemporaryDirectory() as temp_dir:

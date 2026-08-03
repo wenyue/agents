@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from agents_setup.catalog import ContractError, load_catalog
+from agents_setup.catalog import ContractError, load_catalog, safe_field_key, safe_relative
 from agents_setup.host_adapters import CodexAdapter, CopilotAdapter, CursorAdapter
 from agents_setup.host_adapters.base import CapabilityResult, CapabilityStatus
 from agents_setup.models import Catalog, Platform, ProjectConfig
@@ -382,16 +382,54 @@ def _emit_result(
     source_commit: str | None,
     changed_paths: Sequence[str],
     output: _OutputState,
+    drift: Mapping[str, object] | None = None,
 ) -> None:
     print(json.dumps({
         'version': 1,
         'phase': phase,
         'source_commit': source_commit,
         'changed_paths': sorted(changed_paths),
+        'drift': drift,
         'capabilities': output.capabilities,
         'refresh_actions': output.refresh_actions,
         'needs_restart': output.needs_restart,
     }, sort_keys=True))
+
+
+def _planning_drift(error: PlanningError) -> dict[str, object]:
+    message = str(error)
+    prefixes = (
+        ('managed content changed: ', 'managed_content_changed', False),
+        ('managed field changed: ', 'managed_field_changed', True),
+        ('unmanaged collision: ', 'unmanaged_collision', False),
+        ('unmanaged field collision: ', 'unmanaged_field_collision', True),
+    )
+    for prefix, kind, has_field in prefixes:
+        if not message.startswith(prefix):
+            continue
+        detail = message.removeprefix(prefix)
+        path = detail
+        field: str | None = None
+        if has_field:
+            path, separator, field = detail.rpartition(':')
+            if not separator:
+                continue
+        try:
+            safe_path = safe_relative(path, 'drift path').as_posix()
+            if has_field:
+                assert field is not None
+                safe_field = safe_field_key(field, 'drift field')
+        except ContractError:
+            continue
+        result: dict[str, object] = {
+            'kind': kind,
+            'message': message,
+            'path': safe_path,
+        }
+        if has_field:
+            result['field'] = safe_field
+        return result
+    return {'kind': 'planning_error', 'message': message}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -493,11 +531,13 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
         )
     except PlanningError as error:
         if args.phase == 'check':
+            drift = _planning_drift(error)
             _emit_result(
                 phase=args.phase,
                 source_commit=source_commit,
-                changed_paths=(),
+                changed_paths=(drift['path'],) if 'path' in drift else (),
                 output=output,
+                drift=drift,
             )
             raise CheckDrift() from error
         raise
@@ -532,6 +572,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 source_commit=source_commit,
                 changed_paths=changed_paths,
                 output=output,
+                drift=(
+                    {
+                        'kind': 'desired_state_diff',
+                        'message': 'desired state differs from the target project',
+                        'paths': changed_paths,
+                    }
+                    if changed_paths else None
+                ),
             )
             return 0 if not changed_paths else 1
         apply_plan(target, plan)
@@ -544,6 +592,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if change.kind.value != 'unchanged'
             ],
             output=output,
+            drift=None,
         )
         return 0
     except (

@@ -84,8 +84,9 @@ description: 初始化或更新仓库的 Agents Rule、Skill、Agent 与显式�
 
 6. 使用完全相同的参数执行同一固定入口的 `check`，仅将 `apply` 替换为 `check`。apply 与 check 均会
    向 stdout 输出唯一一个 JSON 结果，其中包括 phase、固定来源 commit、排序后的变更路径、每个平台
-   的能力状态、候选刷新命令和 `needs_restart`。check 状态码为零表示项目无变化；状态码一表示发现
-   漂移但没有写入。报告前必须读取这个结果中的来源 commit 和受管路径。
+   的能力状态、候选刷新命令、`needs_restart` 和 `drift`。check 状态码为零时 `drift: null`；状态码一
+   会提供稳定的漂移类型、消息和可安全解析的路径（适用时还包括字段），且不写入文件。报告前必须读取
+   这个结果中的来源 commit 和受管路径。
 
 7. 展示 JSON 结果中的候选刷新命令或官方 UI 操作。不得在 setup 中自动执行候选命令，只有用户
    单独批准后才能执行。宿主 `needs_restart` 或 Cursor Hook 信任要求必须单独报告；两者都不属于

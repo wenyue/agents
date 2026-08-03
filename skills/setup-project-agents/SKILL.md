@@ -92,8 +92,9 @@ installs itself into the target, edits host trust or plugin caches, or upgrades 
 6. Run the same pinned entry point with `check` and the identical arguments, replacing only `apply`
    with `check`. Apply and check each write exactly one JSON result to stdout with the phase, pinned
    source commit, sorted changed paths, per-platform capability state, candidate refresh commands,
-   and `needs_restart`. A zero check status means the project is unchanged; status one reports drift
-   without writing. Read this result before reporting the pinned source commit and managed paths.
+   `needs_restart`, and `drift`. A zero check status has `drift: null`; status one reports a stable
+   drift kind, message, and safely parsed path (and field when applicable) without writing. Read this
+   result before reporting the pinned source commit and managed paths.
 
 7. Present candidate refresh commands or an official UI action from the JSON result. Do not execute
    a candidate command during setup; execute it only after the user separately approves it. Report a
