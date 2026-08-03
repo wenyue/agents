@@ -6181,6 +6181,32 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             '',
         )
 
+    def test_hook_prompt_requires_exact_command_approval_before_tool_mutation(self):
+        checker = self.checker
+        result = checker.HookResult(
+            True,
+            (
+                checker.Finding(
+                    'tool-missing',
+                    'Example Tool',
+                    'is missing',
+                    'Install it.',
+                ),
+            ),
+        )
+
+        message = json.loads(
+            checker.render_hook_result(result, 'codex')
+        )['systemMessage']
+
+        self.assertIn('use the installed manage-agent-tools Skill', message)
+        self.assertIn(
+            'Do not mutate tools or configuration until the exact commands and affected tools '
+            'have been shown and the user has approved those exact commands.',
+            message,
+        )
+        self.assertNotIn('If that message requests the fixes, perform them', message)
+
     def test_live_lock_suppresses_duplicate_and_stale_lock_is_reclaimed(self):
         checker = self.checker
         with tempfile.TemporaryDirectory() as temp_dir:

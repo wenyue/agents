@@ -546,11 +546,13 @@ def render_hook_result(result: HookResult, platform: str) -> str:
         if result.requires_user_prompt:
             message = (
                 f'{findings}\n'
-                '[setup-project-agents] Stop the current task now. Ask the user whether to '
-                'apply the listed fixes, end this turn after the question, and wait for the '
-                'next user message. If that message requests the fixes, perform them and force '
-                'this check again. Any other user message may continue normally; no explicit '
-                'decline is required.'
+                '[setup-project-agents] Stop the current task now and use the installed '
+                'manage-agent-tools Skill to handle these findings. Follow its workflow to '
+                'inspect installation provenance, determine the exact commands, show those '
+                'commands and affected tools, and ask the user to approve those exact commands. '
+                'Do not mutate tools or configuration until the exact commands and affected '
+                'tools have been shown and the user has approved those exact commands. End this '
+                'turn after requesting approval and wait for the next user message.'
             )
         else:
             message = findings
