@@ -1,4 +1,5 @@
 {
+  "disableAllHooks": false,
   "extraKnownMarketplaces": {
     "superpowers-marketplace": {
       "source": {
