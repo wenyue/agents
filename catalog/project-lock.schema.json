@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source_commit", "managed_files", "managed_fields"],
+  "properties": {
+    "version": {"const": 1},
+    "source_commit": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{40}$"},
+    "managed_files": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}}}},
+    "managed_fields": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "key", "sha256"], "properties": {"path": {"type": "string"}, "key": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}}}}
+  }
+}
