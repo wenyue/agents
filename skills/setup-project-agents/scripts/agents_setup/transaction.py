@@ -576,9 +576,12 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
             raise TransactionError(original, tuple(rollback_errors)) from error
         for mutation in reversed(applied):
             try:
+                guard()
                 backup = mutation.backup
                 operation = backup.operation
+                guard()
                 path = target(operation.path)
+                guard()
                 current = entry(path)
                 identity = None if current is None else (current.st_dev, current.st_ino)
                 if identity == backup.identity:
@@ -587,10 +590,13 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
                     raise TransactionError(f'third-party fallback target retained: {_path_key(operation.path)}')
                 if backup.snapshot is None:
                     if current is not None:
+                        guard()
                         path.unlink()
                 else:
+                    guard()
                     temporary = sibling(path, backup.snapshot.read_bytes(), backup.mode)
                     try:
+                        guard()
                         os.replace(temporary, path)
                     finally:
                         temporary.unlink(missing_ok=True)
@@ -598,10 +604,14 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
                 rollback_errors.append(rollback_error)
         for directory in reversed(created):
             try:
+                guard()
                 if not directory.is_symlink():
+                    guard()
                     directory.rmdir()
             except BaseException as rollback_error:
                 rollback_errors.append(rollback_error)
+                if 'fallback root namespace changed' in str(rollback_error):
+                    break
         original = error.original_error if isinstance(error, TransactionError) else error
         raise TransactionError(original, tuple(rollback_errors)) from error
 
