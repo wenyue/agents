@@ -20,7 +20,7 @@ _RESERVED_OPTIONS = ('--source-root', '--source-commit', '--no-bootstrap')
 
 
 def _installed_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 def _has_reserved_option(argv: Sequence[str]) -> bool:

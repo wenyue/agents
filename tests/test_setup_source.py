@@ -21,6 +21,7 @@ from agents_setup.source import (  # noqa: E402
     validate_source,
 )
 import bootstrap  # noqa: E402
+import setup_project_agents  # noqa: E402
 
 
 CANONICAL_REPOSITORY = 'https://github.com/wenyue/agents.git'
@@ -45,11 +46,21 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
     entrypoint.parent.mkdir(parents=True)
     entrypoint.write_text('raise SystemExit(0)\n', encoding='utf-8')
     (root / 'VERSION').write_text(f'{version}\n', encoding='utf-8')
-    for relative in ('.codex-plugin/plugin.json', '.cursor-plugin/plugin.json', 'plugin.json'):
-        (root / relative).write_text(
-            json.dumps({'name': 'agents', 'version': version, 'skills': './skills/'}),
-            encoding='utf-8',
-        )
+    manifests = {
+        '.codex-plugin/plugin.json': {
+            'name': 'agents', 'version': version, 'skills': './skills/',
+        },
+        '.cursor-plugin/plugin.json': {
+            'name': 'agents', 'version': version, 'skills': './skills/',
+            'rules': './rules/', 'agents': './agents/',
+        },
+        'plugin.json': {
+            'name': 'agents', 'version': version, 'skills': './skills/',
+            'agents': './agents/',
+        },
+    }
+    for relative, document in manifests.items():
+        (root / relative).write_text(json.dumps(document), encoding='utf-8')
     (root / 'catalog' / 'project-assets.json').write_text(
         json.dumps(
             {
@@ -153,6 +164,102 @@ class SetupSourceTest(unittest.TestCase):
             with self.assertRaises(InvalidFetchedSource):
                 validate_source(source)
 
+    def test_validate_source_accepts_the_actual_plugin_root(self):
+        self.assertEqual(validate_source(REPO_ROOT), REPO_ROOT)
+
+    def test_validate_source_requires_exact_platform_manifest_roots(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cases = (
+                ('.codex-plugin/plugin.json', {'rules': './rules/'}),
+                ('.cursor-plugin/plugin.json', {'rules': '../rules/'}),
+                ('plugin.json', {'agents': '../agents/'}),
+                ('plugin.json', {'agents': None}),
+            )
+            for index, (relative, updates) in enumerate(cases):
+                with self.subTest(relative=relative, updates=updates):
+                    source = Path(temp_dir) / f'source-{index}'
+                    write_valid_source(source)
+                    path = source / relative
+                    document = json.loads(path.read_text(encoding='utf-8'))
+                    document.update(updates)
+                    path.write_text(json.dumps(document), encoding='utf-8')
+                    with self.assertRaises(InvalidFetchedSource):
+                        validate_source(source)
+
+    def test_fetch_main_cleans_only_its_new_checkout_after_fetch_failure(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir) / 'session'
+            workspace.mkdir()
+            sentinel = workspace / 'request.json'
+            sentinel.write_text('{}\n', encoding='utf-8')
+            with self.assertRaises(SourceUnavailable):
+                fetch_main((Path(temp_dir) / 'missing-origin.git').as_uri(), work_root=workspace)
+
+            self.assertTrue(workspace.is_dir())
+            self.assertEqual(sentinel.read_text(encoding='utf-8'), '{}\n')
+            self.assertFalse((workspace / 'source').exists())
+
+    def test_fetch_main_rejects_preexisting_checkouts_without_touching_them(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir) / 'session'
+            checkout = workspace / 'source'
+            checkout.mkdir(parents=True)
+            marker = checkout / 'keep'
+            marker.write_text('preserve\n', encoding='utf-8')
+            with mock.patch('agents_setup.source.subprocess.run') as run:
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main('file:///origin.git', work_root=workspace)
+            self.assertEqual(marker.read_text(encoding='utf-8'), 'preserve\n')
+            run.assert_not_called()
+
+    def test_fetch_main_rejects_preexisting_symlink_checkout_without_touching_it(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir) / 'session'
+            workspace.mkdir()
+            outside = Path(temp_dir) / 'outside'
+            outside.mkdir()
+            marker = outside / 'keep'
+            marker.write_text('preserve\n', encoding='utf-8')
+            (workspace / 'source').symlink_to(outside, target_is_directory=True)
+            with mock.patch('agents_setup.source.subprocess.run') as run:
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main('file:///origin.git', work_root=workspace)
+            self.assertEqual(marker.read_text(encoding='utf-8'), 'preserve\n')
+            run.assert_not_called()
+
+    def test_fetch_main_classifies_post_fetch_git_failures_as_invalid(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir) / 'session'
+            checkout_failure = [
+                subprocess.CompletedProcess(('git', 'init'), 0),
+                subprocess.CompletedProcess(('git', 'remote'), 0),
+                subprocess.CompletedProcess(('git', 'fetch'), 0),
+                subprocess.CompletedProcess(('git', 'checkout'), 1),
+            ]
+            with mock.patch('agents_setup.source.subprocess.run', side_effect=checkout_failure):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main('file:///origin.git', work_root=workspace)
+            self.assertFalse((workspace / 'source').exists())
+
+            rev_parse_failure = [
+                subprocess.CompletedProcess(('git', 'init'), 0),
+                subprocess.CompletedProcess(('git', 'remote'), 0),
+                subprocess.CompletedProcess(('git', 'fetch'), 0),
+                subprocess.CompletedProcess(('git', 'checkout'), 0),
+                subprocess.CompletedProcess(('git', 'rev-parse'), 1),
+            ]
+            with mock.patch('agents_setup.source.subprocess.run', side_effect=rev_parse_failure):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main('file:///origin.git', work_root=workspace)
+            self.assertFalse((workspace / 'source').exists())
+
+    def test_fetch_main_rejects_unsafe_repository_argv(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for repository in ('-c', 'https://example.invalid/\x00repo', 'https://example.invalid/\nrepo'):
+                with self.subTest(repository=repository):
+                    with self.assertRaises(InvalidFetchedSource):
+                        fetch_main(repository, work_root=Path(temp_dir) / repository.replace('/', '_').replace('\x00', 'nul').replace('\n', 'nl'))
+
     def test_bootstrap_falls_back_only_when_fetch_is_unavailable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
@@ -212,12 +319,12 @@ class SetupSourceTest(unittest.TestCase):
                 mock.patch.object(
                     bootstrap.subprocess,
                     'run',
-                    return_value=subprocess.CompletedProcess(('child',), 0),
+                    return_value=subprocess.CompletedProcess(('child',), 23),
                 ) as run,
             ):
                 result = bootstrap.main(forwarded, installed_root=temporary / 'installed')
 
-            self.assertEqual(result, 0)
+            self.assertEqual(result, 23)
             fetch.assert_called_once_with(CANONICAL_REPOSITORY, work_root=temporary / 'session')
             self.assertEqual(
                 run.call_args.args[0],
@@ -232,6 +339,30 @@ class SetupSourceTest(unittest.TestCase):
             )
             self.assertTrue(source.is_dir())
 
+    def test_bootstrap_uses_the_real_installed_plugin_root_for_offline_handoff(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            session = temporary / 'session'
+            with (
+                mock.patch.object(
+                    bootstrap,
+                    'fetch_main',
+                    side_effect=SourceUnavailable('network unavailable'),
+                ),
+                mock.patch.object(
+                    bootstrap.subprocess,
+                    'run',
+                    return_value=subprocess.CompletedProcess(('child',), 23),
+                ) as run,
+            ):
+                result = bootstrap.main(['prepare', '--session', str(session)])
+
+            self.assertEqual(result, 23)
+            self.assertEqual(
+                run.call_args.args[0][1],
+                str(REPO_ROOT / 'skills/setup-project-agents/scripts/setup_project_agents.py'),
+            )
+
     def test_bootstrap_rejects_non_prepare_and_reserved_user_arguments(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
@@ -240,11 +371,28 @@ class SetupSourceTest(unittest.TestCase):
                 ['prepare', '--session', str(temporary / 'session'), '--source-root', 'forged'],
                 ['prepare', '--session', str(temporary / 'session'), '--source-commit=forged'],
                 ['prepare', '--session', str(temporary / 'session'), '--no-bootstrap'],
+                ['prepare', '--session', str(temporary / 'session'), '--no-bootstrap=forged'],
             ):
                 with self.subTest(argv=argv):
                     with mock.patch.object(bootstrap.subprocess, 'run') as run:
                         self.assertEqual(bootstrap.main(argv, installed_root=temporary / 'installed'), 2)
                     run.assert_not_called()
+
+    def test_entrypoint_normalizes_the_offline_commit_only_at_cli_boundary(self):
+        self.assertIsNone(setup_project_agents.normalize_source_commit('offline'))
+        self.assertEqual(setup_project_agents.normalize_source_commit('a' * 40), 'a' * 40)
+        with self.assertRaises(ValueError):
+            setup_project_agents.normalize_source_commit('main')
+
+    def test_entrypoint_validates_the_pinned_protocol_without_claiming_orchestration(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = setup_project_agents.main(
+                [
+                    'prepare', '--target', temp_dir, '--session', temp_dir,
+                    '--source-root', str(REPO_ROOT), '--source-commit', 'offline', '--no-bootstrap',
+                ]
+            )
+        self.assertEqual(result, 1)
 
 
 if __name__ == '__main__':
