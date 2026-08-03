@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path, PurePosixPath
 
@@ -12,7 +13,7 @@ from pathlib import Path, PurePosixPath
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / 'skills' / 'setup-project-agents' / 'scripts'))
 
-from agents_setup.catalog import load_catalog  # noqa: E402
+from agents_setup.catalog import load_catalog, load_project_config  # noqa: E402
 from agents_setup.host_adapters.base import (  # noqa: E402
     CapabilityResult,
     CapabilityStatus,
@@ -21,11 +22,17 @@ from agents_setup.host_adapters.codex import CodexAdapter  # noqa: E402
 from agents_setup.host_adapters.copilot import CopilotAdapter  # noqa: E402
 from agents_setup.host_adapters.cursor import CursorAdapter  # noqa: E402
 from agents_setup.models import (  # noqa: E402
+    ChangeKind,
     Platform,
     ProjectConfig,
 )
-from agents_setup.planner import build_plan  # noqa: E402
-from agents_setup.renderer import render_desired_state  # noqa: E402
+from agents_setup.planner import PlanningError, build_plan  # noqa: E402
+from agents_setup.renderer import (  # noqa: E402
+    RenderError,
+    _copy_asset,
+    _safe_leaves,
+    render_desired_state,
+)
 from agents_setup.validation import validate_rendered_state  # noqa: E402
 
 
@@ -143,6 +150,15 @@ class SetupRendererTest(unittest.TestCase):
                     command_text,
                 )
                 self.assertNotIn('install', command_text.lower())
+                self.assertNotIn('upgrade', command_text.lower())
+
+            codex_hooks = json.loads(on.files_by_path['.codex/hooks.json'])
+            codex_command = codex_hooks['hooks']['SessionStart'][0]['hooks'][0]
+            self.assertIn('commandWindows', codex_command)
+            copilot_hooks = json.loads(
+                on.files_by_path['.github/hooks/project-agent-tool-check.json']
+            )
+            self.assertIn('powershell', copilot_hooks['hooks']['sessionStart'][0])
 
             validate_rendered_state(on)
 
@@ -205,6 +221,178 @@ class SetupRendererTest(unittest.TestCase):
         self.assertEqual(copilot_result.status, CapabilityStatus.READY)
         self.assertEqual(copilot.hook_fields(True), {'disableAllHooks': False})
         self.assertEqual(copilot.hook_fields(False), {})
+
+    def test_codex_multi_agent_status_is_parsed_from_its_own_record_only(self):
+        codex = CodexAdapter()
+
+        disabled = codex.check_multi_agent(
+            RecordingRunner('multi_agent false\nother_feature enabled\n')
+        )
+        enabled = codex.check_multi_agent(
+            RecordingRunner('other_feature disabled\nmulti_agent on\n')
+        )
+        unknown = codex.check_multi_agent(RecordingRunner('multi_agent maybe\n'))
+
+        self.assertEqual(disabled.status, CapabilityStatus.NEEDS_RESTART)
+        self.assertEqual(enabled.status, CapabilityStatus.READY)
+        self.assertEqual(unknown.status, CapabilityStatus.UNSUPPORTED)
+
+    def test_rendered_project_config_round_trips_and_owns_only_version(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            rendered = self.render(target, self.generated_tree(root), False)
+            self.materialize(target, rendered.files)
+
+            loaded = load_project_config(target / '.agents/config.json', catalog=self.catalog)
+
+            self.assertEqual(loaded.version, 1)
+            self.assertFalse(loaded.hooks_enabled)
+            self.assertEqual(
+                {
+                    key
+                    for path, key in rendered.fields_by_key
+                    if path == '.agents/config.json'
+                },
+                {'version'},
+            )
+
+    def test_unsafe_structured_template_field_is_rejected(self):
+        with self.assertRaisesRegex(RenderError, 'unsafe template field'):
+            tuple(_safe_leaves({'$schema': 'control-plane/path'}))
+
+    def test_existing_toml_inline_tables_are_preserved(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            codex = target / '.codex/config.toml'
+            codex.parent.mkdir(parents=True)
+            codex.write_text(
+                'plugins = [{ name = "x", options = { active = true } }]\n',
+                encoding='utf-8',
+            )
+
+            rendered = self.render(target, self.generated_tree(root), False)
+            parsed = tomllib.loads(rendered.files_by_path['.codex/config.toml'].decode())
+
+            self.assertEqual(
+                parsed['plugins'],
+                [{'name': 'x', 'options': {'active': True}}],
+            )
+
+    def test_existing_jsonc_trailing_commas_do_not_change_string_values(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            settings = target / '.github/copilot/settings.json'
+            settings.parent.mkdir(parents=True)
+            settings.write_text(
+                '{\n'
+                '  // user-owned values\n'
+                '  "unmanaged": "literal,}",\n'
+                '  "items": [1, 2,],\n'
+                '}\n',
+                encoding='utf-8',
+            )
+
+            rendered = self.render(target, self.generated_tree(root), False)
+            parsed = json.loads(
+                rendered.files_by_path['.github/copilot/settings.json']
+            )
+
+            self.assertEqual(parsed['unmanaged'], 'literal,}')
+            self.assertEqual(parsed['items'], [1, 2])
+
+    def test_transient_skill_cache_files_are_not_rendered(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'skill'
+            cache = source / '__pycache__'
+            cache.mkdir(parents=True)
+            (source / 'SKILL.md').write_text('kept\n', encoding='utf-8')
+            (source / '.DS_Store').write_bytes(b'transient')
+            (cache / 'cached.pyc').write_bytes(b'transient')
+            files = {}
+
+            _copy_asset(files, source, PurePosixPath('.agents/skills/example'))
+
+            paths = tuple(path.as_posix() for path in files)
+            self.assertEqual(paths, ('.agents/skills/example/SKILL.md',))
+
+    def test_renderer_rejects_symlinked_target_reads(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            real_target = root / 'real-target'
+            real_target.mkdir()
+            linked_target = root / 'linked-target'
+            linked_target.symlink_to(real_target, target_is_directory=True)
+            generated = self.generated_tree(root)
+            with self.assertRaisesRegex(RenderError, 'symlink'):
+                self.render(linked_target, generated, False)
+
+            outside = root / 'outside.json'
+            outside.write_text('{}', encoding='utf-8')
+            lock = real_target / '.agents/lock.json'
+            lock.parent.mkdir(parents=True)
+            lock.symlink_to(outside)
+            with self.assertRaisesRegex(RenderError, 'symlink'):
+                self.render(real_target, generated, False)
+
+            lock.unlink()
+            native = real_target / '.codex/config.toml'
+            native.parent.mkdir(parents=True)
+            native.symlink_to(outside)
+            with self.assertRaisesRegex(RenderError, 'symlink'):
+                self.render(real_target, generated, False)
+
+    def test_first_setup_merges_user_config_without_owning_user_selections(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            config_path = target / '.agents/config.json'
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text(
+                json.dumps({
+                    'version': 1,
+                    'platforms': ['codex'],
+                    'hooks_enabled': False,
+                    'selected_rules': ['00-global-rule-config'],
+                }),
+                encoding='utf-8',
+            )
+            rendered = self.render(target, self.generated_tree(root), False)
+
+            plan = build_plan(target, rendered.files, rendered.fields, self.empty_lock())
+            desired_config = json.loads(rendered.files_by_path['.agents/config.json'])
+
+            config_change = next(
+                change
+                for change in plan.changes
+                if change.path.as_posix() == '.agents/config.json'
+            )
+            self.assertEqual(config_change.kind, ChangeKind.UPDATE)
+            self.assertEqual(desired_config['platforms'], ['codex'])
+            self.assertEqual(
+                {
+                    key
+                    for path, key in rendered.fields_by_key
+                    if path == '.agents/config.json'
+                },
+                {'version'},
+            )
+
+    def test_first_setup_rejects_conflicting_owned_config_field(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            config_path = target / '.agents/config.json'
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text('{"version": 2}\n', encoding='utf-8')
+            rendered = self.render(target, self.generated_tree(root), False)
+
+            with self.assertRaisesRegex(PlanningError, 'unmanaged field collision'):
+                build_plan(target, rendered.files, rendered.fields, self.empty_lock())
 
     @staticmethod
     def empty_lock():

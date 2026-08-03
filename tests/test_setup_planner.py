@@ -151,7 +151,7 @@ class SetupPlannerTest(unittest.TestCase):
             )
             self.assertEqual(
                 plan.next_lock.managed_fields[0].sha256,
-                sha256_bytes(desired_a.content),
+                sha256_bytes(b'"1.0.0"'),
             )
 
     def test_field_ownership_requires_rendered_file_and_shares_its_conflict_path(self):
@@ -169,7 +169,7 @@ class SetupPlannerTest(unittest.TestCase):
                 1,
                 None,
                 (),
-                (ManagedField(path, 'feature', sha256_bytes(b'{"feature": false}\n')),),
+                (ManagedField(path, 'feature', sha256_bytes(b'false')),),
             )
             plan = build_plan(target, (desired_file,), (desired_field,), field_lock)
 
@@ -185,7 +185,7 @@ class SetupPlannerTest(unittest.TestCase):
                 1,
                 None,
                 (),
-                (ManagedField(path, 'feature', sha256_bytes(content)),),
+                (ManagedField(path, 'feature', sha256_bytes(b'false')),),
             )
 
             with self.assertRaisesRegex(PlanningError, 'field-only'):
@@ -252,6 +252,48 @@ class SetupPlannerTest(unittest.TestCase):
                     (DesiredField(desired_file.path, 'catalog..version', '1.0.0', 'json'),),
                     LockState.empty(),
                 )
+
+    def test_rejects_drift_in_managed_field_but_allows_unmanaged_field_change(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            path = PurePosixPath('.codex/config.toml')
+            original = b'[features]\nhooks = true\n\n[user]\nvalue = "a"\n'
+            desired_content = b'[features]\nhooks = true\n\n[user]\nvalue = "b"\n'
+            desired = DesiredFile(path, desired_content)
+            field = DesiredField(path, 'features.hooks', True, 'toml')
+            lock = LockState(
+                1,
+                None,
+                (),
+                (ManagedField(path, 'features.hooks', sha256_bytes(b'true')),),
+            )
+
+            self.write_target(target, path, original.replace(b'true', b'false'))
+            with self.assertRaisesRegex(PlanningError, 'managed field changed'):
+                build_plan(target, (desired,), (field,), lock)
+
+            self.write_target(target, path, original.replace(b'"a"', b'"b"'))
+            plan = build_plan(target, (desired,), (field,), lock)
+            self.assertEqual(plan.changes[0].kind, ChangeKind.UNCHANGED)
+
+    def test_new_field_can_claim_matching_or_missing_value_but_rejects_conflict(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            path = PurePosixPath('.agents/config.json')
+            desired = DesiredFile(path, b'{"user": true, "version": 1}\n')
+            field = DesiredField(path, 'version', 1, 'json')
+
+            self.write_target(target, path, b'{"user": true}\n')
+            missing = build_plan(target, (desired,), (field,), LockState.empty())
+            self.assertEqual(missing.changes[0].kind, ChangeKind.UPDATE)
+
+            self.write_target(target, path, b'{"user": true, "version": 1}\n')
+            matching = build_plan(target, (desired,), (field,), LockState.empty())
+            self.assertEqual(matching.changes[0].kind, ChangeKind.UNCHANGED)
+
+            self.write_target(target, path, b'{"user": true, "version": 2}\n')
+            with self.assertRaisesRegex(PlanningError, 'unmanaged field collision'):
+                build_plan(target, (desired,), (field,), LockState.empty())
 
 
 if __name__ == '__main__':

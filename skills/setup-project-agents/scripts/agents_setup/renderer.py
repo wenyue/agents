@@ -5,14 +5,16 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python 3.11+ uses the standard library module.
-    from _vendor import tomli as tomllib
-
 from .catalog import load_lock, safe_field_key
 from .host_adapters.base import CapabilityResult, HostAdapter
 from .models import Catalog, DesiredField, DesiredFile, Platform, ProjectConfig
+from .project import ProjectError, confined_target
+from .structured import (
+    StructuredConfigError,
+    dump_document as _dump_structured,
+    format_for_path as _format_for,
+    parse_document,
+)
 
 
 class RenderError(ValueError):
@@ -32,42 +34,6 @@ class RenderedState:
     @property
     def fields_by_key(self) -> Mapping[tuple[str, str], object]:
         return {(item.path.as_posix(), item.key): item.value for item in self.fields}
-
-
-def _jsonc_load(value: str) -> object:
-    result: list[str] = []
-    quoted = False
-    escaped = False
-    index = 0
-    while index < len(value):
-        char = value[index]
-        next_char = value[index + 1] if index + 1 < len(value) else ''
-        if quoted:
-            result.append(char)
-            if escaped:
-                escaped = False
-            elif char == '\\':
-                escaped = True
-            elif char == '"':
-                quoted = False
-            index += 1
-        elif char == '"':
-            quoted = True
-            result.append(char)
-            index += 1
-        elif char == '/' and next_char == '/':
-            index = value.find('\n', index)
-            if index < 0:
-                break
-        elif char == '/' and next_char == '*':
-            end = value.find('*/', index + 2)
-            if end < 0:
-                raise RenderError('unterminated JSONC comment')
-            index = end + 2
-        else:
-            result.append(char)
-            index += 1
-    return json.loads(''.join(result))
 
 
 def _deep_merge(current: object, overlay: object) -> object:
@@ -114,69 +80,18 @@ def _safe_leaves(value: object, prefix: str = '') -> Iterable[tuple[str, object]
     elif prefix:
         try:
             yield safe_field_key(prefix, 'template field'), value
-        except ValueError:
-            return
-
-
-def _toml_scalar(value: object) -> str:
-    if isinstance(value, bool):
-        return 'true' if value else 'false'
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        return repr(value)
-    if isinstance(value, str):
-        return json.dumps(value)
-    if isinstance(value, list):
-        return '[' + ', '.join(_toml_scalar(item) for item in value) + ']'
-    raise RenderError('unsupported TOML value')
-
-
-def _toml_dump(document: Mapping[str, object]) -> bytes:
-    lines: list[str] = []
-
-    def emit(table: Mapping[str, object], prefix: tuple[str, ...]) -> None:
-        if prefix:
-            lines.append('[' + '.'.join(prefix) + ']')
-        for key, value in table.items():
-            if not isinstance(value, dict):
-                lines.append(f'{key} = {_toml_scalar(value)}')
-        nested = [(key, value) for key, value in table.items() if isinstance(value, dict)]
-        if nested and any(not isinstance(value, dict) for value in table.values()):
-            lines.append('')
-        for position, (key, value) in enumerate(nested):
-            emit(value, (*prefix, key))
-            if position + 1 != len(nested):
-                lines.append('')
-
-    emit(document, ())
-    return ('\n'.join(lines).rstrip() + '\n').encode()
-
-
-def _format_for(path: PurePosixPath) -> str | None:
-    if path.suffix == '.toml':
-        return 'toml'
-    if path.suffix == '.json':
-        return 'jsonc' if path.as_posix().endswith('copilot/settings.json') else 'json'
-    return None
+        except ValueError as error:
+            raise RenderError(f'unsafe template field: {prefix}') from error
 
 
 def _load_structured(path: Path, format_name: str) -> dict[str, object]:
     if not path.exists():
         return {}
     try:
-        value = tomllib.loads(path.read_text(encoding='utf-8')) if format_name == 'toml' else _jsonc_load(path.read_text(encoding='utf-8'))
-    except (OSError, ValueError, json.JSONDecodeError) as error:
+        value = parse_document(path.read_bytes(), format_name)
+    except (OSError, StructuredConfigError) as error:
         raise RenderError(f'cannot parse existing native config: {path}') from error
-    if not isinstance(value, dict):
-        raise RenderError(f'native config must be an object: {path}')
     return value
-
-
-def _dump_structured(value: Mapping[str, object], format_name: str) -> bytes:
-    if format_name == 'toml':
-        return _toml_dump(value)
-    return (json.dumps(value, indent=2, ensure_ascii=False) + '\n').encode()
 
 
 def _metadata(source_root: Path) -> Mapping[str, object]:
@@ -199,12 +114,26 @@ def _copy_file(files: dict[PurePosixPath, bytes], path: PurePosixPath, content: 
     files[path] = content
 
 
+_TRANSIENT_NAMES = frozenset({
+    '__pycache__', '.DS_Store', 'Thumbs.db', '.pytest_cache', '.mypy_cache', '.ruff_cache'
+})
+
+
+def _is_transient(path: Path) -> bool:
+    return (
+        any(part in _TRANSIENT_NAMES for part in path.parts)
+        or path.suffix in {'.pyc', '.pyo'}
+    )
+
+
 def _copy_asset(files: dict[PurePosixPath, bytes], source: Path, target: PurePosixPath) -> None:
     if source.is_file():
         _copy_file(files, target, source.read_bytes())
         return
     if source.is_dir():
-        for child in sorted(path for path in source.rglob('*') if path.is_file()):
+        for child in sorted(
+            path for path in source.rglob('*') if path.is_file() and not _is_transient(path)
+        ):
             _copy_file(files, target / child.relative_to(source).as_posix(), child.read_bytes())
         return
     raise RenderError(f'catalog source is missing: {source}')
@@ -270,7 +199,11 @@ def render_desired_state(
     fields: list[DesiredField] = []
     native_documents: dict[PurePosixPath, dict[str, object]] = {}
     native_templates: dict[PurePosixPath, dict[str, object]] = {}
-    lock = load_lock(target_root / '.agents/lock.json')
+    try:
+        lock_path = confined_target(target_root, PurePosixPath('.agents/lock.json'))
+    except ProjectError as error:
+        raise RenderError(str(error)) from error
+    lock = load_lock(lock_path)
     old_fields = {(item.path, item.key) for item in lock.managed_fields}
 
     for asset in catalog.assets:
@@ -296,7 +229,11 @@ def render_desired_state(
             if asset.id == 'config-codex-dart-mcp' and not any(target_root.rglob('pubspec.yaml')):
                 continue
             template = _load_structured(source_root / asset.source, format_name)
-            existing = _load_structured(target_root / asset.target, format_name)
+            try:
+                target_path = confined_target(target_root, asset.target)
+            except ProjectError as error:
+                raise RenderError(str(error)) from error
+            existing = _load_structured(target_path, format_name)
             native_documents[asset.target] = _deep_merge(existing, template)
             native_templates[asset.target] = template
             continue
@@ -336,7 +273,14 @@ def render_desired_state(
                         'rule.github_apply_to': item.get('github', {}).get('applyTo', '**') if isinstance(item.get('github'), dict) else '**',
                     }))
 
-    for path in sorted((item for item in generated_root.rglob('*') if item.is_file()), key=lambda item: item.as_posix()):
+    for path in sorted(
+        (
+            item
+            for item in generated_root.rglob('*')
+            if item.is_file() and not _is_transient(item)
+        ),
+        key=lambda item: item.as_posix(),
+    ):
         relative = PurePosixPath(path.relative_to(generated_root).as_posix())
         _copy_file(files, relative, path.read_bytes())
 

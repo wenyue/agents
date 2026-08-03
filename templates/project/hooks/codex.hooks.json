@@ -2,6 +2,7 @@
   "hooks": {"SessionStart": [{"matcher": "startup|resume|clear|compact", "hooks": [{
     "type": "command",
     "command": "python .agents/skills/manage-agent-tools/scripts/check_recommended_tools.py hook --platform codex",
+    "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File .agents\\skills\\manage-agent-tools\\scripts\\check_recommended_tools.ps1 hook --platform codex",
     "timeout": 30,
     "statusMessage": "Checking recommended tools"
   }]}]}

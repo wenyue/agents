@@ -18,6 +18,13 @@ from .models import (
     Plan,
 )
 from .project import ProjectError, confined_target
+from .structured import (
+    StructuredConfigError,
+    canonical_value_bytes,
+    field_value,
+    format_for_path,
+    parse_document,
+)
 
 
 _COMMIT = re.compile(r'^[0-9a-fA-F]{40}$')
@@ -70,13 +77,38 @@ def _desired_fields(
     return tuple(sorted(result, key=lambda field: (_path_key(field.path), field.key)))
 
 
-def _managed_digests(lock: LockState) -> dict[PurePosixPath, str]:
-    result: dict[PurePosixPath, str] = {}
-    for item in (*lock.managed_files, *lock.managed_fields):
-        existing = result.setdefault(item.path, item.sha256)
-        if existing != item.sha256:
-            raise PlanningError(f'conflicting lock digests: {_path_key(item.path)}')
-    return result
+def _group_desired_fields(
+    fields: Sequence[DesiredField],
+) -> dict[PurePosixPath, tuple[DesiredField, ...]]:
+    paths: dict[PurePosixPath, list[DesiredField]] = {}
+    for field in fields:
+        paths.setdefault(field.path, []).append(field)
+    return {path: tuple(items) for path, items in paths.items()}
+
+
+def _group_managed_fields(lock: LockState) -> dict[PurePosixPath, tuple[ManagedField, ...]]:
+    paths: dict[PurePosixPath, list[ManagedField]] = {}
+    for field in lock.managed_fields:
+        paths.setdefault(field.path, []).append(field)
+    return {path: tuple(items) for path, items in paths.items()}
+
+
+def _field_document(
+    content: bytes,
+    path: PurePosixPath,
+    desired_fields: Sequence[DesiredField],
+) -> dict[str, object]:
+    format_name = desired_fields[0].format if desired_fields else format_for_path(path)
+    if format_name not in {'json', 'jsonc', 'toml'}:
+        raise PlanningError(f'cannot parse managed fields: {_path_key(path)}')
+    try:
+        return parse_document(content, format_name)
+    except StructuredConfigError as error:
+        raise PlanningError(f'cannot parse managed fields: {_path_key(path)}') from error
+
+
+def _value_digest(value: object) -> str:
+    return sha256_bytes(canonical_value_bytes(value))
 
 
 def _read_current(target: Path, path: PurePosixPath) -> bytes | None:
@@ -108,7 +140,7 @@ def _next_lock(
         if path not in field_paths
     )
     managed_fields = tuple(
-        ManagedField(field.path, field.key, sha256_bytes(files[field.path].content))
+        ManagedField(field.path, field.key, _value_digest(field.value))
         for field in fields
     )
     return LockState(1, source_commit, managed_files, managed_fields)
@@ -129,30 +161,54 @@ def build_plan(
         raise PlanningError('source_commit must be a 40-character hexadecimal commit')
     files = _desired_files(desired_files)
     fields = _desired_fields(desired_fields, files)
-    expected_digests = _managed_digests(lock)
-    managed_file_paths = {item.path for item in lock.managed_files}
-    paths = sorted(set(files) | set(expected_digests), key=_path_key)
+    managed_file_digests = {item.path: item.sha256 for item in lock.managed_files}
+    desired_fields_by_path = _group_desired_fields(fields)
+    managed_fields_by_path = _group_managed_fields(lock)
+    paths = sorted(
+        set(files) | set(managed_file_digests) | set(managed_fields_by_path),
+        key=_path_key,
+    )
     changes: list[Change] = []
 
     for path in paths:
         current = _read_current(target_root, path)
         desired = files.get(path)
-        expected_digest = expected_digests.get(path)
+        managed_file_digest = managed_file_digests.get(path)
+        old_fields = managed_fields_by_path.get(path, ())
+        new_fields = desired_fields_by_path.get(path, ())
 
-        if expected_digest is None:
-            if current is None:
-                changes.append(Change(ChangeKind.CREATE, path, desired.content))
-                continue
+        if managed_file_digest is not None:
+            if current is None or sha256_bytes(current) != managed_file_digest:
+                raise PlanningError(f'managed content changed: {_path_key(path)}')
+        elif current is None:
+            if old_fields:
+                raise PlanningError(f'managed field changed: {_path_key(path)}')
+            if desired is None:
+                raise PlanningError(f'missing desired content: {_path_key(path)}')
+            changes.append(Change(ChangeKind.CREATE, path, desired.content))
+            continue
+        elif old_fields or new_fields:
+            document = _field_document(current, path, new_fields)
+            old_keys = {field.key for field in old_fields}
+            for field in old_fields:
+                exists, value = field_value(document, field.key)
+                if not exists or _value_digest(value) != field.sha256:
+                    raise PlanningError(
+                        f'managed field changed: {_path_key(path)}:{field.key}'
+                    )
+            for field in new_fields:
+                if field.key in old_keys:
+                    continue
+                exists, value = field_value(document, field.key)
+                if exists and _value_digest(value) != _value_digest(field.value):
+                    raise PlanningError(
+                        f'unmanaged field collision: {_path_key(path)}:{field.key}'
+                    )
+        else:
             raise PlanningError(f'unmanaged collision: {_path_key(path)}')
 
-        if (
-            current is None
-            or (path in managed_file_paths and sha256_bytes(current) != expected_digest)
-        ):
-            raise PlanningError(f'managed content changed: {_path_key(path)}')
-
         if desired is None:
-            if path not in managed_file_paths:
+            if managed_file_digest is None:
                 raise PlanningError(
                     f'cannot delete field-only path without rendered desired file: '
                     f'{_path_key(path)}'

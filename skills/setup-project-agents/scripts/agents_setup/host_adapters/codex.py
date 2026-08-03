@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 
 from ..models import Platform
@@ -13,9 +14,19 @@ class CodexAdapter:
         if runner is None:
             return CapabilityResult(CapabilityStatus.UNSUPPORTED, 'Codex runner is unavailable')
         result = runner.run(('codex', 'features', 'list'))
-        output = (result.stdout or '').lower()
-        if result.returncode == 0 and 'multi_agent' in output:
-            if any(token in output for token in ('enabled', 'true', 'on')):
+        state = None
+        for line in (result.stdout or '').lower().splitlines():
+            match = re.match(r'^\s*multi_agent(?:\s+|\s*[:=]\s*)(.*)$', line)
+            if match is None:
+                continue
+            tokens = set(re.findall(r'[a-z]+', match.group(1)))
+            enabled = tokens.intersection({'enabled', 'true', 'on'})
+            disabled = tokens.intersection({'disabled', 'false', 'off'})
+            if bool(enabled) != bool(disabled):
+                state = bool(enabled)
+            break
+        if result.returncode == 0 and state is not None:
+            if state:
                 return CapabilityResult(CapabilityStatus.READY, 'Codex effective multi_agent is enabled')
             return CapabilityResult(
                 CapabilityStatus.NEEDS_RESTART,

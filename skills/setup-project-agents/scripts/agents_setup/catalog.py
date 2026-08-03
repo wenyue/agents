@@ -27,7 +27,7 @@ _SEMVER = re.compile(
 _HEX_40 = re.compile(r'^[0-9a-fA-F]{40}$')
 _HEX_64 = re.compile(r'^[0-9a-fA-F]{64}$')
 _NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')
-_FIELD_NAME = re.compile(r'^[A-Za-z][A-Za-z0-9_-]*$')
+_FIELD_NAME = re.compile(r'^[A-Za-z][A-Za-z0-9_@-]*$')
 _WINDOWS_RESERVED_CHARACTERS = frozenset('<>:"\\|?*')
 _WINDOWS_RESERVED_NAMES = frozenset(
     {'CON', 'PRN', 'AUX', 'NUL', 'COM¹', 'COM²', 'COM³', 'LPT¹', 'LPT²', 'LPT³'}
