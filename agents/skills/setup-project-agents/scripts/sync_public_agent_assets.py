@@ -69,10 +69,17 @@ class ExternalSkillPreflight:
 _TEMPLATE_PATTERN = re.compile(r'{{\s*([a-zA-Z0-9_.]+)\s*}}')
 _PUBLIC_SOURCE_DIRECTORY = 'agents'
 _PLUGIN_NAME = 'agents'
+_PLUGIN_VERSION = '0.1.0'
 _PLUGIN_REPOSITORY = 'https://github.com/wenyue/agents'
 _PLUGIN_SKILLS_PATH = './skills/'
+_PLUGIN_MANIFEST_PATHS = (
+    Path('plugin.json'),
+    Path('.codex-plugin/plugin.json'),
+    Path('.cursor-plugin/plugin.json'),
+)
 _RELEASE_REF_PATTERN = re.compile(r'^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$')
 _COMMIT_REF_PATTERN = re.compile(r'^[0-9a-fA-F]{40}$')
+_SEMVER_PATTERN = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$')
 _ASSET_NAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+$')
 _RULE_FILENAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+\.md$')
 _RETIRED_ASSET_KINDS = ('rules', 'skills', 'agents')
@@ -94,6 +101,55 @@ _PUBLIC_AGENT_MODEL_FIELDS = {
 }
 _CONFIG_KEY_PATTERN = re.compile(r'^[A-Za-z0-9_-]+$')
 _GITHUB_REPOSITORY_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
+
+
+def _safe_relative_path(value: str | Path, label: str) -> Path:
+    raw = value.as_posix() if isinstance(value, Path) else value
+    if not isinstance(raw, str) or not raw or '\\' in raw:
+        raise SyncError(f'{label} must be a safe relative path')
+    relative = PurePosixPath(raw)
+    if (
+        relative.is_absolute()
+        or re.match(r'^[A-Za-z]:', raw)
+        or not relative.parts
+        or any(part in {'.', '..'} for part in relative.parts)
+    ):
+        raise SyncError(f'{label} must be a safe relative path')
+    return Path(*relative.parts)
+
+
+def _confined_path(root: Path, relative: str | Path, label: str) -> Path:
+    safe_relative = _safe_relative_path(relative, label)
+    resolved_root = root.resolve()
+    candidate = root
+    for part in safe_relative.parts:
+        candidate /= part
+        if candidate.is_symlink():
+            raise SyncError(f'{label} crosses a symbolic link: {candidate}')
+    try:
+        candidate.resolve(strict=False).relative_to(resolved_root)
+    except ValueError as error:
+        raise SyncError(f'{label} resolves outside its owned root') from error
+    return candidate
+
+
+def _confined_candidate(root: Path, candidate: Path, label: str) -> Path:
+    try:
+        relative = candidate.absolute().relative_to(root.absolute())
+    except ValueError as error:
+        raise SyncError(f'{label} resolves outside its owned root') from error
+    return _confined_path(root, relative, label)
+
+
+def _safe_asset_name(value: Any, pattern: re.Pattern[str], label: str) -> str:
+    if (
+        not isinstance(value, str)
+        or value in {'.', '..'}
+        or Path(value).name != value
+        or not pattern.fullmatch(value)
+    ):
+        raise SyncError(f'{label} must use a safe name')
+    return value
 
 
 def _catalog_digest(public_config: dict[str, Any]) -> str:
@@ -419,9 +475,12 @@ def _config_template_condition_applies(
     pattern = condition['path_glob_exists']
     if not isinstance(pattern, str) or not pattern:
         raise SyncError(f'{label}.when.path_glob_exists must be a non-empty string')
-    pattern_path = Path(pattern)
-    if pattern_path.is_absolute() or '..' in pattern_path.parts:
-        raise SyncError(f'{label}.when.path_glob_exists must stay inside the target repository')
+    try:
+        _safe_relative_path(pattern, f'{label}.when.path_glob_exists')
+    except SyncError as error:
+        raise SyncError(
+            f'{label}.when.path_glob_exists must stay inside the target repository'
+        ) from error
     if any(context.target_root.glob(pattern)):
         return True
     return any(
@@ -654,7 +713,11 @@ def load_external_skill_specs(
         reserved,
         seen,
     )
-    config_path = target_root / '.agents' / 'config.json'
+    config_path = _confined_path(
+        target_root,
+        '.agents/config.json',
+        'Project external Skill config',
+    )
     if not config_path.is_file():
         return result
     project_config = load_json(config_path)
@@ -743,9 +806,15 @@ def _validate_config_template(
             raise SyncError(f'{validation_label} paths and field must be non-empty strings')
         if not isinstance(base_path, str):
             raise SyncError(f'{validation_label}.base_path must be a string')
-        base_relative = Path(base_path)
-        if base_relative.is_absolute() or '..' in base_relative.parts:
-            raise SyncError(f'{validation_label}.base_path must stay inside the target repository')
+        try:
+            base_relative = _safe_relative_path(
+                base_path,
+                f'{validation_label}.base_path',
+            )
+        except SyncError as error:
+            raise SyncError(
+                f'{validation_label}.base_path must stay inside the target repository'
+            ) from error
         objects = _mapping_at_path(config, objects_path, validation_label)
         for object_name, object_value in objects.items():
             if not isinstance(object_value, dict) or field not in object_value:
@@ -755,43 +824,46 @@ def _validate_config_template(
                 raise SyncError(
                     f'{label} object {object_name} field {field} must be a non-empty string'
                 )
-            relative_reference = Path(reference)
-            if relative_reference.is_absolute():
+            try:
+                relative_reference = _safe_relative_path(
+                    reference,
+                    f'{label} object {object_name} field {field}',
+                )
+            except SyncError as error:
                 raise SyncError(
                     f'{label} object {object_name} field {field} must be relative'
-                )
-            candidate = (context.target_root / base_relative / relative_reference).resolve()
-            try:
-                candidate.relative_to(context.target_root.resolve())
-            except ValueError as error:
-                raise SyncError(
-                    f'{label} object {object_name} field {field} escapes the target repository'
                 ) from error
-            if not candidate.is_file():
+            candidate = _confined_path(
+                context.target_root,
+                base_relative / relative_reference,
+                f'{label} object {object_name} field {field}',
+            )
+            relative_candidate = _relative(candidate, context.target_root)
+            planned = any(
+                change.path == relative_candidate and change.action != 'deleted'
+                for change in context.changes
+            )
+            if not candidate.is_file() and not planned:
                 raise SyncError(
                     f'{label} object {object_name} field {field} references missing path '
-                    f'{candidate.relative_to(context.target_root.resolve())}'
+                    f'{relative_candidate}'
                 )
 
 
 def _safe_config_target(target_root: Path, relative: Path, label: str) -> Path:
-    resolved_root = target_root.resolve()
-    candidate = target_root
-    for part in relative.parts:
-        candidate /= part
-        if candidate.is_symlink():
-            raise SyncError(f'{label}.path crosses a symbolic link: {candidate}')
     try:
-        candidate.resolve(strict=False).relative_to(resolved_root)
-    except ValueError as error:
+        return _confined_path(target_root, relative, f'{label}.path')
+    except SyncError as error:
+        if 'symbolic link' in str(error):
+            raise
         raise SyncError(f'{label}.path resolves outside the target repository') from error
-    return candidate
 
 
 def _reconcile_config_templates(
     context: SyncContext,
     public_config: dict[str, Any],
 ) -> None:
+    planned_content: dict[Path, str] = {}
     for index, config_template in enumerate(_require_items(public_config, 'config_templates')):
         label = f'config_templates[{index}]'
         if not isinstance(config_template, dict):
@@ -813,35 +885,48 @@ def _reconcile_config_templates(
         relative_path = config_template.get('path')
         if not isinstance(relative_path, str) or not relative_path:
             raise SyncError(f'{label}.path must be a non-empty string')
-        relative = Path(relative_path)
-        if relative.is_absolute() or '..' in relative.parts:
+        try:
+            relative = _safe_relative_path(relative_path, f'{label}.path')
+        except SyncError as error:
             raise SyncError(f'{label}.path must stay inside the target repository')
         template_name = config_template.get('template')
         if not isinstance(template_name, str) or not template_name:
             raise SyncError(f'{label}.template must be a non-empty string')
-        template_relative = Path(template_name)
-        if template_relative.is_absolute() or '..' in template_relative.parts:
+        try:
+            template_relative = _safe_relative_path(
+                template_name,
+                f'{label}.template',
+            )
+        except SyncError as error:
             raise SyncError(f'{label}.template must stay inside assets/templates')
         file_format = config_template.get('format')
         if file_format not in {'json', 'jsonc', 'toml'}:
             raise SyncError(f'{label}.format must be json, jsonc, or toml')
         if config_template.get('merge') != 'deep-overwrite':
             raise SyncError(f'{label}.merge must be deep-overwrite')
+        template_path = _confined_path(
+            context.skill_root,
+            Path('assets') / 'templates' / template_relative,
+            f'{label}.template',
+        )
+        if not template_path.is_file():
+            raise SyncError(f'Missing config template: {template_path}')
         if not _config_template_condition_applies(
             context,
             config_template.get('when'),
             label,
         ):
             continue
-
-        template_path = context.skill_root / 'assets' / 'templates' / template_relative
         try:
             desired_content = template_path.read_text(encoding='utf-8')
         except FileNotFoundError as error:
             raise SyncError(f'Missing config template: {template_path}') from error
         desired = _parse_native_config(desired_content, file_format, template_name)
         target = _safe_config_target(context.target_root, relative, label)
-        if target.is_file():
+        if target in planned_content:
+            original = planned_content[target]
+            current = _parse_native_config(original, file_format, relative_path)
+        elif target.is_file():
             try:
                 original = target.read_text(encoding='utf-8')
             except (OSError, UnicodeDecodeError) as error:
@@ -865,6 +950,7 @@ def _reconcile_config_templates(
             config_template.get('validations'),
             label,
         )
+        planned_content[target] = rendered
         _write_bytes(context, target, rendered.encode('utf-8'))
 
 
@@ -883,13 +969,21 @@ def _source_archive_url(public_config: dict[str, Any]) -> str:
 
 def _public_source_root(path: Path) -> Path:
     root = path.expanduser().resolve()
-    for candidate in (root, root / _PUBLIC_SOURCE_DIRECTORY):
-        manifest = (
-            candidate
-            / 'skills'
-            / 'setup-project-agents'
-            / 'references'
-            / 'public_assets.json'
+    candidates = [root]
+    public_subdirectory = root / _PUBLIC_SOURCE_DIRECTORY
+    if public_subdirectory.exists() or public_subdirectory.is_symlink():
+        candidates.append(
+            _confined_path(
+                root,
+                _PUBLIC_SOURCE_DIRECTORY,
+                'Public source directory',
+            )
+        )
+    for candidate in candidates:
+        manifest = _confined_path(
+            candidate,
+            'skills/setup-project-agents/references/public_assets.json',
+            'Public source manifest',
         )
         if manifest.is_file():
             return candidate
@@ -902,30 +996,100 @@ def validate_source_root(path: Path) -> Path:
     return root
 
 
-def _is_plugin_root(path: Path) -> bool:
-    try:
-        manifest = load_json(path / 'plugin.json')
-    except SyncError:
-        return False
-    return (
-        manifest.get('name') == _PLUGIN_NAME
-        and manifest.get('repository') == _PLUGIN_REPOSITORY
-        and manifest.get('skills') == _PLUGIN_SKILLS_PATH
+def _has_plugin_identity(path: Path) -> bool:
+    return any(
+        (path / relative).exists() or (path / relative).is_symlink()
+        for relative in _PLUGIN_MANIFEST_PATHS
     )
+
+
+def _validate_plugin_root(path: Path) -> None:
+    manifests: list[tuple[Path, dict[str, Any]]] = []
+    for relative in _PLUGIN_MANIFEST_PATHS:
+        manifest_path = _confined_path(path, relative, f'Plugin manifest {relative}')
+        if not manifest_path.is_file():
+            raise SyncError(f'Installed plugin is missing native manifest: {relative}')
+        manifests.append((relative, load_json(manifest_path)))
+
+    versions = []
+    for relative, manifest in manifests:
+        version = manifest.get('version')
+        if not isinstance(version, str) or not _SEMVER_PATTERN.fullmatch(version):
+            raise SyncError(f'Installed plugin manifest {relative} version must be strict semver')
+        versions.append(version)
+    if len(set(versions)) != 1:
+        raise SyncError('Installed plugin native manifests must use one consistent version')
+    if versions[0] != _PLUGIN_VERSION:
+        raise SyncError(f'Installed plugin version must be {_PLUGIN_VERSION}')
+
+    for relative, manifest in manifests:
+        for field, expected in (
+            ('name', _PLUGIN_NAME),
+            ('repository', _PLUGIN_REPOSITORY),
+            ('skills', _PLUGIN_SKILLS_PATH),
+        ):
+            if manifest.get(field) != expected:
+                raise SyncError(
+                    f'Installed plugin manifest {relative} {field} must be {expected}'
+                )
+
+    public_manifest_path = _confined_path(
+        path,
+        'skills/setup-project-agents/references/public_assets.json',
+        'Installed plugin public catalog',
+    )
+    public_config = load_json(public_manifest_path)
+    if public_config.get('source_repo') != _PLUGIN_REPOSITORY:
+        raise SyncError(
+            f'Installed plugin source_repo must be {_PLUGIN_REPOSITORY}'
+        )
+    source_ref = public_config.get('source_ref')
+    if not isinstance(source_ref, str) or not (
+        _RELEASE_REF_PATTERN.fullmatch(source_ref)
+        or _COMMIT_REF_PATTERN.fullmatch(source_ref)
+    ):
+        raise SyncError(
+            'Installed plugin source_ref must be a release tag or 40-character commit'
+        )
+    catalog = public_config.get('catalog')
+    if not isinstance(catalog, dict):
+        raise SyncError('Installed plugin catalog must be an object')
+    for field, expected in (
+        ('id', _PLUGIN_NAME),
+        ('version', _PLUGIN_VERSION),
+        ('revision', source_ref),
+    ):
+        if catalog.get(field) != expected:
+            raise SyncError(f'Installed plugin catalog.{field} must be {expected}')
+    if _RELEASE_REF_PATTERN.fullmatch(source_ref) and source_ref != f'v{_PLUGIN_VERSION}':
+        raise SyncError(
+            f'Installed plugin release source_ref must be v{_PLUGIN_VERSION}'
+        )
+
+
+def _is_plugin_root(path: Path) -> bool:
+    if not _has_plugin_identity(path):
+        return False
+    _validate_plugin_root(path)
+    return True
 
 
 def find_plugin_source(installed_skill_root: Path) -> Path | None:
     installed = installed_skill_root.resolve()
-    for candidate in installed.parents:
-        if not _is_plugin_root(candidate):
-            continue
-        try:
-            public_root = _public_source_root(candidate)
-        except SyncError:
-            continue
-        if (public_root / 'skills' / 'setup-project-agents').resolve() == installed:
-            return validate_source_root(candidate)
-    return None
+    if installed.name != 'setup-project-agents' or installed.parent.name != 'skills':
+        return None
+    candidate = installed.parent.parent
+    if not _is_plugin_root(candidate):
+        return None
+    public_root = _public_source_root(candidate)
+    plugin_skill = _confined_path(
+        public_root,
+        'skills/setup-project-agents',
+        'Installed plugin setup-project-agents Skill',
+    )
+    if plugin_skill.resolve() != installed:
+        raise SyncError('Installed plugin Skill is outside its declared plugin root')
+    return validate_source_root(candidate)
 
 
 def _find_archive_repo_root(extract_root: Path) -> Path:
@@ -951,8 +1115,7 @@ def _fetch_archive_source(public_config: dict[str, Any]) -> Path:
     extract_root = source_dir / 'extract'
     try:
         urllib.request.urlretrieve(archive_url, archive_path)
-        with zipfile.ZipFile(archive_path) as archive:
-            archive.extractall(extract_root)
+        _extract_safe_archive(archive_path, extract_root)
         extracted_source = _find_archive_repo_root(extract_root)
         shutil.move(str(extracted_source), source_root)
     except OSError as error:
@@ -961,6 +1124,9 @@ def _fetch_archive_source(public_config: dict[str, Any]) -> Path:
     except zipfile.BadZipFile as error:
         shutil.rmtree(source_dir, ignore_errors=True)
         raise SyncError(f'Source archive is not a valid zip file: {archive_url}') from error
+    except SyncError:
+        shutil.rmtree(source_dir, ignore_errors=True)
+        raise
     try:
         _public_source_root(source_root)
     except SyncError:
@@ -1025,7 +1191,11 @@ def _fetch_external_repository(repository: str, ref: str) -> tuple[Path, Path]:
 
 
 def _external_skill_installed(target_root: Path, name: str) -> bool:
-    target = target_root / '.agents' / 'skills' / name
+    target = _confined_path(
+        target_root,
+        Path('.agents') / 'skills' / name,
+        f'External Skill target {name}',
+    )
     return target.exists() and (target / 'SKILL.md').is_file()
 
 
@@ -1049,6 +1219,13 @@ def preflight_external_skills(
     target_root: Path,
     specs: list[ExternalSkillSpec],
 ) -> ExternalSkillPreflight:
+    for spec in specs:
+        _safe_asset_name(spec.name, _ASSET_NAME_PATTERN, 'External Skill name')
+        _confined_path(
+            target_root,
+            Path('.agents') / 'skills' / spec.name,
+            f'External Skill target {spec.name}',
+        )
     grouped: dict[tuple[str, str], list[ExternalSkillSpec]] = {}
     for spec in specs:
         grouped.setdefault((spec.repository, spec.ref), []).append(spec)
@@ -1097,6 +1274,40 @@ def _require_items(config: dict[str, Any], key: str) -> list[dict[str, Any]]:
     return value
 
 
+def _validate_public_catalog_asset_names(config: dict[str, Any]) -> None:
+    for key, field, pattern, label in (
+        ('rules', 'file', _RULE_FILENAME_PATTERN, 'public rule file'),
+        ('rule_blueprints', 'file', _RULE_FILENAME_PATTERN, 'Rule blueprint file'),
+        ('skills', 'name', _ASSET_NAME_PATTERN, 'public Skill name'),
+        ('skill_blueprints', 'name', _ASSET_NAME_PATTERN, 'Skill blueprint name'),
+        ('external_skills', 'name', _ASSET_NAME_PATTERN, 'external Skill name'),
+        ('agent_prompts', 'name', _ASSET_NAME_PATTERN, 'public agent prompt name'),
+    ):
+        for index, item in enumerate(_require_items(config, key)):
+            _safe_asset_name(item.get(field), pattern, f'{key}[{index}] {label}')
+
+
+def _platform_wrapper_specs(
+    public_config: dict[str, Any],
+    key: str,
+) -> list[dict[str, Any]]:
+    platforms = public_config.get('platforms') or {}
+    if not isinstance(platforms, dict):
+        raise SyncError('platforms must be an object')
+    wrappers = _require_items(platforms, key)
+    for index, wrapper in enumerate(wrappers):
+        label = f'platforms.{key}[{index}]'
+        template = wrapper.get('template')
+        target_pattern = wrapper.get('path')
+        if not isinstance(template, str) or not template:
+            raise SyncError(f'{label}.template must be a non-empty string')
+        if not isinstance(target_pattern, str) or not target_pattern:
+            raise SyncError(f'{label}.path must be a non-empty string')
+        _safe_relative_path(template, f'{label}.template')
+        _safe_relative_path(target_pattern, f'{label}.path')
+    return wrappers
+
+
 def _entry_file_specs(public_config: dict[str, Any]) -> list[tuple[str, str]]:
     specs = []
     for index, entry_file in enumerate(_require_items(public_config, 'entry_files')):
@@ -1104,14 +1315,16 @@ def _entry_file_specs(public_config: dict[str, Any]) -> list[tuple[str, str]]:
         template_name = entry_file.get('template')
         if not isinstance(template_name, str) or not template_name:
             raise SyncError(f'{label}.template must be a non-empty string')
-        template_relative = Path(template_name)
-        if template_relative.is_absolute() or '..' in template_relative.parts:
+        try:
+            _safe_relative_path(template_name, f'{label}.template')
+        except SyncError as error:
             raise SyncError(f'{label}.template must stay inside assets/templates')
         target_path = entry_file.get('path')
         if not isinstance(target_path, str) or not target_path:
             raise SyncError(f'{label}.path must be a non-empty string')
-        target_relative = Path(target_path)
-        if target_relative.is_absolute() or '..' in target_relative.parts:
+        try:
+            _safe_relative_path(target_path, f'{label}.path')
+        except SyncError as error:
             raise SyncError(f'{label}.path must stay inside the target repository')
         specs.append((template_name, target_path))
     return specs
@@ -1126,14 +1339,16 @@ def _file_template_specs(public_config: dict[str, Any]) -> list[tuple[str, str]]
         template_name = file_template.get('template')
         if not isinstance(template_name, str) or not template_name:
             raise SyncError(f'{label}.template must be a non-empty string')
-        template_relative = Path(template_name)
-        if template_relative.is_absolute() or '..' in template_relative.parts:
+        try:
+            _safe_relative_path(template_name, f'{label}.template')
+        except SyncError as error:
             raise SyncError(f'{label}.template must stay inside assets/templates')
         target_path = file_template.get('path')
         if not isinstance(target_path, str) or not target_path:
             raise SyncError(f'{label}.path must be a non-empty string')
-        target_relative = Path(target_path)
-        if target_relative.is_absolute() or '..' in target_relative.parts:
+        try:
+            _safe_relative_path(target_path, f'{label}.path')
+        except SyncError as error:
             raise SyncError(f'{label}.path must stay inside the target repository')
         specs.append((template_name, target_path))
     return specs
@@ -1147,12 +1362,23 @@ def _reconcile_file_templates(
         _file_template_specs(public_config)
     ):
         label = f'file_templates[{index}]'
-        template_path = context.skill_root / 'assets' / 'templates' / template_name
+        template_path = _confined_path(
+            context.skill_root,
+            Path('assets') / 'templates' / _safe_relative_path(
+                template_name,
+                f'{label}.template',
+            ),
+            f'{label}.template',
+        )
         try:
             content = template_path.read_bytes()
         except FileNotFoundError as error:
             raise SyncError(f'Missing file template: {template_path}') from error
-        target = _safe_config_target(context.target_root, Path(target_path), label)
+        target = _safe_config_target(
+            context.target_root,
+            _safe_relative_path(target_path, f'{label}.path'),
+            label,
+        )
         _write_bytes(context, target, content)
 
 
@@ -1160,6 +1386,8 @@ def _ignore_patterns(config: dict[str, Any]) -> list[str]:
     value = config.get('ignore', [])
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise SyncError('ignore must be a list of strings')
+    for index, pattern in enumerate(value):
+        _safe_relative_path(pattern, f'ignore[{index}]')
     return value
 
 
@@ -1319,11 +1547,14 @@ def _record_file(context: SyncContext, action: str, path: Path) -> None:
 def _directory_snapshot(root: Path) -> dict[str, bytes]:
     if not root.is_dir():
         return {}
-    return {
-        path.relative_to(root).as_posix(): path.read_bytes()
-        for path in root.rglob('*')
-        if path.is_file()
-    }
+    snapshot: dict[str, bytes] = {}
+    for path in root.rglob('*'):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root)
+        safe_path = _confined_path(root, relative, f'Directory snapshot {relative}')
+        snapshot[relative.as_posix()] = safe_path.read_bytes()
+    return snapshot
 
 
 def _remove_tree_or_link(path: Path) -> None:
@@ -1361,9 +1592,14 @@ def sync_external_skills(
     context: SyncContext,
     preflight: ExternalSkillPreflight,
 ) -> list[ExternalSkillWarning]:
+    validate_external_skill_sync(context.target_root, preflight)
     warnings = list(preflight.warnings)
     for name, source in preflight.ready.items():
-        target = context.target_root / '.agents' / 'skills' / name
+        target = _confined_path(
+            context.target_root,
+            Path('.agents') / 'skills' / name,
+            f'External Skill target {name}',
+        )
         installed = target.exists() and (target / 'SKILL.md').is_file()
         unchanged = (
             installed
@@ -1390,7 +1626,26 @@ def sync_external_skills(
     return warnings
 
 
+def validate_external_skill_sync(
+    target_root: Path,
+    preflight: ExternalSkillPreflight,
+) -> None:
+    for name, source in preflight.ready.items():
+        _safe_asset_name(name, _ASSET_NAME_PATTERN, 'External Skill name')
+        if source.is_symlink() or not source.is_dir():
+            raise SyncError(f'External Skill source {name} must be a real directory')
+        _directory_snapshot(source)
+        target = _confined_path(
+            target_root,
+            Path('.agents') / 'skills' / name,
+            f'External Skill target {name}',
+        )
+        if target.exists():
+            _directory_snapshot(target)
+
+
 def _write_bytes(context: SyncContext, target: Path, content: bytes) -> None:
+    target = _confined_candidate(context.target_root, target, 'Target write')
     exists = target.exists()
     if exists and target.read_bytes() == content:
         _record_file(context, 'unchanged', target)
@@ -1425,10 +1680,16 @@ def _prune_empty_dirs(
     target: Path,
     ignore_patterns: list[str] | None = None,
 ) -> None:
+    target = _confined_candidate(context.target_root, target, 'Target directory prune')
     if not target.exists():
         return
     directories = sorted((path for path in target.rglob('*') if path.is_dir()), reverse=True)
     for directory in directories:
+        directory = _confined_candidate(
+            context.target_root,
+            directory,
+            'Target directory prune',
+        )
         if ignore_patterns and _is_ignored(directory.relative_to(target), ignore_patterns):
             continue
         if directory.exists() and not any(directory.iterdir()):
@@ -1438,6 +1699,7 @@ def _prune_empty_dirs(
 
 
 def _delete_path(context: SyncContext, target: Path) -> None:
+    target = _confined_candidate(context.target_root, target, 'Target delete')
     relative_target = _relative(target, context.target_root)
     if any(
         change.action == 'deleted' and change.path == relative_target
@@ -1448,6 +1710,7 @@ def _delete_path(context: SyncContext, target: Path) -> None:
         return
     if target.is_dir():
         for child in sorted(target.rglob('*'), reverse=True):
+            child = _confined_candidate(context.target_root, child, 'Target delete')
             if child.is_file() or child.is_symlink():
                 if not context.check:
                     child.unlink()
@@ -1465,6 +1728,8 @@ def _delete_path(context: SyncContext, target: Path) -> None:
 
 
 def _copy_file(context: SyncContext, source: Path, target: Path) -> None:
+    if source.is_symlink():
+        raise SyncError(f'Public asset source crosses a symbolic link: {source}')
     if not source.is_file():
         raise SyncError(f'Missing public asset: {source}')
     _write_bytes(context, target, source.read_bytes())
@@ -1518,7 +1783,14 @@ def render_template(template: str, data: dict[str, Any], template_name: str) -> 
 
 
 def _template_text(context: SyncContext, template_name: str) -> str:
-    template_path = context.skill_root / 'assets' / 'templates' / template_name
+    template_path = _confined_path(
+        context.skill_root,
+        Path('assets') / 'templates' / _safe_relative_path(
+            template_name,
+            f'Template {template_name}',
+        ),
+        f'Template {template_name}',
+    )
     if not template_path.is_file():
         raise SyncError(f'Missing template: {template_path}')
     return template_path.read_text(encoding='utf-8')
@@ -1531,13 +1803,18 @@ def _render_to_target(
     data: dict[str, Any],
 ) -> None:
     target_relative = render_template(target_pattern, data, target_pattern)
+    target = _confined_path(
+        context.target_root,
+        target_relative,
+        f'Rendered target {target_pattern}',
+    )
     rendered = render_template(_template_text(context, template_name), data, template_name)
-    _write_bytes(context, context.target_root / target_relative, rendered.encode('utf-8'))
+    _write_bytes(context, target, rendered.encode('utf-8'))
 
 
 def _wrapper_root(target_pattern: str) -> Path:
     static_prefix = target_pattern.split('{{', 1)[0].rstrip('/\\')
-    return Path(static_prefix)
+    return _safe_relative_path(static_prefix, f'Wrapper target {target_pattern}')
 
 
 def _delete_stale_wrapper_files(
@@ -1548,7 +1825,11 @@ def _delete_stale_wrapper_files(
 ) -> None:
     if not mirror_delete:
         return
-    root = context.target_root / _wrapper_root(target_pattern)
+    root = _confined_path(
+        context.target_root,
+        _wrapper_root(target_pattern),
+        f'Wrapper root {target_pattern}',
+    )
     if not root.exists():
         return
     existing_paths = {
@@ -1570,13 +1851,17 @@ def _mirror_dir(
     ignore_patterns: list[str],
     mirror_delete: bool,
 ) -> None:
+    if source.is_symlink():
+        raise SyncError(f'Public asset source crosses a symbolic link: {source}')
+    target = _confined_candidate(context.target_root, target, 'Mirrored target')
     if not source.is_dir():
         raise SyncError(f'Missing public asset directory: {source}')
-    source_files = {
-        path.relative_to(source)
-        for path in source.rglob('*')
-        if path.is_file() and not _is_ignored(path.relative_to(source), ignore_patterns)
-    }
+    source_files = set()
+    for path in source.rglob('*'):
+        relative = path.relative_to(source)
+        if path.is_file() and not _is_ignored(relative, ignore_patterns):
+            _confined_path(source, relative, f'Mirrored source {relative}')
+            source_files.add(relative)
     target_files = set()
     if target.exists():
         target_files = {
@@ -1763,7 +2048,11 @@ def _read_frontmatter_value(path: Path, key: str) -> str:
 
 
 def _public_skill_source(context: SyncContext, name: str) -> Path:
-    source = _public_source_root(context.source_root) / 'skills' / name
+    source = _confined_path(
+        _public_source_root(context.source_root),
+        Path('skills') / name,
+        f'Public Skill source {name}',
+    )
     if (source / 'SKILL.md').is_file():
         return source
     installed = context.installed_skill_root
@@ -1787,29 +2076,64 @@ def _delete_retired_assets(
     platforms = public_config.get('platforms') or {}
     if not isinstance(platforms, dict):
         raise SyncError('platforms must be an object')
-    rule_wrappers = _require_items(platforms, 'rule_wrappers')
-    agent_wrappers = _require_items(platforms, 'agent_wrappers')
+    rule_wrappers = _platform_wrapper_specs(public_config, 'rule_wrappers')
+    agent_wrappers = _platform_wrapper_specs(public_config, 'agent_wrappers')
     agent_defaults = platforms.get('agent_defaults') or {}
     for filename in retired['rules']:
         rule_data = _rule_data({'file': filename})
-        _delete_path(context, context.target_root / '.agents' / 'rules' / filename)
+        _delete_path(
+            context,
+            _confined_path(
+                context.target_root,
+                Path('.agents') / 'rules' / filename,
+                f'Retired Rule target {filename}',
+            ),
+        )
         for wrapper in rule_wrappers:
             target_pattern = wrapper.get('path')
             if not isinstance(target_pattern, str) or not target_pattern:
                 raise SyncError('Each rule wrapper requires path')
             relative_target = render_template(target_pattern, rule_data, target_pattern)
-            _delete_path(context, context.target_root / relative_target)
+            _delete_path(
+                context,
+                _confined_path(
+                    context.target_root,
+                    relative_target,
+                    f'Retired Rule wrapper target {target_pattern}',
+                ),
+            )
     for name in retired['skills']:
-        _delete_path(context, context.target_root / '.agents' / 'skills' / name)
+        _delete_path(
+            context,
+            _confined_path(
+                context.target_root,
+                Path('.agents') / 'skills' / name,
+                f'Retired Skill target {name}',
+            ),
+        )
     for name in retired['agents']:
         agent_data = _agent_data({'name': name}, agent_defaults)
-        _delete_path(context, context.target_root / '.agents' / 'agents' / f'{name}.md')
+        _delete_path(
+            context,
+            _confined_path(
+                context.target_root,
+                Path('.agents') / 'agents' / f'{name}.md',
+                f'Retired agent target {name}',
+            ),
+        )
         for wrapper in agent_wrappers:
             target_pattern = wrapper.get('path')
             if not isinstance(target_pattern, str) or not target_pattern:
                 raise SyncError('Each agent wrapper requires path')
             relative_target = render_template(target_pattern, agent_data, target_pattern)
-            _delete_path(context, context.target_root / relative_target)
+            _delete_path(
+                context,
+                _confined_path(
+                    context.target_root,
+                    relative_target,
+                    f'Retired agent wrapper target {target_pattern}',
+                ),
+            )
 
 
 def _referenced_skill_path(target_root: Path, agent_path: Path) -> Path | None:
@@ -1817,7 +2141,11 @@ def _referenced_skill_path(target_root: Path, agent_path: Path) -> Path | None:
     match = re.fullmatch(r'Apply @(?P<path>\.agents/skills/[A-Za-z0-9_.-]+/SKILL\.md)', body)
     if not match:
         return None
-    return target_root / Path(match.group('path'))
+    return _confined_path(
+        target_root,
+        match.group('path'),
+        'Project-local agent Skill reference',
+    )
 
 
 def _local_agent_description(target_root: Path, agent_path: Path, name: str) -> str:
@@ -1841,7 +2169,11 @@ def _read_entry_rule_rows(
         r'^\|\s*(?P<read_when>.*?)\s*\|\s*`\.agents/rules/(?P<file>[^`]+)`\s*\|\s*`(?P<strength>[^`]+)`\s*\|$'
     )
     for _, target_path in _entry_file_specs(public_config):
-        entry_path = target_root / target_path
+        entry_path = _confined_path(
+            target_root,
+            target_path,
+            f'Entry file target {target_path}',
+        )
         if not entry_path.is_file():
             continue
         for line in entry_path.read_text(encoding='utf-8').splitlines():
@@ -1870,14 +2202,30 @@ def _default_project_cursor_description(filename: str) -> str:
 
 def _local_rule_metadata(target_root: Path, filename: str, agents_rows: dict[str, dict[str, str]]) -> dict[str, Any]:
     name = _remove_suffix(filename, '.md')
-    cursor_frontmatter = _read_frontmatter(target_root / '.cursor' / 'rules' / f'{name}.mdc')
+    cursor_frontmatter = _read_frontmatter(
+        _confined_path(
+            target_root,
+            Path('.cursor') / 'rules' / f'{name}.mdc',
+            f'Project-local Cursor Rule {name}',
+        )
+    )
     github_frontmatter = _read_frontmatter(
-        target_root / '.github' / 'instructions' / f'{name}.instructions.md'
+        _confined_path(
+            target_root,
+            Path('.github') / 'instructions' / f'{name}.instructions.md',
+            f'Project-local GitHub Rule {name}',
+        )
     )
     agents_row = agents_rows.get(filename, {})
     return {
         'read_when': agents_row.get('read_when') or _default_project_read_when(filename),
-        'strength': agents_row.get('strength') or _read_strength(target_root / '.agents' / 'rules' / filename),
+        'strength': agents_row.get('strength') or _read_strength(
+            _confined_path(
+                target_root,
+                Path('.agents') / 'rules' / filename,
+                f'Project-local Rule {filename}',
+            )
+        ),
         'cursor': {
             'description': _scalar_value(
                 cursor_frontmatter.get('description'),
@@ -1899,7 +2247,11 @@ def discover_local_assets(target_root: Path, public_config: dict[str, Any]) -> d
         agent['name'] for agent in _require_items(public_config, 'agent_prompts')
     }.union(retired['agents'])
     rules = []
-    rules_root = target_root / '.agents' / 'rules'
+    rules_root = _confined_path(
+        target_root,
+        '.agents/rules',
+        'Project-local Rules root',
+    )
     agents_rows = _read_entry_rule_rows(target_root, public_config)
     blueprint_rule_metadata = {
         rule.get('file'): rule
@@ -1926,7 +2278,11 @@ def discover_local_assets(target_root: Path, public_config: dict[str, Any]) -> d
                 }
             )
     agent_prompts = []
-    agents_root = target_root / '.agents' / 'agents'
+    agents_root = _confined_path(
+        target_root,
+        '.agents/agents',
+        'Project-local agents root',
+    )
     if agents_root.exists():
         for agent_path in sorted(agents_root.glob('*.md')):
             name = agent_path.stem
@@ -2039,8 +2395,10 @@ def _generate_wrappers(
     require_agent_runtime: bool,
 ) -> None:
     platforms = public_config.get('platforms') or {}
-    rule_wrappers = _require_items(platforms, 'rule_wrappers')
-    agent_wrappers = _require_items(platforms, 'agent_wrappers')
+    if not isinstance(platforms, dict):
+        raise SyncError('platforms must be an object')
+    rule_wrappers = _platform_wrapper_specs(public_config, 'rule_wrappers')
+    agent_wrappers = _platform_wrapper_specs(public_config, 'agent_wrappers')
     agent_defaults = platforms.get('agent_defaults') or {}
     all_rules = _require_items(public_config, 'rules') + _require_items(local_config, 'rules')
     all_agents = _require_items(public_config, 'agent_prompts') + _require_items(
@@ -2052,6 +2410,13 @@ def _generate_wrappers(
     github_runtime_overrides = _github_agent_runtime_overrides(local_config)
     desired_rule_paths_by_wrapper = {wrapper['path']: set() for wrapper in rule_wrappers}
     desired_agent_paths_by_wrapper = {wrapper['path']: set() for wrapper in agent_wrappers}
+    for wrapper in rule_wrappers + agent_wrappers:
+        _template_text(context, wrapper['template'])
+        _confined_path(
+            context.target_root,
+            _wrapper_root(wrapper['path']),
+            f'Wrapper root {wrapper["path"]}',
+        )
     for rule in all_rules:
         for wrapper in rule_wrappers:
             rendered_target = render_template(wrapper['path'], _rule_data(rule), wrapper['path'])
@@ -2137,25 +2502,34 @@ def _record_missing_generated_outputs(
         filename = rule.get('file')
         if not isinstance(filename, str) or not _RULE_FILENAME_PATTERN.fullmatch(filename):
             raise SyncError('Each Rule blueprint requires a safe output file name')
-        target = context.target_root / '.agents' / 'rules' / filename
+        target = _confined_path(
+            context.target_root,
+            Path('.agents') / 'rules' / filename,
+            f'Generated Rule target {filename}',
+        )
         if not target.is_file():
             _record_file(context, 'missing', target)
     for skill in _require_items(public_config, 'skill_blueprints'):
         name = skill.get('name')
         if not isinstance(name, str) or not _ASSET_NAME_PATTERN.fullmatch(name):
             raise SyncError('Each Skill blueprint requires a safe output name')
-        target = context.target_root / '.agents' / 'skills' / name / 'SKILL.md'
+        target = _confined_path(
+            context.target_root,
+            Path('.agents') / 'skills' / name / 'SKILL.md',
+            f'Generated Skill target {name}',
+        )
         if not target.is_file():
             _record_file(context, 'missing', target)
 
 
-def sync_public_assets(
+def _sync_public_assets_once(
     context: SyncContext,
     public_config: dict[str, Any],
     local_config: dict[str, Any],
     *,
     require_agent_runtime: bool = False,
 ) -> list[Change]:
+    _validate_public_catalog_asset_names(public_config)
     _validate_public_agent_model_ownership(public_config)
     ignore_patterns = _ignore_patterns(public_config)
     mirror_delete = _mirror_delete_enabled(public_config)
@@ -2163,33 +2537,61 @@ def sync_public_assets(
     _delete_retired_assets(context, public_config, retired, mirror_delete)
     retained_local_config = _exclude_retired_local_assets(local_config, retired)
     for rule in _require_items(public_config, 'rules'):
-        filename = rule.get('file')
-        if not isinstance(filename, str) or not filename:
-            raise SyncError('Each public rule requires file')
+        filename = _safe_asset_name(
+            rule.get('file'),
+            _RULE_FILENAME_PATTERN,
+            'Each public rule file',
+        )
+        public_root = _public_source_root(context.source_root)
         _copy_file(
             context,
-            _public_source_root(context.source_root) / 'rules' / filename,
-            context.target_root / '.agents' / 'rules' / filename,
+            _confined_path(
+                public_root,
+                Path('rules') / filename,
+                f'Public Rule source {filename}',
+            ),
+            _confined_path(
+                context.target_root,
+                Path('.agents') / 'rules' / filename,
+                f'Public Rule target {filename}',
+            ),
         )
     for skill in _require_items(public_config, 'skills'):
-        name = skill.get('name')
-        if not isinstance(name, str) or not name:
-            raise SyncError('Each public skill requires name')
+        name = _safe_asset_name(
+            skill.get('name'),
+            _ASSET_NAME_PATTERN,
+            'Each public Skill name',
+        )
         _mirror_dir(
             context,
             _public_skill_source(context, name),
-            context.target_root / '.agents' / 'skills' / name,
+            _confined_path(
+                context.target_root,
+                Path('.agents') / 'skills' / name,
+                f'Public Skill target {name}',
+            ),
             ignore_patterns,
             mirror_delete,
         )
     for agent in _require_items(public_config, 'agent_prompts'):
-        name = agent.get('name')
-        if not isinstance(name, str) or not name:
-            raise SyncError('Each public agent prompt requires name')
+        name = _safe_asset_name(
+            agent.get('name'),
+            _ASSET_NAME_PATTERN,
+            'Each public agent prompt name',
+        )
+        public_root = _public_source_root(context.source_root)
         _copy_file(
             context,
-            _public_source_root(context.source_root) / 'agents' / f'{name}.md',
-            context.target_root / '.agents' / 'agents' / f'{name}.md',
+            _confined_path(
+                public_root,
+                Path('agents') / f'{name}.md',
+                f'Public agent source {name}',
+            ),
+            _confined_path(
+                context.target_root,
+                Path('.agents') / 'agents' / f'{name}.md',
+                f'Public agent target {name}',
+            ),
         )
     merged_local_config = _merge_local_assets(
         retained_local_config,
@@ -2207,6 +2609,42 @@ def sync_public_assets(
     _generate_entry_files(context, public_config, merged_local_config)
     _record_missing_generated_outputs(context, public_config)
     return context.changes
+
+
+def sync_public_assets(
+    context: SyncContext,
+    public_config: dict[str, Any],
+    local_config: dict[str, Any],
+    *,
+    require_agent_runtime: bool = False,
+) -> list[Change]:
+    if context.check:
+        return _sync_public_assets_once(
+            context,
+            public_config,
+            local_config,
+            require_agent_runtime=require_agent_runtime,
+        )
+    preflight_context = SyncContext(
+        target_root=context.target_root,
+        source_root=context.source_root,
+        skill_root=context.skill_root,
+        check=True,
+        changes=[],
+        installed_skill_root=context.installed_skill_root,
+    )
+    _sync_public_assets_once(
+        preflight_context,
+        public_config,
+        local_config,
+        require_agent_runtime=require_agent_runtime,
+    )
+    return _sync_public_assets_once(
+        context,
+        public_config,
+        local_config,
+        require_agent_runtime=require_agent_runtime,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2254,18 +2692,28 @@ def main(argv: list[str] | None = None) -> int:
     preflight: ExternalSkillPreflight | None = None
     try:
         installed_config = load_json(
-            installed_skill_root / 'references' / 'public_assets.json'
+            _confined_path(
+                installed_skill_root,
+                'references/public_assets.json',
+                'Installed public catalog',
+            )
         )
         source_root = resolve_source(
             installed_config,
             installed_skill_root,
             args.source_root,
         )
-        source_skill_root = (
-            _public_source_root(source_root) / 'skills' / 'setup-project-agents'
+        source_skill_root = _confined_path(
+            _public_source_root(source_root),
+            'skills/setup-project-agents',
+            'Selected setup-project-agents Skill',
         )
         public_config = load_json(
-            source_skill_root / 'references' / 'public_assets.json'
+            _confined_path(
+                source_skill_root,
+                'references/public_assets.json',
+                'Selected public catalog',
+            )
         )
         external_specs = load_external_skill_specs(target_root, public_config)
         preflight = preflight_external_skills(target_root, external_specs)
@@ -2283,6 +2731,7 @@ def main(argv: list[str] | None = None) -> int:
             changes=[],
             installed_skill_root=installed_skill_root,
         )
+        validate_external_skill_sync(target_root, preflight)
         changes = sync_public_assets(
             context,
             public_config,

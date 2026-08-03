@@ -5,7 +5,7 @@
       {
         "type": "command",
         "bash": "sh .agents/skills/manage-agent-tools/scripts/check_recommended_tools.sh hook --platform copilot",
-        "powershell": ".agents/skills/manage-agent-tools/scripts/check_recommended_tools.ps1 hook --platform copilot",
+        "powershell": "& (Join-Path (Get-Location) '.agents\\skills\\manage-agent-tools\\scripts\\check_recommended_tools.ps1') hook --platform copilot",
         "cwd": ".",
         "timeoutSec": 30
       }

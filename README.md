@@ -44,8 +44,9 @@ normal trust flow before allowing it to run.
 | GitHub Copilot | `.github/hooks/*.json` | Start `copilot` in the repository and accept the prompt to trust the current directory. |
 
 Hook support is enabled explicitly for all three hosts. Multi-agent support is not force-enabled by
-project configuration; the health check validates each host's effective default state and reports
-when it has been disabled.
+project configuration. The Codex check reads the effective `multi_agent` state. Cursor and Copilot
+checks version-gate their default multi-agent capability and report unsupported host versions; they
+do not detect host-specific overrides that disable that default.
 
 ## Boundaries
 

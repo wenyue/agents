@@ -52,6 +52,40 @@ def create_repository_source(source: Path) -> Path:
     return source
 
 
+def create_installed_plugin(plugin: Path) -> Path:
+    common_manifest = {
+        'name': 'agents',
+        'version': '0.1.0',
+        'repository': 'https://github.com/wenyue/agents',
+        'skills': './skills/',
+    }
+    for relative in (
+        'plugin.json',
+        '.codex-plugin/plugin.json',
+        '.cursor-plugin/plugin.json',
+    ):
+        manifest = plugin / relative
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(json.dumps(common_manifest), encoding='utf-8')
+    skill = plugin / 'skills' / 'setup-project-agents'
+    (skill / 'references').mkdir(parents=True, exist_ok=True)
+    (skill / 'references' / 'public_assets.json').write_text(
+        json.dumps(
+            {
+                'source_repo': 'https://github.com/wenyue/agents',
+                'source_ref': 'v0.1.0',
+                'catalog': {
+                    'id': 'agents',
+                    'version': '0.1.0',
+                    'revision': 'v0.1.0',
+                },
+            }
+        ),
+        encoding='utf-8',
+    )
+    return skill
+
+
 def load_recommended_tool_checker_module():
     spec = importlib.util.spec_from_file_location(
         'check_recommended_tools',
@@ -481,7 +515,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                         root / f'extract-{index}',
                     )
 
-    def test_sync_external_skills_replaces_complete_directory_and_symlink(self):
+    def test_sync_external_skills_rejects_symlink_target_without_mutation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -512,16 +546,12 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             )
             preflight = sync.ExternalSkillPreflight({'example': skill}, [], [])
 
-            warnings = sync.sync_external_skills(context, preflight)
+            with self.assertRaisesRegex(sync.SyncError, 'symbolic link'):
+                sync.sync_external_skills(context, preflight)
 
-            self.assertEqual(warnings, [])
-            self.assertFalse(destination.is_symlink())
-            self.assertEqual((destination / 'SKILL.md').read_text(), '# new\n')
-            self.assertTrue((destination / 'scripts' / 'run.py').is_file())
-            self.assertIn(
-                sync.Change('updated', '.agents/skills/example'),
-                context.changes,
-            )
+            self.assertTrue(destination.is_symlink())
+            self.assertEqual((old_source / 'SKILL.md').read_text(), '# old\n')
+            self.assertEqual(context.changes, [])
 
     def test_sync_external_skills_removes_upstream_deleted_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -846,21 +876,110 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
     def test_resolve_source_finds_installed_plugin_with_arbitrary_cache_name(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             plugin = Path(temp_dir) / 'cache-entry-42'
-            skill = plugin / 'skills' / 'setup-project-agents'
-            (skill / 'references').mkdir(parents=True)
-            (skill / 'references' / 'public_assets.json').write_text('{}\n')
-            (plugin / 'plugin.json').write_text(
-                json.dumps({
-                    'name': 'agents',
-                    'repository': 'https://github.com/wenyue/agents',
-                    'skills': './skills/',
-                }),
-                encoding='utf-8',
-            )
+            skill = create_installed_plugin(plugin)
             with mock.patch.object(sync, '_fetch_archive_source') as fetch:
                 result = sync.resolve_source({}, skill)
         self.assertEqual(result, plugin.resolve())
         fetch.assert_not_called()
+
+    def test_resolve_source_rejects_missing_native_manifest_from_plugin_candidate(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin = Path(temp_dir) / 'cache-entry'
+            skill = create_installed_plugin(plugin)
+            (plugin / '.cursor-plugin' / 'plugin.json').unlink()
+
+            with mock.patch.object(sync, '_fetch_archive_source') as fetch:
+                with self.assertRaisesRegex(sync.SyncError, 'missing native manifest'):
+                    sync.resolve_source({}, skill)
+
+        fetch.assert_not_called()
+
+    def test_resolve_source_rejects_wrong_or_inconsistent_plugin_versions(self):
+        cases = (
+            ('missing', None, 'version'),
+            ('wrong', '0.2.0', '0.1.0'),
+            ('inconsistent', '0.1.1', 'consistent version'),
+        )
+        for name, version, expected_error in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                plugin = Path(temp_dir) / 'cache-entry'
+                skill = create_installed_plugin(plugin)
+                manifest_paths = [plugin / relative for relative in (
+                    'plugin.json',
+                    '.codex-plugin/plugin.json',
+                    '.cursor-plugin/plugin.json',
+                )]
+                paths_to_change = manifest_paths if name == 'wrong' else manifest_paths[-1:]
+                for manifest_path in paths_to_change:
+                    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+                    if version is None:
+                        manifest.pop('version')
+                    else:
+                        manifest['version'] = version
+                    manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+                if name == 'wrong':
+                    public_path = skill / 'references' / 'public_assets.json'
+                    public = json.loads(public_path.read_text(encoding='utf-8'))
+                    public['catalog']['version'] = version
+                    public_path.write_text(json.dumps(public), encoding='utf-8')
+
+                with mock.patch.object(sync, '_fetch_archive_source') as fetch:
+                    with self.assertRaisesRegex(sync.SyncError, expected_error):
+                        sync.resolve_source({}, skill)
+
+                fetch.assert_not_called()
+
+    def test_resolve_source_rejects_inconsistent_plugin_manifest_and_catalog_identity(self):
+        cases = (
+            ('manifest name', 'plugin.json', ('name', 'other'), 'name'),
+            (
+                'manifest repository',
+                '.codex-plugin/plugin.json',
+                ('repository', 'https://github.com/other/repo'),
+                'repository',
+            ),
+            (
+                'manifest skills',
+                '.cursor-plugin/plugin.json',
+                ('skills', './other/'),
+                'skills',
+            ),
+            (
+                'catalog id',
+                'skills/setup-project-agents/references/public_assets.json',
+                ('catalog.id', 'other'),
+                'catalog.id',
+            ),
+            (
+                'catalog version',
+                'skills/setup-project-agents/references/public_assets.json',
+                ('catalog.version', '0.2.0'),
+                'catalog.version',
+            ),
+            (
+                'catalog revision',
+                'skills/setup-project-agents/references/public_assets.json',
+                ('catalog.revision', 'v0.1.1'),
+                'catalog.revision',
+            ),
+        )
+        for name, relative, (field, value), expected_error in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                plugin = Path(temp_dir) / 'cache-entry'
+                skill = create_installed_plugin(plugin)
+                path = plugin / relative
+                content = json.loads(path.read_text(encoding='utf-8'))
+                if field.startswith('catalog.'):
+                    content['catalog'][field.split('.', 1)[1]] = value
+                else:
+                    content[field] = value
+                path.write_text(json.dumps(content), encoding='utf-8')
+
+                with mock.patch.object(sync, '_fetch_archive_source') as fetch:
+                    with self.assertRaisesRegex(sync.SyncError, expected_error):
+                        sync.resolve_source({}, skill)
+
+                fetch.assert_not_called()
 
     def test_resolve_source_fetches_for_target_local_legacy_skill(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -892,7 +1011,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 sync.resolve_source({}, REPO_SKILL_ROOT, Path(temp_dir))
         fetch.assert_not_called()
 
-    def test_source_archive_url_requires_release_tag_or_commit(self):
+    def test_source_archive_url_requires_release_tag_or_exact_commit(self):
         with self.assertRaises(sync.SyncError):
             sync._source_archive_url({
                 'source_repo': 'https://github.com/wenyue/agents',
@@ -905,6 +1024,26 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             }),
             'https://github.com/wenyue/agents/archive/v0.1.0.zip',
         )
+        commit = 'a1' * 20
+        self.assertEqual(
+            sync._source_archive_url({
+                'source_repo': 'https://github.com/wenyue/agents',
+                'source_ref': commit,
+            }),
+            f'https://github.com/wenyue/agents/archive/{commit}.zip',
+        )
+        for invalid in ('a' * 39, 'a' * 41, 'g' * 40):
+            with self.subTest(invalid=invalid), self.assertRaises(sync.SyncError):
+                sync._source_archive_url({
+                    'source_repo': 'https://github.com/wenyue/agents',
+                    'source_ref': invalid,
+                })
+        with self.assertRaises(sync.SyncError):
+            sync._source_archive_url({
+                'source_repo': 'https://github.com/wenyue/agents',
+                'source_ref': 'master',
+                'source_archive_url': 'https://example.invalid/immutable.zip',
+            })
 
     def test_resolve_source_ignores_local_default_and_fetches_archive(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1088,6 +1227,249 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
 
             self.assertEqual(changes, [sync.Change('unchanged', '.agents/rules/10-base-code.md')])
             self.assertEqual((target / '.agents' / 'rules' / '10-base-code.md').read_text(), 'rule\n')
+
+    def test_sync_preflight_rejects_unsafe_catalog_paths_without_target_mutation(self):
+        def base_config() -> dict:
+            return {
+                'mirror_delete': True,
+                'retired_assets': {'rules': [], 'skills': [], 'agents': []},
+                'rules': [{'file': '00-global-rule-config.md'}],
+                'skills': [],
+                'external_skills': [],
+                'rule_blueprints': [],
+                'skill_blueprints': [],
+                'agent_prompts': [],
+                'entry_files': [],
+                'file_templates': [],
+                'config_templates': [],
+                'platforms': {'rule_wrappers': [], 'agent_wrappers': []},
+            }
+
+        cases = {
+            'rule': lambda config: config['rules'].append({'file': '../../README.md'}),
+            'skill': lambda config: config['skills'].append({'name': '../../README.md'}),
+            'external skill': lambda config: config['external_skills'].append(
+                {
+                    'name': '../../debug-mode',
+                    'repository': 'owner/repo',
+                    'ref': 'main',
+                    'path': 'skill',
+                }
+            ),
+            'agent': lambda config: config['agent_prompts'].append(
+                {'name': '../../README'}
+            ),
+            'rule blueprint': lambda config: config['rule_blueprints'].append(
+                {'file': '../../README.md'}
+            ),
+            'skill blueprint': lambda config: config['skill_blueprints'].append(
+                {'name': '../../generated'}
+            ),
+            'entry template': lambda config: config['entry_files'].append(
+                {'template': '../../../../../README.md', 'path': 'AGENTS.md'}
+            ),
+            'entry target': lambda config: config['entry_files'].append(
+                {'template': 'entry-files/AGENTS.md', 'path': '../outside.md'}
+            ),
+            'file template': lambda config: config['file_templates'].append(
+                {'template': '../../../../../README.md', 'path': 'NOTICE.md'}
+            ),
+            'file target': lambda config: config['file_templates'].append(
+                {'template': 'project-config/agents.config.json', 'path': '../outside.json'}
+            ),
+            'config template': lambda config: config['config_templates'].append(
+                {
+                    'template': '../../../../../README.md',
+                    'path': '.tool/config.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                }
+            ),
+            'config target': lambda config: config['config_templates'].append(
+                {
+                    'template': 'project-config/agents.config.json',
+                    'path': '../outside.json',
+                    'format': 'json',
+                    'merge': 'deep-overwrite',
+                }
+            ),
+            'wrapper template': lambda config: config['platforms']['rule_wrappers'].append(
+                {
+                    'template': '../../../../../README.md',
+                    'path': '.cursor/rules/{{rule.name}}.mdc',
+                }
+            ),
+            'wrapper target': lambda config: config['platforms']['rule_wrappers'].append(
+                {
+                    'template': 'rule-wrappers/cursor.mdc',
+                    'path': '../outside/{{rule.name}}.mdc',
+                }
+            ),
+        }
+        for name, mutate in cases.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                target = root / 'nested' / 'target'
+                managed_rule = target / '.agents' / 'rules' / '00-global-rule-config.md'
+                managed_rule.parent.mkdir(parents=True)
+                managed_rule.write_text('project-owned-before-failure\n', encoding='utf-8')
+                marker = target / 'README.md'
+                marker.write_text('target-before-failure\n', encoding='utf-8')
+                config = base_config()
+                mutate(config)
+                before = {
+                    path.relative_to(target).as_posix(): path.read_bytes()
+                    for path in target.rglob('*')
+                    if path.is_file()
+                }
+                context = sync.SyncContext(
+                    target,
+                    REPO_ROOT,
+                    REPO_SKILL_ROOT,
+                    False,
+                    [],
+                )
+
+                with self.assertRaises(sync.SyncError):
+                    sync.sync_public_assets(
+                        context,
+                        config,
+                        {'rules': [], 'agent_prompts': []},
+                    )
+
+                after = {
+                    path.relative_to(target).as_posix(): path.read_bytes()
+                    for path in target.rglob('*')
+                    if path.is_file()
+                }
+                self.assertEqual(after, before)
+                self.assertFalse((root / 'nested' / 'outside.md').exists())
+                self.assertFalse((root / 'nested' / 'outside.json').exists())
+                self.assertFalse((root / 'nested' / 'outside').exists())
+
+    def test_sync_rejects_source_and_target_symlinks_without_mutation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = create_repository_source(root / 'source')
+            public_root = source / 'agents'
+            external_source = root / 'external-source'
+            external_source.mkdir()
+            (external_source / 'safe.md').write_text('external source\n', encoding='utf-8')
+            (public_root / 'rules').symlink_to(external_source, target_is_directory=True)
+            target = root / 'target'
+            target_rule = target / '.agents' / 'rules' / 'safe.md'
+            target_rule.parent.mkdir(parents=True)
+            target_rule.write_text('target before source failure\n', encoding='utf-8')
+            context = sync.SyncContext(target, source, REPO_SKILL_ROOT, False, [])
+            config = {
+                'mirror_delete': True,
+                'rules': [{'file': 'safe.md'}],
+                'skills': [],
+                'agent_prompts': [],
+                'platforms': {'rule_wrappers': [], 'agent_wrappers': []},
+            }
+
+            with self.assertRaisesRegex(sync.SyncError, 'symbolic link'):
+                sync.sync_public_assets(
+                    context,
+                    config,
+                    {'rules': [], 'agent_prompts': []},
+                )
+
+            self.assertEqual(target_rule.read_text(), 'target before source failure\n')
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = create_repository_source(root / 'source')
+            source_rule = source / 'agents' / 'rules' / 'safe.md'
+            source_rule.parent.mkdir(parents=True)
+            source_rule.write_text('public rule\n', encoding='utf-8')
+            target = root / 'target'
+            target.mkdir()
+            external_target = root / 'external-target'
+            external_target.mkdir()
+            external_rule = external_target / 'safe.md'
+            external_rule.write_text('external target before failure\n', encoding='utf-8')
+            (target / '.agents').mkdir()
+            (target / '.agents' / 'rules').symlink_to(
+                external_target,
+                target_is_directory=True,
+            )
+            marker = target / 'README.md'
+            marker.write_text('target marker\n', encoding='utf-8')
+            context = sync.SyncContext(target, source, REPO_SKILL_ROOT, False, [])
+            config = {
+                'mirror_delete': True,
+                'rules': [{'file': 'safe.md'}],
+                'skills': [],
+                'agent_prompts': [],
+                'platforms': {'rule_wrappers': [], 'agent_wrappers': []},
+            }
+
+            with self.assertRaisesRegex(sync.SyncError, 'symbolic link'):
+                sync.sync_public_assets(
+                    context,
+                    config,
+                    {'rules': [], 'agent_prompts': []},
+                )
+
+            self.assertEqual(external_rule.read_text(), 'external target before failure\n')
+            self.assertEqual(marker.read_text(), 'target marker\n')
+
+    def test_sync_preflight_simulates_prior_writes_to_the_same_config_target(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = create_repository_source(root / 'source')
+            source_rule = source / 'agents' / 'rules' / 'safe.md'
+            source_rule.parent.mkdir(parents=True)
+            source_rule.write_text('public rule\n', encoding='utf-8')
+            skill_root = root / 'skill'
+            templates = skill_root / 'assets' / 'templates'
+            templates.mkdir(parents=True)
+            (templates / 'first.json').write_text(
+                '{"owned": "scalar"}\n',
+                encoding='utf-8',
+            )
+            (templates / 'second.json').write_text(
+                '{"owned": {"nested": true}}\n',
+                encoding='utf-8',
+            )
+            target = root / 'target'
+            target_rule = target / '.agents' / 'rules' / 'safe.md'
+            target_rule.parent.mkdir(parents=True)
+            target_rule.write_text('target before failure\n', encoding='utf-8')
+            context = sync.SyncContext(target, source, skill_root, False, [])
+            config = {
+                'mirror_delete': True,
+                'rules': [{'file': 'safe.md'}],
+                'skills': [],
+                'agent_prompts': [],
+                'platforms': {'rule_wrappers': [], 'agent_wrappers': []},
+                'config_templates': [
+                    {
+                        'path': '.tool/config.json',
+                        'template': 'first.json',
+                        'format': 'json',
+                        'merge': 'deep-overwrite',
+                    },
+                    {
+                        'path': '.tool/config.json',
+                        'template': 'second.json',
+                        'format': 'json',
+                        'merge': 'deep-overwrite',
+                    },
+                ],
+            }
+
+            with self.assertRaisesRegex(sync.SyncError, 'non-object value'):
+                sync.sync_public_assets(
+                    context,
+                    config,
+                    {'rules': [], 'agent_prompts': []},
+                )
+
+            self.assertEqual(target_rule.read_text(), 'target before failure\n')
+            self.assertFalse((target / '.tool' / 'config.json').exists())
 
     def test_sync_deletes_extra_file_inside_public_skill(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2165,6 +2547,34 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
             set(copilot_hooks[0]),
             {'type', 'bash', 'powershell', 'cwd', 'timeoutSec'},
         )
+        self.assertEqual(
+            copilot_hooks[0]['powershell'],
+            "& (Join-Path (Get-Location) '.agents\\skills\\manage-agent-tools\\scripts\\check_recommended_tools.ps1') hook --platform copilot",
+        )
+
+    @unittest.skipUnless(shutil.which('pwsh'), 'PowerShell runtime unavailable')
+    def test_copilot_powershell_hook_invokes_current_project_checker(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            installed_skill = target / '.agents' / 'skills' / 'manage-agent-tools'
+            shutil.copytree(MANAGE_AGENT_TOOLS_ROOT, installed_skill)
+            hook = json.loads(
+                (
+                    REPO_TEMPLATES
+                    / 'project-config'
+                    / 'copilot.tool-check.hooks.json'
+                ).read_text(encoding='utf-8')
+            )['hooks']['sessionStart'][0]
+
+            result = subprocess.run(
+                ['pwsh', '-NoProfile', '-Command', hook['powershell']],
+                cwd=target,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(result.stdout.strip())
 
     def test_codex_hook_finds_nested_project_checker_from_session_subdirectory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -5372,6 +5782,9 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 order.append('public')
                 return []
 
+            def validate_external(_target_root, _preflight):
+                order.append('external')
+
             with mock.patch.object(
                 sync,
                 'load_json',
@@ -5390,6 +5803,10 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 side_effect=preflight_skills,
             ), mock.patch.object(
                 sync,
+                'validate_external_skill_sync',
+                side_effect=validate_external,
+            ), mock.patch.object(
+                sync,
                 'sync_public_assets',
                 side_effect=sync_assets,
             ), mock.patch.object(
@@ -5404,7 +5821,7 @@ class SyncPublicAgentAssetsTest(unittest.TestCase):
                 exit_code = sync.main(['--model-request', str(request_path)])
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(order, ['preflight', 'public'])
+        self.assertEqual(order, ['preflight', 'external', 'public'])
         self.assertEqual(
             loaded_specs,
             [

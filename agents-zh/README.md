@@ -47,5 +47,6 @@ copilot plugin install agents@wenyue-agents
 | Cursor | `.cursor/hooks.json` | 将仓库作为受信任工作区打开，然后在 `Cursor Settings > Hooks` 中检查该 Hook。 |
 | GitHub Copilot | `.github/hooks/*.json` | 在仓库中启动 `copilot`，并在提示时确认信任当前目录。 |
 
-三个平台都显式启用 Hook 支持。项目配置不会强制启用多智能体能力；健康检查会验证各平台的
-有效默认状态，并在它被禁用时发出报告。
+三个平台都显式启用 Hook 支持。项目配置不会强制启用多智能体能力。Codex 检查会读取有效的
+`multi_agent` 状态；Cursor 和 Copilot 检查只按版本判断其默认多智能体能力，并报告不受支持的
+平台版本，不会检测用于禁用该默认能力的平台专属覆盖设置。
