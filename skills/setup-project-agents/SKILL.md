@@ -33,6 +33,18 @@ values. User configuration remains outside this workflow.
   parsing raw project or user configuration. On findings, the agent stops the current task and asks
   whether to use `manage-agent-tools`; any next user reply may continue.
 
+## Remote Bootstrap Security Boundary
+
+The remote `main` bootstrap creates its `SESSION` directory for the current process and requires it
+to remain owned by the current effective user with mode `0700`. It creates a random 128-bit candidate
+directory, writes and validates through a held directory descriptor, and publishes it to
+`SESSION/source` with no-replace rename. Failed pre-publication candidates remain for session-end
+cleanup; bootstrap never removes or renames the current `SESSION/source` pathname after publication.
+
+This protects against pathname races from other users who cannot write the private session. A process
+running as the same user that actively alters the session, traces the bootstrap, or injects code into
+it is already within the trusted execution boundary and is not defended by the filesystem protocol.
+
 ## Managed Assets
 
 Generate these Rules from their public blueprints:

@@ -1,3 +1,12 @@
+"""Fetch and validate the remote setup source.
+
+Security boundary: ``work_root`` is a session directory created by this process, owned by the
+current effective UID, and mode ``0700``. Random candidate names, descriptor-held operations,
+inode guards, and no-replace publication protect this boundary against pathname races from other
+users. A same-UID process that can actively alter the session or inject code into this process is
+already trusted and is outside this filesystem protocol's threat model.
+"""
+
 from __future__ import annotations
 
 import ctypes
@@ -472,6 +481,11 @@ def _open_incomplete_source(workspace: _Workspace) -> _HeldSource | None:
 
 
 def _create_candidate_source(workspace: _Workspace) -> _HeldSource:
+    """Create an unguessable candidate inside the private workspace.
+
+    This relies on the documented private-session boundary rather than claiming an atomic
+    mkdir-and-open descriptor primitive against an active same-UID adversary.
+    """
     if workspace.fd is None:
         raise SourceUnavailable('secure source candidate is unavailable')
     for _ in range(16):

@@ -584,6 +584,14 @@ cleanup only after the whole setup session ends.
 
 - [ ] **Step 3: Implement `fetch_main` with fixed argv arrays**
 
+Remote-bootstrap security boundary: `SESSION` is created by the bootstrap process and must remain
+owned by the current effective user with mode `0700`. Fetch uses a random 128-bit private candidate,
+held directory descriptors, inode guards, and no-replace publication to protect against other-user
+pathname races. A same-UID process that can actively alter `SESSION`, trace the process, or inject
+code is already trusted and is outside this filesystem protocol's threat model. Failed candidates
+remain for session-end cleanup; after publication bootstrap never renames or removes the current
+`SESSION/source` pathname.
+
 Run these commands without Shell interpolation:
 
 ```python

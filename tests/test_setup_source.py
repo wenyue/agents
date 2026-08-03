@@ -423,7 +423,7 @@ class SetupSourceTest(unittest.TestCase):
             self.assertFalse(any(external.iterdir()))
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX source descriptors')
-    def test_mkdir_return_replacement_never_receives_marker_or_git(self):
+    def test_nonprivate_candidate_replacement_never_receives_marker_or_git(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             workspace = temporary / 'session'
