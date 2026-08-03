@@ -45,6 +45,48 @@ def load_recommended_tool_checker_module():
 
 
 class SyncPublicAgentAssetsTest(unittest.TestCase):
+    def test_sync_script_uses_bundled_tomli_when_tomllib_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            scripts = root / 'scripts'
+            shutil.copytree(
+                REPO_SKILL_ROOT / 'scripts',
+                scripts,
+            )
+            (scripts / 'tomllib.py').write_text(
+                "raise ModuleNotFoundError(\"No module named 'tomllib'\")\n",
+                encoding='utf-8',
+            )
+            program = (
+                'import importlib.util, json, pathlib, sys\n'
+                'script = pathlib.Path("scripts/sync_public_agent_assets.py")\n'
+                'sys.path.insert(0, str(script.parent.resolve()))\n'
+                'spec = importlib.util.spec_from_file_location("sync_compat", script)\n'
+                'module = importlib.util.module_from_spec(spec)\n'
+                'sys.modules[spec.name] = module\n'
+                'spec.loader.exec_module(module)\n'
+                'parsed = module._parse_native_config('
+                '"enabled = true\\n", "toml", "test")\n'
+                'print(json.dumps(parsed, sort_keys=True))\n'
+                'try:\n'
+                '    module._parse_native_config("enabled = [\\n", "toml", "test")\n'
+                'except module.SyncError:\n'
+                '    print("invalid-rejected")\n'
+            )
+
+            result = subprocess.run(
+                [sys.executable, '-I', '-c', program],
+                cwd=root,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            result.stdout.splitlines(),
+            ['{"enabled": true}', 'invalid-rejected'],
+        )
+
     def test_load_json_returns_object(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / 'config.json'

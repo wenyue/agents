@@ -12,13 +12,17 @@ import shutil
 import stat
 import sys
 import tempfile
-import tomllib
 import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    from _vendor import tomli as tomllib
 
 
 class SyncError(Exception):
@@ -1425,6 +1429,12 @@ def _scalar_value(value: Any, default: str = '') -> str:
     return text if text else default
 
 
+def _remove_suffix(value: str, suffix: str) -> str:
+    if suffix and value.endswith(suffix):
+        return value[: -len(suffix)]
+    return value
+
+
 def _optional_config_string(config: dict[str, Any], key: str, label: str) -> str:
     if key not in config:
         return ''
@@ -1552,14 +1562,14 @@ def _rule_data(rule: dict[str, Any]) -> dict[str, Any]:
     cursor_description = _scalar_value(cursor.get('description'), '')
     if not cursor_description:
         strength = _scalar_value(rule.get('strength'), 'Default').lower()
-        read_when = _scalar_value(rule.get('read_when'), filename.removesuffix('.md'))
+        read_when = _scalar_value(rule.get('read_when'), _remove_suffix(filename, '.md'))
         cursor_description = f'[{strength}] {read_when}'
     return {
         'rule': {
             **rule,
             'path': f'.agents/rules/{filename}',
             'apply_ref': f'.agents/rules/{filename}',
-            'name': filename.removesuffix('.md'),
+            'name': _remove_suffix(filename, '.md'),
             'cursor_description': cursor_description,
             'cursor_globs': _scalar_value(cursor.get('globs'), '""'),
             'cursor_always_apply': str(bool(cursor.get('alwaysApply', False))).lower(),
@@ -1670,7 +1680,7 @@ def _read_frontmatter(path: Path) -> dict[str, Any]:
             if not isinstance(current_value, list):
                 current_value = []
                 values[current_key] = current_value
-            current_value.append(line.removeprefix('  - ').strip().strip('"'))
+            current_value.append(line[4:].strip().strip('"'))
             continue
         if ':' in line and not line.startswith(' '):
             key, value = line.split(':', 1)
@@ -1786,12 +1796,12 @@ def _default_project_read_when(filename: str) -> str:
 
 
 def _default_project_cursor_description(filename: str) -> str:
-    name = filename.removesuffix('.md')
+    name = _remove_suffix(filename, '.md')
     return f'[project] {name}'
 
 
 def _local_rule_metadata(target_root: Path, filename: str, agents_rows: dict[str, dict[str, str]]) -> dict[str, Any]:
-    name = filename.removesuffix('.md')
+    name = _remove_suffix(filename, '.md')
     cursor_frontmatter = _read_frontmatter(target_root / '.cursor' / 'rules' / f'{name}.mdc')
     github_frontmatter = _read_frontmatter(
         target_root / '.github' / 'instructions' / f'{name}.instructions.md'
