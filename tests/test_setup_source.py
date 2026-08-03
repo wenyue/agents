@@ -188,7 +188,7 @@ class SetupSourceTest(unittest.TestCase):
                     with self.assertRaises(InvalidFetchedSource):
                         validate_source(source)
 
-    def test_fetch_main_cleans_only_its_new_checkout_after_fetch_failure(self):
+    def test_fetch_failure_leaves_a_marker_only_source_and_retries(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'
             workspace.mkdir()
@@ -199,7 +199,10 @@ class SetupSourceTest(unittest.TestCase):
 
             self.assertTrue(workspace.is_dir())
             self.assertEqual(sentinel.read_text(encoding='utf-8'), '{}\n')
-            self.assertFalse((workspace / 'source').exists())
+            self.assertEqual(
+                {path.name for path in (workspace / 'source').iterdir()},
+                {source_module._INCOMPLETE_MARKER},
+            )
             origin, _ = self.make_origin(Path(temp_dir))
             self.assertEqual(
                 fetch_main(origin.as_uri(), work_root=workspace).root,
@@ -243,7 +246,7 @@ class SetupSourceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             with mock.patch.object(
                 source_module,
-                '_safe_remove_staging',
+                '_reset_held_source',
                 side_effect=OSError('cleanup failed'),
             ):
                 with self.assertRaises(SourceUnavailable):
@@ -251,27 +254,6 @@ class SetupSourceTest(unittest.TestCase):
                         (Path(temp_dir) / 'missing-origin.git').as_uri(),
                         work_root=Path(temp_dir) / 'session',
                     )
-
-    @unittest.skipUnless(os.name == 'posix', 'requires POSIX directory descriptors')
-    def test_cleanup_does_not_delete_a_replacement_after_identity_check(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            workspace = Path(temp_dir) / 'session'
-            workspace.mkdir()
-            workspace_state = source_module._open_safe_workspace(workspace)
-            try:
-                staging = source_module._create_staging(workspace_state)
-                try:
-                    source = workspace / 'source'
-                    source.mkdir()
-                    (source / 'sentinel').write_text('keep\n', encoding='utf-8')
-                    source_module._safe_remove_staging(workspace_state, staging)
-                finally:
-                    staging.close()
-            finally:
-                workspace_state.close()
-
-            self.assertEqual((workspace / 'source' / 'sentinel').read_text(encoding='utf-8'), 'keep\n')
-            self.assertTrue(workspace.is_dir())
 
     def test_fetch_main_never_overwrites_a_preexisting_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -286,7 +268,7 @@ class SetupSourceTest(unittest.TestCase):
                 fetch_main(origin.as_uri(), work_root=workspace)
             self.assertEqual(marker.read_text(encoding='utf-8'), 'preserve\n')
 
-    def test_fetch_main_no_replace_publish_leaves_a_source_symlink_target_untouched(self):
+    def test_fetch_main_rejects_a_preexisting_source_symlink_without_touching_its_target(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             origin, _ = self.make_origin(temporary)
@@ -301,8 +283,33 @@ class SetupSourceTest(unittest.TestCase):
                 fetch_main(origin.as_uri(), work_root=workspace)
             self.assertEqual(marker.read_text(encoding='utf-8'), 'preserve\n')
 
-    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
-    def test_git_uses_the_held_staging_fd_path_and_passes_that_fd(self):
+    def test_fetch_main_rejects_a_preexisting_empty_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            source = temporary / 'session' / 'source'
+            source.mkdir(parents=True)
+            with self.assertRaises(InvalidFetchedSource):
+                fetch_main(origin.as_uri(), work_root=source.parent)
+            self.assertTrue(source.is_dir())
+
+    def test_fetch_main_reuses_a_preexisting_marker_only_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            source = temporary / 'session' / 'source'
+            source.mkdir(parents=True)
+            marker = source / source_module._INCOMPLETE_MARKER
+            marker.write_bytes(source_module._INCOMPLETE_MARKER_BYTES)
+            marker.chmod(0o600)
+
+            snapshot = fetch_main(origin.as_uri(), work_root=source.parent)
+
+            self.assertEqual(snapshot.root, source)
+            self.assertFalse(marker.exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX source descriptors')
+    def test_git_uses_the_held_source_fd_path_and_passes_that_fd(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'
             commands = [
@@ -316,9 +323,9 @@ class SetupSourceTest(unittest.TestCase):
             argv = run.call_args_list[0].args[0]
             self.assertRegex(argv[-1], r'^/proc/self/fd/[0-9]+$')
             self.assertEqual(run.call_args_list[0].kwargs['pass_fds'], (int(argv[-1].rsplit('/', 1)[1]),))
-            self.assertFalse((workspace / 'source').exists())
+            self.assertTrue((workspace / 'source' / source_module._INCOMPLETE_MARKER).is_file())
 
-    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX source descriptors')
     def test_workspace_namespace_replacement_never_redirects_git_into_an_external_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
@@ -337,127 +344,32 @@ class SetupSourceTest(unittest.TestCase):
 
             self.assertFalse(any(external.iterdir()))
 
-    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
-    def test_publish_undoes_source_when_the_post_publish_namespace_guard_fails(self):
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX source descriptors')
+    def test_replacement_source_remains_while_the_moved_held_source_is_reset_to_marker(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             origin, _ = self.make_origin(temporary)
             workspace = temporary / 'session'
-            external = temporary / 'external'
-            external.mkdir()
-            moved = temporary / 'moved-session'
+            moved = temporary / 'moved-source'
 
-            def replace_namespace_after_rename() -> None:
-                workspace.rename(moved)
-                workspace.symlink_to(external, target_is_directory=True)
-
-            with mock.patch.object(
-                source_module,
-                '_after_publish_rename',
-                replace_namespace_after_rename,
-            ):
-                with self.assertRaises(InvalidFetchedSource):
-                    fetch_main(origin.as_uri(), work_root=workspace)
-
-            self.assertFalse((workspace / 'source').exists())
-            self.assertFalse((moved / 'source').exists())
-            self.assertFalse(any(external.iterdir()))
-
-    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
-    def test_publish_reverts_to_the_third_party_staging_inode_without_deleting_it(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temporary = Path(temp_dir)
-            origin, _ = self.make_origin(temporary)
-            workspace = temporary / 'session'
-            staging_name: list[str] = []
-
-            def replace_staging(workspace_state, name: str) -> None:
-                staging_name.append(name)
-                os.rename(name, f'{name}-original', src_dir_fd=workspace_state.fd, dst_dir_fd=workspace_state.fd)
-                os.mkdir(name, dir_fd=workspace_state.fd)
-                sentinel = workspace / name / 'sentinel'
-                sentinel.write_text('keep\n', encoding='utf-8')
-
-            with mock.patch.object(source_module, '_before_publish_rename', replace_staging):
-                with self.assertRaises(InvalidFetchedSource):
-                    fetch_main(origin.as_uri(), work_root=workspace)
-
-            self.assertFalse((workspace / 'source').exists())
-            self.assertEqual((workspace / staging_name[0] / 'sentinel').read_text(encoding='utf-8'), 'keep\n')
-
-    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
-    def test_publish_undoes_an_rename_wrapper_exception_after_the_syscall(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temporary = Path(temp_dir)
-            origin, _ = self.make_origin(temporary)
-            workspace = temporary / 'session'
-            rename = source_module._rename_noreplace
-
-            def rename_then_raise(fd: int, old: str, new: str, *, on_success=None) -> None:
-                rename(fd, old, new, on_success=on_success)
-                raise RuntimeError('rename wrapper failed after syscall')
-
-            with mock.patch.object(source_module, '_rename_noreplace', rename_then_raise):
-                with self.assertRaises(InvalidFetchedSource):
-                    fetch_main(origin.as_uri(), work_root=workspace)
-
-            self.assertFalse((workspace / 'source').exists())
-
-    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
-    def test_failed_publish_never_moves_an_independent_concurrent_source(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temporary = Path(temp_dir)
-            origin, _ = self.make_origin(temporary)
-            workspace = temporary / 'session'
-            staging_name: list[str] = []
-
-            def replace_staging_and_create_source(workspace_state, name: str) -> None:
-                staging_name.append(name)
-                os.rename(
-                    name,
-                    f'{name}-moved',
-                    src_dir_fd=workspace_state.fd,
-                    dst_dir_fd=workspace_state.fd,
-                )
-                os.mkdir('source', dir_fd=workspace_state.fd)
-                (workspace / 'source' / 'sentinel').write_text('independent\n', encoding='utf-8')
-
-            with mock.patch.object(
-                source_module,
-                '_before_publish_rename',
-                replace_staging_and_create_source,
-            ):
-                with self.assertRaises(InvalidFetchedSource):
-                    fetch_main(origin.as_uri(), work_root=workspace)
-
-            self.assertEqual(
-                (workspace / 'source' / 'sentinel').read_text(encoding='utf-8'),
-                'independent\n',
-            )
-            self.assertFalse((workspace / staging_name[0]).exists())
-
-    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
-    def test_post_publish_source_replacement_is_not_undone_over_the_sentinel(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temporary = Path(temp_dir)
-            origin, _ = self.make_origin(temporary)
-            workspace = temporary / 'session'
-            moved = temporary / 'published-source-moved'
-
-            def replace_published_source() -> None:
+            def replace_source_before_final_guard() -> None:
                 (workspace / 'source').rename(moved)
                 (workspace / 'source').mkdir()
-                (workspace / 'source' / 'sentinel').write_text('independent\n', encoding='utf-8')
+                (workspace / 'source' / 'sentinel').write_text('keep\n', encoding='utf-8')
 
-            with mock.patch.object(source_module, '_after_publish_rename', replace_published_source):
+            with mock.patch.object(
+                source_module,
+                '_before_final_source_guard',
+                replace_source_before_final_guard,
+            ):
                 with self.assertRaises(InvalidFetchedSource):
                     fetch_main(origin.as_uri(), work_root=workspace)
 
+            self.assertEqual((workspace / 'source' / 'sentinel').read_text(encoding='utf-8'), 'keep\n')
             self.assertEqual(
-                (workspace / 'source' / 'sentinel').read_text(encoding='utf-8'),
-                'independent\n',
+                {path.name for path in moved.iterdir()},
+                {source_module._INCOMPLETE_MARKER},
             )
-            self.assertTrue(moved.is_dir())
 
     def test_unavailable_secure_staging_primitives_do_not_mutate_or_run_git(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -484,7 +396,7 @@ class SetupSourceTest(unittest.TestCase):
             with mock.patch('agents_setup.source.subprocess.run', side_effect=checkout_failure):
                 with self.assertRaises(InvalidFetchedSource):
                     fetch_main('file:///origin.git', work_root=workspace)
-            self.assertFalse((workspace / 'source').exists())
+            self.assertTrue((workspace / 'source' / source_module._INCOMPLETE_MARKER).is_file())
 
             rev_parse_failure = [
                 subprocess.CompletedProcess(('git', 'init'), 0),
@@ -496,7 +408,7 @@ class SetupSourceTest(unittest.TestCase):
             with mock.patch('agents_setup.source.subprocess.run', side_effect=rev_parse_failure):
                 with self.assertRaises(InvalidFetchedSource):
                     fetch_main('file:///origin.git', work_root=workspace)
-            self.assertFalse((workspace / 'source').exists())
+            self.assertTrue((workspace / 'source' / source_module._INCOMPLETE_MARKER).is_file())
 
     def test_fetch_main_rejects_unsafe_repository_argv(self):
         with tempfile.TemporaryDirectory() as temp_dir:

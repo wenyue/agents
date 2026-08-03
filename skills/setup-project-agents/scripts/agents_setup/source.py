@@ -3,13 +3,11 @@ from __future__ import annotations
 import json
 import os
 import re
-import secrets
 import stat
 import subprocess
-import ctypes
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Callable, Mapping
+from typing import Mapping
 
 from .catalog import ContractError, load_catalog
 
@@ -28,6 +26,8 @@ _MANIFESTS = (
     (PurePosixPath('plugin.json'), {'skills': './skills/', 'agents': './agents/'}),
 )
 _ROOT_FIELDS = frozenset({'skills', 'rules', 'agents'})
+_INCOMPLETE_MARKER = '.agents-setup-incomplete-v1'
+_INCOMPLETE_MARKER_BYTES = b'agents-setup-incomplete-v1\n'
 
 
 class SourceUnavailable(RuntimeError):
@@ -57,8 +57,7 @@ class _Workspace:
 
 
 @dataclass
-class _Staging:
-    name: str
+class _HeldSource:
     fd: int
     identity: tuple[int, int]
 
@@ -226,19 +225,9 @@ def _secure_dirfd_supported() -> bool:
     )
 
 
-def _renameat2_available() -> bool:
-    if os.name != 'posix' or not hasattr(os, 'uname') or os.uname().sysname != 'Linux':
-        return False
-    try:
-        return hasattr(ctypes.CDLL(None, use_errno=True), 'renameat2')
-    except OSError:
-        return False
-
-
 def _secure_fetch_supported() -> bool:
     return (
         _secure_dirfd_supported()
-        and _renameat2_available()
         and Path('/proc/self/fd').is_dir()
     )
 
@@ -380,156 +369,118 @@ def _remove_directory_contents(fd: int) -> None:
                     continue
 
 
-def _create_staging(workspace: _Workspace) -> _Staging:
-    if workspace.fd is None:
-        raise SourceUnavailable('secure source staging is unavailable')
-    for _ in range(16):
-        name = f'.agents-setup-source-{secrets.token_hex(16)}'
-        try:
-            os.mkdir(name, mode=0o700, dir_fd=workspace.fd)
-        except FileExistsError:
-            continue
-        except OSError as error:
-            raise SourceUnavailable('cannot create secure source staging') from error
-        try:
-            fd = _open_directory_nofollow(workspace.fd, name)
-        except OSError as error:
-            raise SourceUnavailable('cannot open secure source staging') from error
-        return _Staging(name, fd, _identity(os.fstat(fd)))
-    raise SourceUnavailable('cannot allocate secure source staging')
-
-
-def _safe_remove_staging(workspace: _Workspace, staging: _Staging) -> None:
-    """Best-effort cleanup through the held staging fd; never touch SESSION/source."""
-    try:
-        if workspace.fd is None or _identity(os.fstat(staging.fd)) != staging.identity:
-            return
-        _remove_directory_contents(staging.fd)
-        if _entry_identity(workspace.fd, staging.name) == staging.identity:
-            os.rmdir(staging.name, dir_fd=workspace.fd)
-    except Exception:
-        return
-
-
-def _rename_noreplace(
-    fd: int,
-    old: str,
-    new: str,
-    *,
-    on_success: Callable[[], None] | None = None,
-) -> None:
-    library = ctypes.CDLL(None, use_errno=True)
-    renameat2 = library.renameat2
-    renameat2.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
-    renameat2.restype = ctypes.c_int
-    if renameat2(fd, old.encode(), fd, new.encode(), 1) != 0:
-        error = ctypes.get_errno()
-        if error == getattr(os, 'EEXIST', 17):
-            raise InvalidFetchedSource('source checkout already exists')
-        raise InvalidFetchedSource('cannot publish secure source snapshot')
-    if on_success is not None:
-        on_success()
-
-
 def _assert_workspace_namespace(workspace: _Workspace) -> None:
     if workspace.fd is None or workspace.identity is None:
-        raise SourceUnavailable('secure source publishing is unavailable')
+        raise SourceUnavailable('secure source namespace guard is unavailable')
     if _identity(os.fstat(workspace.fd)) != workspace.identity:
         raise InvalidFetchedSource('source workspace changed during fetch')
     if _directory_identity(workspace.path) != workspace.identity:
         raise InvalidFetchedSource('source workspace namespace changed during fetch')
 
 
-def _undo_publish_if_needed(
-    workspace: _Workspace,
-    staging_name: str,
-    staging_identity: tuple[int, int],
-    *,
-    published_identity: tuple[int, int] | None,
-) -> Exception | None:
-    """Restore names through the held workspace fd after any detected publish failure."""
+def _write_incomplete_marker(fd: int) -> None:
+    marker = os.open(
+        _INCOMPLETE_MARKER,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+        0o600,
+        dir_fd=fd,
+    )
     try:
-        if workspace.fd is None:
-            return InvalidFetchedSource('secure source undo is unavailable')
-        staging_status = _entry_status(workspace.fd, staging_name)
-        source_status = _entry_status(workspace.fd, 'source')
-        source_identity = (
-            _identity(source_status) if source_status is not None else None
+        remaining = _INCOMPLETE_MARKER_BYTES
+        while remaining:
+            written = os.write(marker, remaining)
+            remaining = remaining[written:]
+    finally:
+        os.close(marker)
+
+
+def _has_valid_marker(fd: int) -> bool:
+    status = _entry_status(fd, _INCOMPLETE_MARKER)
+    if (
+        status is None
+        or stat.S_ISLNK(status.st_mode)
+        or not stat.S_ISREG(status.st_mode)
+        or stat.S_IMODE(status.st_mode) != 0o600
+    ):
+        return False
+    try:
+        marker = os.open(
+            _INCOMPLETE_MARKER,
+            os.O_RDONLY | os.O_NOFOLLOW,
+            dir_fd=fd,
         )
-        should_undo = (
-            source_identity == published_identity
-            if published_identity is not None
-            else source_identity == staging_identity
-        )
-        if should_undo and staging_status is None and source_status is not None:
-            try:
-                _rename_noreplace(workspace.fd, 'source', staging_name)
-            except Exception:
-                # A wrapper may report after the syscall; inspect the resulting layout below.
-                pass
-        if not should_undo:
-            return None
-        staging_status = _entry_status(workspace.fd, staging_name)
-        source_status = _entry_status(workspace.fd, 'source')
-        if source_status is not None or staging_status is None:
-            return InvalidFetchedSource('secure source publish undo did not restore names')
-        return None
-    except Exception as error:
-        return error
+        try:
+            return os.read(marker, len(_INCOMPLETE_MARKER_BYTES) + 1) == _INCOMPLETE_MARKER_BYTES
+        finally:
+            os.close(marker)
+    except OSError:
+        return False
 
 
-def _publish_staging(
-    workspace: _Workspace,
-    staging_name: str,
-    staging_identity: tuple[int, int],
-) -> Path:
-    published_identity: tuple[int, int] | None = None
+def _is_marker_only(fd: int) -> bool:
+    return os.listdir(fd) == [_INCOMPLETE_MARKER] and _has_valid_marker(fd)
 
-    def record_publish_success() -> None:
-        nonlocal published_identity
-        if workspace.fd is None:
+
+def _open_held_source(workspace: _Workspace) -> _HeldSource:
+    if workspace.fd is None:
+        raise SourceUnavailable('secure held source is unavailable')
+    status = _entry_status(workspace.fd, 'source')
+    if status is None:
+        try:
+            os.mkdir('source', mode=0o700, dir_fd=workspace.fd)
+            source_fd = _open_directory_nofollow(workspace.fd, 'source')
+        except OSError as error:
+            raise InvalidFetchedSource('cannot create named source directory') from error
+        held = _HeldSource(source_fd, _identity(os.fstat(source_fd)))
+        try:
+            _write_incomplete_marker(source_fd)
+        except OSError as error:
+            held.close()
+            raise InvalidFetchedSource('cannot mark named source directory') from error
+        return held
+    identity = _entry_identity(workspace.fd, 'source')
+    if identity is None:
+        raise InvalidFetchedSource('source checkout is not a safe directory')
+    try:
+        source_fd = _open_directory_nofollow(workspace.fd, 'source')
+    except OSError as error:
+        raise InvalidFetchedSource('cannot open source checkout') from error
+    held = _HeldSource(source_fd, _identity(os.fstat(source_fd)))
+    if held.identity != identity or not _is_marker_only(source_fd):
+        held.close()
+        raise InvalidFetchedSource('source checkout is not an incomplete retry marker')
+    return held
+
+
+def _reset_held_source(source: _HeldSource) -> None:
+    """Clear only the held source inode and leave the fixed retry marker behind."""
+    try:
+        if _identity(os.fstat(source.fd)) != source.identity:
             return
-        source_status = _entry_status(workspace.fd, 'source')
-        if source_status is not None:
-            published_identity = _identity(source_status)
+        _remove_directory_contents(source.fd)
+        _write_incomplete_marker(source.fd)
+    except Exception:
+        return
 
-    try:
-        _assert_workspace_namespace(workspace)
-        if workspace.fd is None:
-            raise SourceUnavailable('secure source publishing is unavailable')
-        if _entry_identity(workspace.fd, staging_name) != staging_identity:
-            raise InvalidFetchedSource('staging source identity mismatch')
-        if _entry_status(workspace.fd, 'source') is not None:
-            raise InvalidFetchedSource('source checkout already exists')
-        _before_publish_rename(workspace, staging_name)
-        _rename_noreplace(
-            workspace.fd,
-            staging_name,
-            'source',
-            on_success=record_publish_success,
-        )
-        _after_publish_rename()
-        if _entry_identity(workspace.fd, 'source') != staging_identity:
-            raise InvalidFetchedSource('published source identity mismatch')
-        _assert_workspace_namespace(workspace)
-        return workspace.path / 'source'
-    except Exception as error:
-        undo_error = _undo_publish_if_needed(
-            workspace,
-            staging_name,
-            staging_identity,
-            published_identity=published_identity,
-        )
-        if undo_error is not None:
-            raise InvalidFetchedSource(
-                f'cannot publish secure source snapshot; undo failed: {undo_error}'
-            ) from error
-        raise InvalidFetchedSource('cannot publish secure source snapshot') from error
+
+def _remove_incomplete_marker(source: _HeldSource) -> None:
+    if _identity(os.fstat(source.fd)) != source.identity or not _has_valid_marker(source.fd):
+        raise InvalidFetchedSource('source retry marker is invalid')
+    os.unlink(_INCOMPLETE_MARKER, dir_fd=source.fd)
+
+
+def _assert_final_source(workspace: _Workspace, source: _HeldSource) -> None:
+    _assert_workspace_namespace(workspace)
+    if workspace.fd is None:
+        raise SourceUnavailable('secure held source is unavailable')
+    if _identity(os.fstat(source.fd)) != source.identity:
+        raise InvalidFetchedSource('held source changed during fetch')
+    if _entry_identity(workspace.fd, 'source') != source.identity:
+        raise InvalidFetchedSource('source name changed during fetch')
 
 
 _before_first_git = lambda: None
-_before_publish_rename = lambda workspace, staging_name: None
-_after_publish_rename = lambda: None
+_before_final_source_guard = lambda: None
 
 
 def _validate_repository(repository: str) -> str:
@@ -549,59 +500,59 @@ def fetch_main(repository: str, *, work_root: Path) -> SourceSnapshot:
     if not _secure_fetch_supported():
         raise SourceUnavailable('secure remote source fetch is unavailable on this platform')
     workspace = _open_safe_workspace(work_root)
-    staging: _Staging | None = None
+    source: _HeldSource | None = None
     try:
-        staging = _create_staging(workspace)
-        git_root = f'/proc/self/fd/{staging.fd}'
+        source = _open_held_source(workspace)
+        git_root = f'/proc/self/fd/{source.fd}'
         _before_first_git()
-        if _directory_identity(workspace.path) != workspace.identity:
-            raise InvalidFetchedSource('source workspace namespace changed before fetch')
+        _assert_final_source(workspace, source)
         try:
             _run_git(
                 ('git', 'init', '--quiet', git_root),
                 failure=SourceUnavailable,
-                pass_fds=(staging.fd,),
+                pass_fds=(source.fd,),
             )
         except (SourceUnavailable, InvalidFetchedSource):
             raise
         _run_git(
             ('git', '-C', git_root, 'remote', 'add', 'origin', repository),
             failure=SourceUnavailable,
-            pass_fds=(staging.fd,),
+            pass_fds=(source.fd,),
         )
         _run_git(
             ('git', '-C', git_root, 'fetch', '--depth=1', 'origin', 'main'),
             failure=SourceUnavailable,
-            pass_fds=(staging.fd,),
+            pass_fds=(source.fd,),
         )
         _run_git(
             ('git', '-C', git_root, 'checkout', '--quiet', '--detach', 'FETCH_HEAD'),
             failure=InvalidFetchedSource,
-            pass_fds=(staging.fd,),
+            pass_fds=(source.fd,),
         )
         commit = _run_git(
             ('git', '-C', git_root, 'rev-parse', 'HEAD'),
             failure=InvalidFetchedSource,
-            pass_fds=(staging.fd,),
+            pass_fds=(source.fd,),
         ).stdout.strip()
         if not _COMMIT.fullmatch(commit):
             raise InvalidFetchedSource('Git returned an invalid source commit')
-        _validate_held_source(staging.fd)
-        return SourceSnapshot(
-            _publish_staging(workspace, staging.name, staging.identity),
-            commit.lower(),
-        )
+        _remove_incomplete_marker(source)
+        _assert_final_source(workspace, source)
+        _validate_held_source(source.fd)
+        _before_final_source_guard()
+        _assert_final_source(workspace, source)
+        return SourceSnapshot(workspace.path / 'source', commit.lower())
     except (SourceUnavailable, InvalidFetchedSource):
-        if staging is not None:
+        if source is not None:
             try:
-                _safe_remove_staging(workspace, staging)
+                _reset_held_source(source)
             except Exception:
                 pass
         raise
     finally:
-        if staging is not None:
+        if source is not None:
             try:
-                staging.close()
+                source.close()
             except OSError:
                 pass
         try:
