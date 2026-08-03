@@ -8,7 +8,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .catalog import ContractError, validate_lock_state
+from .catalog import ContractError, safe_relative, validate_lock_state
 from .models import Change, ChangeKind, LockState, Plan
 from .project import ProjectError, confined_target
 
@@ -44,6 +44,13 @@ class _Backup:
     operation: _Operation
     snapshot: Path | None
     mode: int | None
+    identity: tuple[int, int] | None
+
+
+@dataclass(frozen=True)
+class _RootGuard:
+    path: Path
+    identity: tuple[int, int]
 
 
 def _path_key(path: PurePosixPath) -> str:
@@ -63,17 +70,20 @@ def _lock_bytes(lock: LockState) -> bytes:
     return (json.dumps(document, sort_keys=True, indent=2) + '\n').encode('utf-8')
 
 
-def _validate_change(change: Change) -> None:
+def _validate_change(change: Change) -> PurePosixPath:
     if not isinstance(change, Change) or not isinstance(change.path, PurePosixPath):
         raise TransactionError(TypeError('plan change must have a relative POSIX path'))
-    if change.path.is_absolute() or not change.path.parts or '..' in change.path.parts:
-        raise TransactionError(ValueError('plan change path must be relative and cannot contain ..'))
+    try:
+        path = safe_relative(change.path.as_posix(), 'plan change path')
+    except ContractError as error:
+        raise TransactionError(error) from error
     if not isinstance(change.kind, ChangeKind):
         raise TransactionError(TypeError(f'unsupported change kind: {change.kind!r}'))
     if change.kind is ChangeKind.DELETE and change.content is not None:
         raise TransactionError(TypeError(f'delete change has content: {_path_key(change.path)}'))
     if change.kind is not ChangeKind.DELETE and not isinstance(change.content, bytes):
         raise TransactionError(TypeError(f'file change content must be bytes: {_path_key(change.path)}'))
+    return path
 
 
 def _operations(plan: Plan) -> tuple[tuple[_Operation, ...], LockState]:
@@ -86,14 +96,14 @@ def _operations(plan: Plan) -> tuple[tuple[_Operation, ...], LockState]:
     seen: set[PurePosixPath] = set()
     operations: list[_Operation] = []
     for change in plan.changes:
-        _validate_change(change)
-        if change.path == _LOCK_PATH:
+        path = _validate_change(change)
+        if path == _LOCK_PATH:
             raise TransactionError(ValueError('plan cannot change .agents/lock.json directly'))
-        if change.path in seen:
-            raise TransactionError(ValueError(f'duplicate plan change: {_path_key(change.path)}'))
-        seen.add(change.path)
+        if path in seen:
+            raise TransactionError(ValueError(f'duplicate plan change: {_path_key(path)}'))
+        seen.add(path)
         if change.kind is not ChangeKind.UNCHANGED:
-            operations.append(_Operation(change.path, change.kind, change.content))
+            operations.append(_Operation(path, change.kind, change.content))
     operations.sort(key=lambda operation: _path_key(operation.path))
     return tuple(operations), lock
 
@@ -110,6 +120,25 @@ def _open_root(root: Path) -> int:
     except BaseException:
         os.close(descriptor)
         raise
+
+
+def _root_guard(root: Path) -> tuple[_RootGuard, int]:
+    descriptor = _open_root(root)
+    entry = os.fstat(descriptor)
+    return _RootGuard(Path(root).absolute(), (entry.st_dev, entry.st_ino)), descriptor
+
+
+def _assert_root(guard: _RootGuard) -> None:
+    try:
+        descriptor = _open_root(guard.path)
+    except OSError as error:
+        raise TransactionError('unsafe root namespace changed during transaction') from error
+    try:
+        entry = os.fstat(descriptor)
+        if (entry.st_dev, entry.st_ino) != guard.identity or not stat.S_ISDIR(entry.st_mode):
+            raise TransactionError('unsafe root namespace changed during transaction')
+    finally:
+        os.close(descriptor)
 
 
 def _open_parent(root_fd: int, path: PurePosixPath, *, create: bool, created: list[PurePosixPath]) -> int:
@@ -158,7 +187,7 @@ def _read_at(parent_fd: int, name: str) -> tuple[bytes, int] | None:
         chunks: list[bytes] = []
         while chunk := os.read(descriptor, 65536):
             chunks.append(chunk)
-        return b''.join(chunks), stat.S_IMODE(current.st_mode)
+        return b''.join(chunks), stat.S_IMODE(current.st_mode), (current.st_dev, current.st_ino)
     finally:
         os.close(descriptor)
 
@@ -226,24 +255,34 @@ def _backup(root_fd: int, operation: _Operation, backup_root: Path, index: int) 
     try:
         parent_fd = _open_parent(root_fd, operation.path, create=False, created=[])
     except FileNotFoundError:
-        return _Backup(operation, None, None)
+        return _Backup(operation, None, None, None)
     try:
         current = _read_at(parent_fd, operation.path.name)
     finally:
         os.close(parent_fd)
     if current is None:
-        return _Backup(operation, None, None)
-    content, mode = current
+        return _Backup(operation, None, None, None)
+    content, mode, identity = current
     snapshot = backup_root / f'{index:04d}'
     snapshot.write_bytes(content)
-    return _Backup(operation, snapshot, mode)
+    return _Backup(operation, snapshot, mode, identity)
 
 
-def _apply(root_fd: int, operation: _Operation, backup: _Backup, created: list[PurePosixPath]) -> None:
+def _final_matches(parent_fd: int, operation: _Operation, backup: _Backup) -> None:
+    current = _stat_at(parent_fd, operation.path.name)
+    if backup.identity is None:
+        if current is not None:
+            raise TransactionError(f'unsafe final target appeared: {_path_key(operation.path)}')
+    elif current is None or (current.st_dev, current.st_ino) != backup.identity:
+        raise TransactionError(f'unsafe final target changed: {_path_key(operation.path)}')
+
+
+def _apply(root_fd: int, guard: _RootGuard, operation: _Operation, backup: _Backup, created: list[PurePosixPath]) -> None:
     if operation.kind is ChangeKind.DELETE:
         parent_fd = _open_parent(root_fd, operation.path, create=False, created=created)
         try:
-            _stat_at(parent_fd, operation.path.name)
+            _assert_root(guard)
+            _final_matches(parent_fd, operation, backup)
             os.unlink(operation.path.name, dir_fd=parent_fd)
         finally:
             os.close(parent_fd)
@@ -251,7 +290,9 @@ def _apply(root_fd: int, operation: _Operation, backup: _Backup, created: list[P
     assert operation.content is not None
     temporary, parent_fd = _write_sibling(root_fd, operation.path, operation.content, backup.mode, created)
     try:
+        _assert_root(guard)
         _same_parent(root_fd, operation.path, parent_fd)
+        _final_matches(parent_fd, operation, backup)
         _replace(temporary, operation.path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
     finally:
         try:
@@ -323,8 +364,12 @@ def _cleanup_created(root_fd: int, created: list[PurePosixPath]) -> list[BaseExc
     return errors
 
 
-def _rollback(root_fd: int, applied: list[_Backup], created: list[PurePosixPath]) -> tuple[BaseException, ...]:
+def _rollback(root_fd: int, guard: _RootGuard, applied: list[_Backup], created: list[PurePosixPath]) -> tuple[BaseException, ...]:
     errors: list[BaseException] = []
+    try:
+        _assert_root(guard)
+    except BaseException as error:
+        return (error,)
     for backup in reversed(applied):
         try:
             _restore(root_fd, backup, created)
@@ -336,12 +381,12 @@ def _rollback(root_fd: int, applied: list[_Backup], created: list[PurePosixPath]
 
 def _apply_secure(target_root: Path, plan: Plan) -> None:
     operations, lock = _operations(plan)
-    root_fd = _open_root(target_root)
+    guard, root_fd = _root_guard(target_root)
     applied: list[_Backup] = []
     created: list[PurePosixPath] = []
     try:
         for change in plan.changes:
-            _expected(root_fd, _Operation(change.path, change.kind, change.content))
+            _expected(root_fd, _Operation(_validate_change(change), change.kind, change.content))
         lock_operation = _Operation(_LOCK_PATH, ChangeKind.UPDATE, _lock_bytes(lock))
         _expected(root_fd, lock_operation, lock=True)
         with tempfile.TemporaryDirectory(prefix='agents-setup-transaction-') as temporary_root:
@@ -354,14 +399,14 @@ def _apply_secure(target_root: Path, plan: Plan) -> None:
                 for operation in operations:
                     _expected(root_fd, operation)
                     applied.append(backups[operation.path])
-                    _apply(root_fd, operation, backups[operation.path], created)
+                    _apply(root_fd, guard, operation, backups[operation.path], created)
                 _verify_desired(root_fd, plan.changes)
                 _expected(root_fd, lock_operation, lock=True)
                 applied.append(backups[lock_operation.path])
-                _apply(root_fd, lock_operation, backups[lock_operation.path], created)
+                _apply(root_fd, guard, lock_operation, backups[lock_operation.path], created)
             except BaseException as error:
                 original = error.original_error if isinstance(error, TransactionError) else error
-                raise TransactionError(original, _rollback(root_fd, applied, created)) from error
+                raise TransactionError(original, _rollback(root_fd, guard, applied, created)) from error
     finally:
         os.close(root_fd)
 

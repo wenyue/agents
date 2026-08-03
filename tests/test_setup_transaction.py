@@ -390,6 +390,70 @@ class SetupTransactionTest(unittest.TestCase):
             self.assertEqual(external.read_bytes(), b'same')
             self.assertFalse((target / '.agents/lock.json').exists())
 
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX openat semantics')
+    def test_root_replacement_after_temp_creation_aborts_without_writing_detached_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            container = Path(temp_dir)
+            target = container / 'target'
+            moved = container / 'moved'
+            external = container / 'external'
+            target.mkdir()
+            external.mkdir()
+            self.write(target, 'owned', b'old')
+            original_write = transaction._write_sibling
+
+            def write_then_swap_root(*args, **kwargs):
+                result = original_write(*args, **kwargs)
+                target.rename(moved)
+                target.symlink_to(external, target_is_directory=True)
+                return result
+
+            with mock.patch.object(transaction, '_write_sibling', side_effect=write_then_swap_root), \
+                 mock.patch.object(transaction, '_replace') as replace:
+                with self.assertRaisesRegex(TransactionError, 'root|namespace|unsafe'):
+                    apply_plan(target, self.plan(Change(ChangeKind.UPDATE, PurePosixPath('owned'), b'new')))
+
+            replace.assert_not_called()
+            self.assertEqual(list(external.iterdir()), [])
+            self.assertEqual((moved / 'owned').read_bytes(), b'old')
+            self.assertFalse((moved / '.agents/lock.json').exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX openat semantics')
+    def test_final_entry_swap_after_temp_creation_aborts_before_replace(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            container = Path(temp_dir)
+            target = container / 'target'
+            external = container / 'external'
+            target.mkdir()
+            external.write_bytes(b'external')
+            owned = self.write(target, 'owned', b'old')
+            original_write = transaction._write_sibling
+
+            def write_then_swap_entry(*args, **kwargs):
+                result = original_write(*args, **kwargs)
+                owned.unlink()
+                owned.symlink_to(external)
+                return result
+
+            with mock.patch.object(transaction, '_write_sibling', side_effect=write_then_swap_entry), \
+                 mock.patch.object(transaction, '_replace') as replace:
+                with self.assertRaisesRegex(TransactionError, 'target|unsafe'):
+                    apply_plan(target, self.plan(Change(ChangeKind.UPDATE, PurePosixPath('owned'), b'new')))
+
+            replace.assert_not_called()
+            self.assertEqual(external.read_bytes(), b'external')
+            self.assertFalse((target / '.agents/lock.json').exists())
+
+    def test_rejects_nonportable_plan_paths_before_any_mutation(self):
+        for path in (r'..\outside\pwn', r'a\b', 'C:/outside', '.', 'NUL'):
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as temp_dir:
+                target = Path(temp_dir)
+                plan = self.plan(Change(ChangeKind.CREATE, PurePosixPath(path), b'new'))
+                with mock.patch.object(transaction, '_replace') as replace:
+                    with self.assertRaises(TransactionError):
+                        apply_plan(target, plan)
+                replace.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
