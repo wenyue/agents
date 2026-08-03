@@ -12,6 +12,35 @@ def load_json(relative_path: str) -> dict:
 
 
 class PluginManifestTest(unittest.TestCase):
+    def test_documentation_and_local_runtime_boundaries(self):
+        self.assertFalse((REPO_ROOT / 'agents-zh').exists())
+
+        chinese_docs = REPO_ROOT / 'docs' / 'zh-CN'
+        self.assertTrue(chinese_docs.is_dir())
+        self.assertTrue(any(chinese_docs.rglob('*.md')))
+        self.assertFalse(any(path.suffix != '.md' for path in chinese_docs.rglob('*') if path.is_file()))
+
+        self.assertEqual(
+            {path.name for path in (REPO_ROOT / '.agents').iterdir()},
+            {'plugins', 'rules'},
+        )
+
+    def test_readme_documents_plugin_setup_and_safety_boundaries(self):
+        readme = (REPO_ROOT / 'README.md').read_text(encoding='utf-8')
+        for expected in (
+            'Codex',
+            'Cursor',
+            'GitHub Copilot',
+            'setup-project-agents',
+            'remote `main`',
+            'Hooks',
+            'multi-agent',
+            'doctor',
+            'upgrade',
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, readme)
+
     def test_project_catalog_matches_native_plugin_version(self):
         catalog = load_json('catalog/project-assets.json')
         self.assertEqual(catalog['plugin']['id'], 'agents')

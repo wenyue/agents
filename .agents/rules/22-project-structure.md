@@ -2,61 +2,43 @@
 
 Strength: `Advisory`
 
-Scope: Top-level catalog, mirror, local-runtime, documentation, and synchronization ownership
-boundaries.
+Scope: Top-level plugin, documentation, local-rule, and target-installation ownership boundaries.
 
 ## Repository Areas
 
-- `agents/` owns the complete English public catalog:
-  - `agents/rules/` contains directly distributed shared rules.
-  - `agents/skills/` contains directly distributed operational and orchestration skills.
-  - `agents/blueprints/` contains Rule and Skill generation contracts that produce target-owned
-    runtime assets.
-  - `agents/agents/` contains public agent prompts.
-- `agents-zh/` mirrors only the human-readable Markdown structure of `agents/` for Simplified-Chinese
-  readers. It owns no runtime, generation, synchronization, or distribution behavior.
-- `.agents/` owns this repository's curated local runtime. Its rules, skills, and agent prompts are
-  selected for this repository and need not reproduce the public catalog.
-- `docs/` owns design and implementation plans; it is not an agent-runtime or public-distribution
-  source.
-- `AGENTS.md` is the repository entry point for discovering `.agents/rules/`.
-- `README.md` owns public catalog onboarding and the high-level boundary between `agents/` and
-  `.agents/`.
+- `rules/` contains directly distributed shared Rules; `skills/` contains shared operational and
+  orchestration Skills; and `agents/` contains shared agent prompts.
+- `blueprints/` contains Rule and Skill generation contracts, while `templates/project/` contains
+  host configuration and wrapper templates. Neither is copied as a target runtime asset without
+  the catalog and renderer selecting it.
+- `catalog/` owns public asset selection and lock/configuration contracts. `config/` owns
+  recommended-tool policy.
+- `docs/` contains design material and `docs/zh-CN/` contains Simplified-Chinese documentation.
+  Documentation is outside runtime loading and target installation.
+- `.agents/rules/` owns this repository's development instructions, and `.agents/plugins/` owns its
+  local marketplace configuration. No other `.agents/` content belongs in this repository.
+- `AGENTS.md` is the entry point for discovering `.agents/rules/`; `README.md` is public plugin
+  onboarding and describes the setup boundary.
 
 ## Distribution Flow
 
-- Public synchronization reads the manifest and English assets under `agents/`, then installs
-  manifest-selected assets into a target repository under `.agents/`.
-- Rule and Skill blueprints under `agents/blueprints/` guide creation of complete target-owned
-  `.agents/` files; the blueprints themselves are not installed as runtime content.
-- Treat public-to-target synchronization as one-way; `.agents/` changes have no reverse path into
-  `agents/`.
-- Treat `agents-zh/` as a terminal reading mirror with no path into `agents/`, `.agents/`,
-  manifests, wrappers, or target repositories.
+- Setup reads `catalog/project-assets.json` and English plugin assets at the root, then applies only
+  manifest-selected content to a target repository under `.agents/`.
+- Blueprints guide creation of complete target-owned Rules and Skills; they are not installed as
+  runtime content themselves.
+- The setup control plane remains in `skills/setup-project-agents/`. Target changes have no reverse
+  path into plugin runtime assets or documentation.
 
 ## Script and Test Ownership
 
-- Keep the public sync implementation under `agents/skills/setup-project-agents/scripts/` and
-  distribute it as part of the operational skill.
-- Keep public distribution data under
-  `agents/skills/setup-project-agents/references/`.
-- Keep repository maintenance and contract tests under `tests/`, outside distributed runtime Skill
-  resources.
-- Repository tests may import support scripts from their owning public skill directories without
-  moving those scripts out of their runtime owners.
-
-## Local Runtime Dependencies
-
-- Keep `.agents/agents/change-set-verifier.md` dependent on
-  `.agents/skills/change-set-verification/SKILL.md`.
-- Keep the local verification skill self-contained because this repository declares no package,
-  module, service, formatter, linter, fixer, build, or environment-setup boundary.
-- Add `.agents/skills/worktree-environment-setup/` only after the repository declares a real
-  preparation step.
+- Keep setup implementation under `skills/setup-project-agents/scripts/` and recommended-tool
+  checkers under `skills/manage-agent-tools/scripts/`.
+- Keep repository contract tests under `tests/`; tests may import support scripts from their owning
+  plugin Skill directories.
 
 ## Boundaries
 
 - Keep runtime versions and executable commands in `Project Tools`.
-- Keep public ownership, mirror maintenance, and installation policy in `Project Rules`.
+- Keep public ownership, documentation, and installation policy in `Project Rules`.
 - Describe application modules, package dependencies, or service layers only from direct repository
-  evidence, not from the catalog directory structure.
+  evidence, not from the plugin directory structure.

@@ -2,61 +2,36 @@
 
 Strength: `Default`
 
-Scope: Public catalog ownership, language-mirror policy, target installation contracts,
-repository-local runtime boundaries, and repository test contracts.
+Scope: Plugin asset ownership, documentation boundaries, target-installation contracts, and test
+contracts for this repository.
 
-## Public Catalog Ownership
+## Plugin Ownership
 
-- Treat `agents/` as the complete English public catalog and the sole source of truth for public
-  rules, skills, agent prompts, templates, references, and scripts.
-- Make public catalog changes in `agents/`; treat `.agents/` as local runtime and `agents-zh/` as a
-  reading mirror rather than sources for English public assets.
-- Treat `catalog/project-assets.json` as the owner of public asset inclusion, Rule and Skill
+- Treat root `rules/`, `skills/`, and `agents/` as the English runtime sources of truth for the
+  plugin. Keep shared blueprints in `blueprints/`, host templates in `templates/project/`, and
+  recommended-tool policy in `config/`.
+- Treat `catalog/project-assets.json` as the owner of target asset inclusion, Rule and Skill
   blueprints, wrapper routing, renderer metadata, and managed root-configuration declarations.
-- Keep deterministic setup, source validation, rendering, and transaction behavior in
-  `skills/setup-project-agents/scripts/`, while target-specific policy remains in the target
-  repository.
+- Keep deterministic setup, source validation, rendering, planning, and transactional application
+  in `skills/setup-project-agents/scripts/`. Target-specific policy belongs to the target
+  repository's generated or user-owned content.
 
-## Simplified-Chinese Mirror
+## Documentation and Local Rules
 
-- Treat `agents-zh/` as a hand-maintained Simplified-Chinese translation of human-readable Markdown
-  under `agents/`, for reading only.
-- Translate meaning, not sentence form: use natural, plain Chinese instead of word-for-word
-  translation, and rewrite sentences when needed without changing their technical meaning.
-- When English Markdown changes materially, update its corresponding Chinese mirror in the same
-  coherent change.
-- Preserve relative paths, commands, identifiers, code blocks, classification, and behavioral
-  meaning across the mirror.
-- Mirror only human-readable Markdown into `agents-zh/`; scripts, JSON manifests, platform
-  configuration, and other machine-read files remain untranslated.
-- Keep `agents-zh/` outside runtime loading, publication, and synchronization.
+- Treat `docs/zh-CN/` as Simplified-Chinese documentation. It is not a runtime source, plugin
+  entry point, setup input, or target-installation asset.
+- Write Chinese documentation naturally and preserve commands, identifiers, code blocks, and
+  behavioral meaning when documenting English runtime assets.
+- Treat `.agents/rules/` as the source of truth for this repository's development rules. Keep
+  `.agents/` limited to `plugins/` and `rules/`; it is not a generated project snapshot.
 
-## Project-Local Runtime
+## Installation and Tests
 
-- Treat `.agents/` as this repository's curated local runtime source of truth.
-- Let `.agents/` contain only the public assets required by this repository; byte equivalence with
-  `agents/` is not a requirement.
-- Change `.agents/` when this repository's runtime behavior or project-local policy requires it,
-  independently of public catalog edits.
-- Keep `.agents/agents/change-set-verifier.md` resolved to
-  `.agents/skills/change-set-verification/SKILL.md`.
-
-## Generation and Installation
-
-- Treat `agents/blueprints/rules/` and `agents/blueprints/skills/` as the public sources for
-  target-owned Rule and Skill generation, not as directly installable runtime assets.
-- Generate complete target-owned rules and skills under `.agents/`; use a blueprint as an authoring
-  contract rather than copying it as the final runtime artifact.
-- Preserve `.agents/` as the installation root in public prompts, templates, manifests, scripts,
-  and documentation.
-
-## Test Contracts
-
+- Preserve `.agents/` as the installation root in public setup prompts, templates, manifests,
+  scripts, and documentation for target repositories.
 - Unit tests may assert structured configuration, schemas, filesystem effects, state transitions,
-  exit behavior, and other observable runtime results.
-- Review human-readable Markdown, Rule and Skill prose, prompt and hook wording, and implementation
-  source semantically. Limit automated assertions to structured configuration or observable runtime
-  behavior rather than substrings, presence, absence, or section order.
+  exit behavior, and documented repository-boundary facts. Review prose, prompts, and Hook wording
+  semantically in addition to automated checks.
 
 ## Boundaries
 

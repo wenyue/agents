@@ -32,7 +32,8 @@ Run both commands for every completed change set; together they form the require
   session, and applies only the lock-owned target snapshot.
 - `check` reports target drift without writes. Neither command is a formatter, fixer, or
   replacement for this repository's test command.
-- Keep this repository's intentionally curated `.agents/` runtime under its independent owner.
+- Keep this repository's local `.agents/` directory limited to its `plugins/` marketplace
+  configuration and `rules/` development instructions.
 
 ## Boundaries
 

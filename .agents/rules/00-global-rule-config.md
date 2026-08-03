@@ -27,14 +27,14 @@ the source.
 
 | Asset | Source of truth |
 | --- | --- |
-| Project rules | `.agents/rules/<nn>-<name>.md` |
-| Agent prompts | `.agents/agents/<name>.md` |
-| Project skills | `.agents/skills/<skill>/SKILL.md` |
-| Third-party skills | `.skillshare/skills/<skill>/SKILL.md` |
-| Copilot guidance | `.github/instructions/*.instructions.md` |
+| Repository development rules | `.agents/rules/<nn>-<name>.md` |
+| Shared plugin Rules | `rules/<nn>-<name>.md` |
+| Shared plugin Skills | `skills/<skill>/SKILL.md` |
+| Shared plugin agent prompts | `agents/<name>.md` |
+| Simplified-Chinese documentation | `docs/zh-CN/` |
 
 - Use repository-root-relative paths in tracked configuration.
-- When content appears in more than one wrapper, move it to the source and reduce the wrappers.
+- When content appears in more than one wrapper, move it to its owning source and reduce the wrappers.
 - A thin wrapper contains only platform metadata or runtime fields plus one source reference.
 
 ## Wrapper Maintenance
@@ -50,15 +50,15 @@ Use this body for both rule wrapper types:
 Apply @.agents/rules/<nn>-<name>.md
 ```
 
-When adding a rule:
+When adding a target-owned rule:
 
 1. Author the source in `.agents/rules/<nn>-<name>.md`.
 2. Add Cursor and Copilot wrappers for each platform that loads it.
 3. Update `AGENTS.md` when the rule changes applicable paths or workflows.
 
-When adding a subagent:
+When adding a shared agent prompt:
 
-1. Author the shared prompt in `.agents/agents/<name>.md`.
+1. Author the source in `agents/<name>.md`.
 2. Add thin Cursor, Codex, and Copilot wrappers for platforms that expose it.
 3. Keep repository-wide Copilot guidance in `.github/instructions/*.instructions.md` and reference
    it from subagent prompts when needed.
@@ -78,7 +78,7 @@ Finish reading all applicable `00–09` global rules before deciding which later
 
 ## MCP Configuration
 
-Keep server names and intent consistent across platforms. Put project-specific server names, ports,
+Keep server names and intent consistent across platforms. Put repository-specific server names, ports,
 binaries, and service dependencies in the project tooling rule or the owning configuration. Prefer
 relative or command-based configuration over machine-specific paths.
 

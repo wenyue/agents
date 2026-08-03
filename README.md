@@ -1,14 +1,12 @@
 # wenyue/agents
 
-Shared runtime assets live under `agents/rules/`, `agents/skills/`, and `agents/agents/`. Generative
-Rule and Skill blueprints live under `agents/blueprints/`. Runtime assets are installed into target
-repositories under `.agents/`, while blueprints guide creation of target-owned `.agents/` content;
-this repository keeps a curated local runtime configuration in `.agents/` rather than mirroring the
-public catalog.
+`agents` is a cross-platform plugin for Codex, Cursor, and GitHub Copilot. It maintains shared
+Rules, Skills, agent prompts, templates, and optional project Hooks. Installing the plugin makes
+those capabilities available to a host; every repository is configured separately and explicitly.
 
-## Install the Plugin
+## Install the plugin
 
-Install `agents` once for the host you use.
+Install `agents` once in each host you use.
 
 Codex:
 
@@ -17,7 +15,13 @@ codex plugin marketplace add wenyue/agents
 codex plugin add agents@wenyue-agents
 ```
 
-Cursor: add `https://github.com/wenyue/agents` as a plugin source, then install `agents`.
+You can also use `/plugins` in Codex to browse the configured marketplace. Start a new Codex
+session after installation.
+
+Cursor: use Cursor's Plugin Marketplace or `/add-plugin` flow. For an unpublished plugin, import
+this repository through your team or private marketplace UI, or clone it locally for development
+installation. Cursor's UI changes independently, so follow the current in-product flow rather than
+an unsupported repository CLI command.
 
 GitHub Copilot CLI:
 
@@ -26,37 +30,53 @@ copilot plugin marketplace add wenyue/agents
 copilot plugin install agents@wenyue-agents
 ```
 
-Installing the plugin only makes its Skills available; it does not modify repositories. Open each
-target repository and ask the installed plugin to use `setup-project-agents`. Run that Skill again
-whenever you want to synchronize the repository with the installed catalog version.
+To refresh a Copilot marketplace and plugin, use its native update flow, for example
+`copilot plugin marketplace update wenyue-agents` followed by `copilot plugin update agents`.
+Confirm names with `copilot plugin list` when your marketplace differs.
 
-## Review Project Hooks
+## Set up each project
 
-`setup-project-agents` installs a project-health `sessionStart` Hook for each supported host. The
-Hook checks recommended tools and effective runtime requirements at most once per project per day;
-it reports drift but never installs, upgrades, or trusts tools. Review the command using the host's
-normal trust flow before allowing it to run.
+In every target repository, explicitly ask the installed plugin to use `setup-project-agents`.
+Choose the target hosts and whether to enable Hooks; the default is Codex, Cursor, and Copilot with
+Hooks disabled. Plugin installation alone never changes a project.
 
-| Agent | Project Hook | Required user action |
-| --- | --- | --- |
-| Codex | `.codex/hooks.json` | Start `codex`, enter `/hooks`, inspect the project Hook, and trust its exact definition. |
-| Cursor | `.cursor/hooks.json` | Open the repository as a trusted workspace and inspect the Hook under `Cursor Settings > Hooks`. |
-| GitHub Copilot | `.github/hooks/*.json` | Start `copilot` in the repository and accept the prompt to trust the current directory. |
+Each setup session fetches the plugin's remote `main`, validates it, and pins one fetched commit for
+the complete prepare, apply, and check sequence. Run setup again when you want a project to adopt
+the current `main`. The setup control plane itself stays in the plugin and is never copied into a
+target project.
 
-Hook support is enabled explicitly for all three hosts. Multi-agent support is not force-enabled by
-project configuration. The Codex check reads the effective `multi_agent` state. Cursor and Copilot
-checks version-gate their default multi-agent capability and report unsupported host versions; they
-do not detect host-specific overrides that disable that default.
+The resulting snapshot owns only its lock-recorded files and configuration fields. It preserves a
+target project's other files and user-owned `.agents/config.json` choices.
 
-## Boundaries
+## Hooks, multi-agent, and tool maintenance
 
-- Edit the public catalog under `agents/`; treat `.agents/` as this repository's curated local
-  runtime configuration.
-- Keep project-specific facts in the target repository, not here.
-- Do not locally adapt public rules or public skills for one project.
-- Use skillshare only for third-party skills that should remain independently upgradable:
+Hooks are an explicit opt-in. When enabled, setup writes the host Hook definitions but never edits
+host trust storage, workspace trust, plugin caches, or editor UI state. Review and trust each Hook
+in the relevant host UI before allowing it to run. A Hook only performs project-health diagnosis;
+it does not install or upgrade tools.
 
-```bash
-skillshare update --all -p
-skillshare sync -p
+Multi-agent capability is checked from effective host state or the host's documented default. Setup
+does not write a replacement multi-agent setting: Codex reads the effective `multi_agent` status,
+while Cursor and GitHub Copilot report whether the host version supports its default capability.
+
+Use `manage-agent-tools` separately for tool maintenance. Its `doctor` operation is read-only. An
+`upgrade` is proposed one native command at a time and runs only after the user approves that exact
+command; doctor runs again afterwards.
+
+## Repository layout
+
+```text
+rules/                 Shared runtime Rules
+skills/                Shared operational Skills, including setup-project-agents
+agents/                Shared agent prompts
+blueprints/            Contracts for target-owned Rules and Skills
+catalog/               Asset and lock contracts
+templates/project/     Host configuration and wrapper templates
+config/                Recommended-tool policies
+docs/zh-CN/             Simplified-Chinese documentation
+.agents/rules/         This repository's own development rules
+.agents/plugins/       This repository's local plugin marketplace configuration
 ```
+
+The root runtime directories are the English plugin source of truth. `docs/zh-CN/` is documentation
+only and is never loaded, installed, or synchronized into a project.
