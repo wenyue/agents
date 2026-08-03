@@ -125,6 +125,11 @@ class SetupRendererTest(unittest.TestCase):
             self.assertNotIn('.github/hooks/project-agent-tool-check.json', off.files_by_path)
             self.assertNotIn(('.codex/config.toml', 'features.hooks'), off.fields_by_key)
             self.assertNotIn(('.github/copilot/settings.json', 'disableAllHooks'), off.fields_by_key)
+            for platform in ('codex', 'cursor', 'copilot'):
+                self.assertIn(
+                    f'.agents/skills/manage-agent-tools/references/recommended-tools/{platform}.json',
+                    off.files_by_path,
+                )
 
             self.assertEqual(on.fields_by_key[('.codex/config.toml', 'features.hooks')], True)
             self.assertEqual(

@@ -215,9 +215,14 @@ def render_desired_state(
             continue
         if asset.kind == 'agent' and asset.id not in config.selected_agents:
             continue
+        if asset.kind == 'tool-policy' and 'manage-agent-tools' not in config.selected_skills:
+            continue
         if asset.id.startswith('hook-') and not config.hooks_enabled:
             continue
         if asset.kind in {'rule', 'skill', 'agent'}:
+            _copy_asset(files, source_root / asset.source, asset.target)
+            continue
+        if asset.kind == 'tool-policy':
             _copy_asset(files, source_root / asset.source, asset.target)
             continue
         if asset.id.startswith('hook-'):

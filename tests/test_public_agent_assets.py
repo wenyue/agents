@@ -25,7 +25,7 @@ RECOMMENDED_TOOL_CHECKER = (
     MANAGE_AGENT_TOOLS_ROOT / 'scripts' / 'check_recommended_tools.py'
 )
 RECOMMENDED_TOOL_POLICIES = (
-    MANAGE_AGENT_TOOLS_ROOT / 'references' / 'recommended-tools'
+    REPO_ROOT / 'config' / 'recommended-tools'
 )
 REPORT_SESSION_USAGE_ROOT = REPO_ROOT / 'skills' / 'report-session-usage'
 sys.path.insert(0, str(REPO_SKILL_ROOT / 'scripts'))

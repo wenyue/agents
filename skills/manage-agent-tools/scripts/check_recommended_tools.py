@@ -358,12 +358,12 @@ def load_policy(path: Path, platform: str | None = None) -> dict[str, Any]:
 
 
 def default_policy_path(platform: str) -> Path:
-    return (
-        Path(__file__).resolve().parent.parent
-        / 'references'
-        / 'recommended-tools'
-        / f'{platform}.json'
-    )
+    skill_root = Path(__file__).resolve().parents[1]
+    project_copy = skill_root / 'references' / 'recommended-tools' / f'{platform}.json'
+    if project_copy.is_file():
+        return project_copy
+    plugin_root = skill_root.parents[1]
+    return plugin_root / 'config' / 'recommended-tools' / f'{platform}.json'
 
 
 def default_cache_root() -> Path:
