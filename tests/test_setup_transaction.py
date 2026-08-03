@@ -144,20 +144,16 @@ class SetupTransactionTest(unittest.TestCase):
             self.assertEqual(deleted.read_bytes(), b'restore me')
             self.assertEqual(stat.S_IMODE(deleted.stat().st_mode), 0o640)
 
-    def test_keeps_the_original_error_when_rollback_also_fails(self):
+    def test_keeps_the_original_error_when_replacement_never_mutated(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             target = Path(temp_dir)
             self.write(target, 'owned', b'old')
             plan = self.plan(Change(ChangeKind.UPDATE, PurePosixPath('owned'), b'new'))
 
-            with (
-                mock.patch.object(transaction, '_replace', side_effect=OSError('primary boom')),
-                mock.patch.object(transaction.os, 'replace', side_effect=OSError('rollback boom')),
-            ):
+            with mock.patch.object(transaction, '_replace', side_effect=OSError('primary boom')):
                 with self.assertRaisesRegex(TransactionError, 'primary boom') as raised:
                     apply_plan(target, plan)
 
-            self.assertIn('rollback boom', str(raised.exception))
             self.assertEqual(str(raised.exception.original_error), 'primary boom')
 
     def test_rejects_duplicate_changes_before_any_replacement(self):
@@ -453,6 +449,98 @@ class SetupTransactionTest(unittest.TestCase):
                     with self.assertRaises(TransactionError):
                         apply_plan(target, plan)
                 replace.assert_not_called()
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX openat semantics')
+    def test_final_regular_swap_after_temp_preserves_attacker_file_during_rollback(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            owned = self.write(target, 'owned', b'old')
+            attacker = target / 'attacker'
+            attacker.write_bytes(b'attacker')
+            attacker_identity = (attacker.stat().st_dev, attacker.stat().st_ino)
+            original_write = transaction._write_sibling
+
+            def write_then_swap_entry(*args, **kwargs):
+                result = original_write(*args, **kwargs)
+                owned.unlink()
+                attacker.rename(owned)
+                return result
+
+            with mock.patch.object(transaction, '_write_sibling', side_effect=write_then_swap_entry), \
+                 mock.patch.object(transaction, '_replace') as replace, \
+                 mock.patch.object(transaction.os, 'replace', wraps=os.replace) as rollback_replace:
+                with self.assertRaises(TransactionError):
+                    apply_plan(target, self.plan(Change(ChangeKind.UPDATE, PurePosixPath('owned'), b'new')))
+
+            replace.assert_not_called()
+            rollback_replace.assert_not_called()
+            self.assertEqual(owned.read_bytes(), b'attacker')
+            self.assertEqual((owned.stat().st_dev, owned.stat().st_ino), attacker_identity)
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX openat semantics')
+    def test_root_swap_during_second_replace_restores_first_mutation_via_held_fd(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            container = Path(temp_dir)
+            target = container / 'target'
+            moved = container / 'moved'
+            external = container / 'external'
+            target.mkdir()
+            external.mkdir()
+            self.write(target, 'a', b'old-a')
+            self.write(target, 'b', b'old-b')
+            real_replace = os.replace
+            calls = 0
+
+            def replace_then_swap_root(source, destination, **kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    return real_replace(source, destination, **kwargs)
+                target.rename(moved)
+                target.symlink_to(external, target_is_directory=True)
+                raise OSError('second replace failed')
+
+            with mock.patch.object(transaction, '_replace', side_effect=replace_then_swap_root):
+                with self.assertRaisesRegex(TransactionError, 'second replace failed') as raised:
+                    apply_plan(
+                        target,
+                        self.plan(
+                            Change(ChangeKind.UPDATE, PurePosixPath('a'), b'new-a'),
+                            Change(ChangeKind.UPDATE, PurePosixPath('b'), b'new-b'),
+                        ),
+                    )
+
+            self.assertEqual((moved / 'a').read_bytes(), b'old-a')
+            self.assertEqual((moved / 'b').read_bytes(), b'old-b')
+            self.assertEqual(list(external.iterdir()), [])
+            self.assertFalse((moved / '.agents/lock.json').exists())
+            self.assertIn('namespace', str(raised.exception))
+
+    def test_fallback_rejects_attacker_regular_inode_before_replace(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            owned = self.write(target, 'owned', b'old')
+            attacker = target / 'attacker'
+            attacker.write_bytes(b'attacker')
+            real_token = transaction.secrets.token_hex
+            swapped = False
+
+            def swap_after_backup(*args, **kwargs):
+                nonlocal swapped
+                if not swapped:
+                    swapped = True
+                    owned.unlink()
+                    attacker.rename(owned)
+                return real_token(*args, **kwargs)
+
+            with mock.patch.object(transaction, '_SECURE_DIR_FDS', False), \
+                 mock.patch.object(transaction.secrets, 'token_hex', side_effect=swap_after_backup), \
+                 mock.patch.object(transaction, '_replace') as replace:
+                with self.assertRaises(TransactionError):
+                    apply_plan(target, self.plan(Change(ChangeKind.UPDATE, PurePosixPath('owned'), b'new')))
+
+            replace.assert_not_called()
+            self.assertEqual(owned.read_bytes(), b'attacker')
 
 
 if __name__ == '__main__':

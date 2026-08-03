@@ -48,6 +48,12 @@ class _Backup:
 
 
 @dataclass(frozen=True)
+class _Mutation:
+    backup: _Backup
+    result_identity: tuple[int, int] | None
+
+
+@dataclass(frozen=True)
 class _RootGuard:
     path: Path
     identity: tuple[int, int]
@@ -198,11 +204,16 @@ def _write_sibling(
     content: bytes,
     mode: int | None,
     created: list[PurePosixPath],
+    guard: _RootGuard | None = None,
 ) -> tuple[str, int]:
     """Create a closed same-directory temporary file through a freshly opened safe parent fd."""
+    if guard is not None:
+        _assert_root(guard)
     parent_fd = _open_parent(root_fd, path, create=True, created=created)
     temporary = f'.{path.name}.agents-setup-{secrets.token_hex(12)}.tmp'
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0)
+    if guard is not None:
+        _assert_root(guard)
     descriptor = os.open(temporary, flags, 0o666, dir_fd=parent_fd)
     try:
         view = memoryview(content)
@@ -217,6 +228,8 @@ def _write_sibling(
     else:
         os.close(descriptor)
     if mode is not None:
+        if guard is not None:
+            _assert_root(guard)
         os.chmod(temporary, mode, dir_fd=parent_fd, follow_symlinks=False)
     return temporary, parent_fd
 
@@ -277,22 +290,27 @@ def _final_matches(parent_fd: int, operation: _Operation, backup: _Backup) -> No
         raise TransactionError(f'unsafe final target changed: {_path_key(operation.path)}')
 
 
-def _apply(root_fd: int, guard: _RootGuard, operation: _Operation, backup: _Backup, created: list[PurePosixPath]) -> None:
+def _apply(root_fd: int, guard: _RootGuard, operation: _Operation, backup: _Backup, created: list[PurePosixPath], applied: list[_Mutation]) -> None:
     if operation.kind is ChangeKind.DELETE:
         parent_fd = _open_parent(root_fd, operation.path, create=False, created=created)
         try:
             _assert_root(guard)
             _final_matches(parent_fd, operation, backup)
+            applied.append(_Mutation(backup, None))
             os.unlink(operation.path.name, dir_fd=parent_fd)
         finally:
             os.close(parent_fd)
         return
     assert operation.content is not None
-    temporary, parent_fd = _write_sibling(root_fd, operation.path, operation.content, backup.mode, created)
+    temporary, parent_fd = _write_sibling(
+        root_fd, operation.path, operation.content, backup.mode, created, guard
+    )
     try:
         _assert_root(guard)
         _same_parent(root_fd, operation.path, parent_fd)
         _final_matches(parent_fd, operation, backup)
+        temp_entry = os.stat(temporary, dir_fd=parent_fd, follow_symlinks=False)
+        applied.append(_Mutation(backup, (temp_entry.st_dev, temp_entry.st_ino)))
         _replace(temporary, operation.path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
     finally:
         try:
@@ -323,13 +341,19 @@ def _verify_desired(root_fd: int, changes: tuple[Change, ...]) -> None:
             raise TransactionError(f'content changed before lock commit: {_path_key(change.path)}')
 
 
-def _restore(root_fd: int, backup: _Backup, created: list[PurePosixPath]) -> None:
+def _restore(root_fd: int, mutation: _Mutation, created: list[PurePosixPath]) -> None:
+    backup = mutation.backup
     try:
         parent_fd = _open_parent(root_fd, backup.operation.path, create=backup.snapshot is not None, created=created)
     except FileNotFoundError:
         return
     try:
         current = _stat_at(parent_fd, backup.operation.path.name)
+        current_identity = None if current is None else (current.st_dev, current.st_ino)
+        if current_identity == backup.identity:
+            return
+        if current_identity != mutation.result_identity:
+            raise TransactionError(f'third-party target retained during rollback: {_path_key(backup.operation.path)}')
         if backup.snapshot is None:
             if current is not None:
                 os.unlink(backup.operation.path.name, dir_fd=parent_fd)
@@ -364,15 +388,15 @@ def _cleanup_created(root_fd: int, created: list[PurePosixPath]) -> list[BaseExc
     return errors
 
 
-def _rollback(root_fd: int, guard: _RootGuard, applied: list[_Backup], created: list[PurePosixPath]) -> tuple[BaseException, ...]:
+def _rollback(root_fd: int, guard: _RootGuard, applied: list[_Mutation], created: list[PurePosixPath]) -> tuple[BaseException, ...]:
     errors: list[BaseException] = []
     try:
         _assert_root(guard)
     except BaseException as error:
-        return (error,)
-    for backup in reversed(applied):
+        errors.append(error)
+    for mutation in reversed(applied):
         try:
-            _restore(root_fd, backup, created)
+            _restore(root_fd, mutation, created)
         except BaseException as error:
             errors.append(error)
     errors.extend(_cleanup_created(root_fd, created))
@@ -382,7 +406,7 @@ def _rollback(root_fd: int, guard: _RootGuard, applied: list[_Backup], created: 
 def _apply_secure(target_root: Path, plan: Plan) -> None:
     operations, lock = _operations(plan)
     guard, root_fd = _root_guard(target_root)
-    applied: list[_Backup] = []
+    applied: list[_Mutation] = []
     created: list[PurePosixPath] = []
     try:
         for change in plan.changes:
@@ -398,12 +422,10 @@ def _apply_secure(target_root: Path, plan: Plan) -> None:
                 }
                 for operation in operations:
                     _expected(root_fd, operation)
-                    applied.append(backups[operation.path])
-                    _apply(root_fd, guard, operation, backups[operation.path], created)
+                    _apply(root_fd, guard, operation, backups[operation.path], created, applied)
                 _verify_desired(root_fd, plan.changes)
                 _expected(root_fd, lock_operation, lock=True)
-                applied.append(backups[lock_operation.path])
-                _apply(root_fd, guard, lock_operation, backups[lock_operation.path], created)
+                _apply(root_fd, guard, lock_operation, backups[lock_operation.path], created, applied)
             except BaseException as error:
                 original = error.original_error if isinstance(error, TransactionError) else error
                 raise TransactionError(original, _rollback(root_fd, guard, applied, created)) from error
@@ -415,7 +437,9 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
     """Functional fallback with repeated confinement; it cannot provide POSIX openat guarantees."""
     operations, lock = _operations(plan)
     root = Path(target_root)
-    applied: list[tuple[_Operation, Path | None, int | None]] = []
+    root_entry = root.lstat()
+    root_identity = (root_entry.st_dev, root_entry.st_ino)
+    applied: list[_Mutation] = []
     created: list[Path] = []
 
     def target(path: PurePosixPath) -> Path:
@@ -423,6 +447,11 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
             return confined_target(root, path)
         except ProjectError as error:
             raise TransactionError(error) from error
+
+    def guard() -> None:
+        item = root.lstat()
+        if stat.S_ISLNK(item.st_mode) or not stat.S_ISDIR(item.st_mode) or (item.st_dev, item.st_ino) != root_identity:
+            raise TransactionError('unsafe fallback root namespace changed')
 
     def entry(path: Path) -> os.stat_result | None:
         try:
@@ -434,6 +463,7 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
         return item
 
     def ensure_parent(path: Path) -> None:
+        guard()
         parent = path.parent
         missing: list[Path] = []
         current = parent
@@ -443,6 +473,7 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
         if current.is_symlink() or not current.is_dir():
             raise TransactionError(f'unsafe fallback parent: {current}')
         for directory in reversed(missing):
+            guard()
             directory.mkdir()
             created.append(directory)
             if directory.is_symlink() or not directory.is_dir():
@@ -451,6 +482,7 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
     def sibling(path: Path, content: bytes, mode: int | None) -> Path:
         ensure_parent(path)
         temporary = path.parent / f'.{path.name}.agents-setup-{secrets.token_hex(12)}.tmp'
+        guard()
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
         try:
             view = memoryview(content)
@@ -460,6 +492,7 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
         finally:
             os.close(descriptor)
         if mode is not None:
+            guard()
             temporary.chmod(mode)
         return temporary
 
@@ -484,16 +517,16 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
         with tempfile.TemporaryDirectory(prefix='agents-setup-transaction-') as temporary_root:
             snapshots = Path(temporary_root)
             all_operations = (*operations, lock_operation)
-            backups: dict[PurePosixPath, tuple[Path | None, int | None]] = {}
+            backups: dict[PurePosixPath, _Backup] = {}
             for index, operation in enumerate(all_operations):
                 path = target(operation.path)
                 item = entry(path)
                 if item is None:
-                    backups[operation.path] = (None, None)
+                    backups[operation.path] = _Backup(operation, None, None, None)
                 else:
                     snapshot = snapshots / f'{index:04d}'
                     snapshot.write_bytes(path.read_bytes())
-                    backups[operation.path] = (snapshot, stat.S_IMODE(item.st_mode))
+                    backups[operation.path] = _Backup(operation, snapshot, stat.S_IMODE(item.st_mode), (item.st_dev, item.st_ino))
             for operation in (*operations, lock_operation):
                 if operation.path == _LOCK_PATH:
                     for change in plan.changes:
@@ -505,33 +538,52 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
                         elif current is None or change_path.read_bytes() != change.content:
                             raise TransactionError(f'content changed before lock commit: {_path_key(change.path)}')
                 expected(operation, is_lock=operation.path == _LOCK_PATH)
-                snapshot, mode = backups[operation.path]
-                applied.append((operation, snapshot, mode))
+                backup = backups[operation.path]
                 path = target(operation.path)
+                guard()
+                current = entry(path)
+                identity = None if current is None else (current.st_dev, current.st_ino)
+                if identity != backup.identity:
+                    raise TransactionError(f'unsafe fallback final target changed: {_path_key(operation.path)}')
                 if operation.kind is ChangeKind.DELETE:
+                    applied.append(_Mutation(backup, None))
                     path.unlink()
                     continue
                 assert operation.content is not None
-                temporary = sibling(path, operation.content, mode)
+                temporary = sibling(path, operation.content, backup.mode)
                 try:
+                    current = entry(target(operation.path))
+                    identity = None if current is None else (current.st_dev, current.st_ino)
+                    if identity != backup.identity:
+                        raise TransactionError(f'unsafe fallback final target changed: {_path_key(operation.path)}')
                     current_parent = target(operation.path).parent.stat()
                     temporary_parent = temporary.parent.stat()
                     if (current_parent.st_dev, current_parent.st_ino) != (temporary_parent.st_dev, temporary_parent.st_ino):
                         raise TransactionError(f'unsafe fallback parent changed: {_path_key(operation.path)}')
+                    temp_entry = temporary.stat()
+                    applied.append(_Mutation(backup, (temp_entry.st_dev, temp_entry.st_ino)))
+                    guard()
                     _replace(temporary, path)
                 finally:
                     temporary.unlink(missing_ok=True)
     except BaseException as error:
         rollback_errors: list[BaseException] = []
-        for operation, snapshot, mode in reversed(applied):
+        for mutation in reversed(applied):
             try:
+                backup = mutation.backup
+                operation = backup.operation
                 path = target(operation.path)
                 current = entry(path)
-                if snapshot is None:
+                identity = None if current is None else (current.st_dev, current.st_ino)
+                if identity == backup.identity:
+                    continue
+                if identity != mutation.result_identity:
+                    raise TransactionError(f'third-party fallback target retained: {_path_key(operation.path)}')
+                if backup.snapshot is None:
                     if current is not None:
                         path.unlink()
                 else:
-                    temporary = sibling(path, snapshot.read_bytes(), mode)
+                    temporary = sibling(path, backup.snapshot.read_bytes(), backup.mode)
                     try:
                         os.replace(temporary, path)
                     finally:
