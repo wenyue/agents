@@ -393,8 +393,8 @@ class SetupSourceTest(unittest.TestCase):
             workspace = temporary / 'session'
             rename = source_module._rename_noreplace
 
-            def rename_then_raise(fd: int, old: str, new: str) -> None:
-                rename(fd, old, new)
+            def rename_then_raise(fd: int, old: str, new: str, *, on_success=None) -> None:
+                rename(fd, old, new, on_success=on_success)
                 raise RuntimeError('rename wrapper failed after syscall')
 
             with mock.patch.object(source_module, '_rename_noreplace', rename_then_raise):
@@ -402,6 +402,39 @@ class SetupSourceTest(unittest.TestCase):
                     fetch_main(origin.as_uri(), work_root=workspace)
 
             self.assertFalse((workspace / 'source').exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
+    def test_failed_publish_never_moves_an_independent_concurrent_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            workspace = temporary / 'session'
+            staging_name: list[str] = []
+
+            def replace_staging_and_create_source(workspace_state, name: str) -> None:
+                staging_name.append(name)
+                os.rename(
+                    name,
+                    f'{name}-moved',
+                    src_dir_fd=workspace_state.fd,
+                    dst_dir_fd=workspace_state.fd,
+                )
+                os.mkdir('source', dir_fd=workspace_state.fd)
+                (workspace / 'source' / 'sentinel').write_text('independent\n', encoding='utf-8')
+
+            with mock.patch.object(
+                source_module,
+                '_before_publish_rename',
+                replace_staging_and_create_source,
+            ):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main(origin.as_uri(), work_root=workspace)
+
+            self.assertEqual(
+                (workspace / 'source' / 'sentinel').read_text(encoding='utf-8'),
+                'independent\n',
+            )
+            self.assertFalse((workspace / staging_name[0]).exists())
 
     def test_unavailable_secure_staging_primitives_do_not_mutate_or_run_git(self):
         with tempfile.TemporaryDirectory() as temp_dir:

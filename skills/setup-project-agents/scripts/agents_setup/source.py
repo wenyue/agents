@@ -9,7 +9,7 @@ import subprocess
 import ctypes
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Mapping
+from typing import Callable, Mapping
 
 from .catalog import ContractError, load_catalog
 
@@ -411,7 +411,13 @@ def _safe_remove_staging(workspace: _Workspace, staging: _Staging) -> None:
         return
 
 
-def _rename_noreplace(fd: int, old: str, new: str) -> None:
+def _rename_noreplace(
+    fd: int,
+    old: str,
+    new: str,
+    *,
+    on_success: Callable[[], None] | None = None,
+) -> None:
     library = ctypes.CDLL(None, use_errno=True)
     renameat2 = library.renameat2
     renameat2.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
@@ -421,6 +427,8 @@ def _rename_noreplace(fd: int, old: str, new: str) -> None:
         if error == getattr(os, 'EEXIST', 17):
             raise InvalidFetchedSource('source checkout already exists')
         raise InvalidFetchedSource('cannot publish secure source snapshot')
+    if on_success is not None:
+        on_success()
 
 
 def _assert_workspace_namespace(workspace: _Workspace) -> None:
@@ -436,6 +444,8 @@ def _undo_publish_if_needed(
     workspace: _Workspace,
     staging_name: str,
     staging_identity: tuple[int, int],
+    *,
+    published_success: bool,
 ) -> Exception | None:
     """Restore names through the held workspace fd after any detected publish failure."""
     try:
@@ -443,12 +453,21 @@ def _undo_publish_if_needed(
             return InvalidFetchedSource('secure source undo is unavailable')
         staging_status = _entry_status(workspace.fd, staging_name)
         source_status = _entry_status(workspace.fd, 'source')
-        if staging_status is None and source_status is not None:
+        source_is_ours = (
+            source_status is not None
+            and not stat.S_ISLNK(source_status.st_mode)
+            and stat.S_ISDIR(source_status.st_mode)
+            and _identity(source_status) == staging_identity
+        )
+        should_undo = published_success or source_is_ours
+        if should_undo and staging_status is None and source_status is not None:
             try:
                 _rename_noreplace(workspace.fd, 'source', staging_name)
             except Exception:
                 # A wrapper may report after the syscall; inspect the resulting layout below.
                 pass
+        if not should_undo:
+            return None
         staging_status = _entry_status(workspace.fd, staging_name)
         source_status = _entry_status(workspace.fd, 'source')
         if source_status is not None or staging_status is None:
@@ -463,6 +482,12 @@ def _publish_staging(
     staging_name: str,
     staging_identity: tuple[int, int],
 ) -> Path:
+    published_success = False
+
+    def record_publish_success() -> None:
+        nonlocal published_success
+        published_success = True
+
     try:
         _assert_workspace_namespace(workspace)
         if workspace.fd is None:
@@ -472,14 +497,24 @@ def _publish_staging(
         if _entry_status(workspace.fd, 'source') is not None:
             raise InvalidFetchedSource('source checkout already exists')
         _before_publish_rename(workspace, staging_name)
-        _rename_noreplace(workspace.fd, staging_name, 'source')
+        _rename_noreplace(
+            workspace.fd,
+            staging_name,
+            'source',
+            on_success=record_publish_success,
+        )
         _after_publish_rename()
         if _entry_identity(workspace.fd, 'source') != staging_identity:
             raise InvalidFetchedSource('published source identity mismatch')
         _assert_workspace_namespace(workspace)
         return workspace.path / 'source'
     except Exception as error:
-        undo_error = _undo_publish_if_needed(workspace, staging_name, staging_identity)
+        undo_error = _undo_publish_if_needed(
+            workspace,
+            staging_name,
+            staging_identity,
+            published_success=published_success,
+        )
         if undo_error is not None:
             raise InvalidFetchedSource(
                 f'cannot publish secure source snapshot; undo failed: {undo_error}'
