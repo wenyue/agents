@@ -402,9 +402,7 @@ def _create_staging(workspace: _Workspace) -> _Staging:
 def _safe_remove_staging(workspace: _Workspace, staging: _Staging) -> None:
     """Best-effort cleanup through the held staging fd; never touch SESSION/source."""
     try:
-        if workspace.fd is None or _entry_identity(workspace.fd, staging.name) != staging.identity:
-            return
-        if _identity(os.fstat(staging.fd)) != staging.identity:
+        if workspace.fd is None or _identity(os.fstat(staging.fd)) != staging.identity:
             return
         _remove_directory_contents(staging.fd)
         if _entry_identity(workspace.fd, staging.name) == staging.identity:
@@ -425,22 +423,73 @@ def _rename_noreplace(fd: int, old: str, new: str) -> None:
         raise InvalidFetchedSource('cannot publish secure source snapshot')
 
 
-def _publish_staging(workspace: _Workspace, staging: _Staging) -> Path:
+def _assert_workspace_namespace(workspace: _Workspace) -> None:
     if workspace.fd is None or workspace.identity is None:
         raise SourceUnavailable('secure source publishing is unavailable')
     if _identity(os.fstat(workspace.fd)) != workspace.identity:
         raise InvalidFetchedSource('source workspace changed during fetch')
     if _directory_identity(workspace.path) != workspace.identity:
         raise InvalidFetchedSource('source workspace namespace changed during fetch')
-    _rename_noreplace(workspace.fd, staging.name, 'source')
-    if _entry_identity(workspace.fd, 'source') != staging.identity:
-        raise InvalidFetchedSource('published source identity mismatch')
-    if _directory_identity(workspace.path) != workspace.identity:
-        raise InvalidFetchedSource('source workspace namespace changed during publish')
-    return workspace.path / 'source'
+
+
+def _undo_publish_if_needed(
+    workspace: _Workspace,
+    staging_name: str,
+    staging_identity: tuple[int, int],
+) -> Exception | None:
+    """Restore names through the held workspace fd after any detected publish failure."""
+    try:
+        if workspace.fd is None:
+            return InvalidFetchedSource('secure source undo is unavailable')
+        staging_status = _entry_status(workspace.fd, staging_name)
+        source_status = _entry_status(workspace.fd, 'source')
+        if staging_status is None and source_status is not None:
+            try:
+                _rename_noreplace(workspace.fd, 'source', staging_name)
+            except Exception:
+                # A wrapper may report after the syscall; inspect the resulting layout below.
+                pass
+        staging_status = _entry_status(workspace.fd, staging_name)
+        source_status = _entry_status(workspace.fd, 'source')
+        if source_status is not None or staging_status is None:
+            return InvalidFetchedSource('secure source publish undo did not restore names')
+        return None
+    except Exception as error:
+        return error
+
+
+def _publish_staging(
+    workspace: _Workspace,
+    staging_name: str,
+    staging_identity: tuple[int, int],
+) -> Path:
+    try:
+        _assert_workspace_namespace(workspace)
+        if workspace.fd is None:
+            raise SourceUnavailable('secure source publishing is unavailable')
+        if _entry_identity(workspace.fd, staging_name) != staging_identity:
+            raise InvalidFetchedSource('staging source identity mismatch')
+        if _entry_status(workspace.fd, 'source') is not None:
+            raise InvalidFetchedSource('source checkout already exists')
+        _before_publish_rename(workspace, staging_name)
+        _rename_noreplace(workspace.fd, staging_name, 'source')
+        _after_publish_rename()
+        if _entry_identity(workspace.fd, 'source') != staging_identity:
+            raise InvalidFetchedSource('published source identity mismatch')
+        _assert_workspace_namespace(workspace)
+        return workspace.path / 'source'
+    except Exception as error:
+        undo_error = _undo_publish_if_needed(workspace, staging_name, staging_identity)
+        if undo_error is not None:
+            raise InvalidFetchedSource(
+                f'cannot publish secure source snapshot; undo failed: {undo_error}'
+            ) from error
+        raise InvalidFetchedSource('cannot publish secure source snapshot') from error
 
 
 _before_first_git = lambda: None
+_before_publish_rename = lambda workspace, staging_name: None
+_after_publish_rename = lambda: None
 
 
 def _validate_repository(repository: str) -> str:
@@ -498,7 +547,10 @@ def fetch_main(repository: str, *, work_root: Path) -> SourceSnapshot:
         if not _COMMIT.fullmatch(commit):
             raise InvalidFetchedSource('Git returned an invalid source commit')
         _validate_held_source(staging.fd)
-        return SourceSnapshot(_publish_staging(workspace, staging), commit.lower())
+        return SourceSnapshot(
+            _publish_staging(workspace, staging.name, staging.identity),
+            commit.lower(),
+        )
     except (SourceUnavailable, InvalidFetchedSource):
         if staging is not None:
             try:

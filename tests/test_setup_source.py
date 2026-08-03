@@ -337,6 +337,72 @@ class SetupSourceTest(unittest.TestCase):
 
             self.assertFalse(any(external.iterdir()))
 
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
+    def test_publish_undoes_source_when_the_post_publish_namespace_guard_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            workspace = temporary / 'session'
+            external = temporary / 'external'
+            external.mkdir()
+            moved = temporary / 'moved-session'
+
+            def replace_namespace_after_rename() -> None:
+                workspace.rename(moved)
+                workspace.symlink_to(external, target_is_directory=True)
+
+            with mock.patch.object(
+                source_module,
+                '_after_publish_rename',
+                replace_namespace_after_rename,
+            ):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main(origin.as_uri(), work_root=workspace)
+
+            self.assertFalse((workspace / 'source').exists())
+            self.assertFalse((moved / 'source').exists())
+            self.assertFalse(any(external.iterdir()))
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
+    def test_publish_reverts_to_the_third_party_staging_inode_without_deleting_it(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            workspace = temporary / 'session'
+            staging_name: list[str] = []
+
+            def replace_staging(workspace_state, name: str) -> None:
+                staging_name.append(name)
+                os.rename(name, f'{name}-original', src_dir_fd=workspace_state.fd, dst_dir_fd=workspace_state.fd)
+                os.mkdir(name, dir_fd=workspace_state.fd)
+                sentinel = workspace / name / 'sentinel'
+                sentinel.write_text('keep\n', encoding='utf-8')
+
+            with mock.patch.object(source_module, '_before_publish_rename', replace_staging):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main(origin.as_uri(), work_root=workspace)
+
+            self.assertFalse((workspace / 'source').exists())
+            self.assertEqual((workspace / staging_name[0] / 'sentinel').read_text(encoding='utf-8'), 'keep\n')
+
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX staging protocol')
+    def test_publish_undoes_an_rename_wrapper_exception_after_the_syscall(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, _ = self.make_origin(temporary)
+            workspace = temporary / 'session'
+            rename = source_module._rename_noreplace
+
+            def rename_then_raise(fd: int, old: str, new: str) -> None:
+                rename(fd, old, new)
+                raise RuntimeError('rename wrapper failed after syscall')
+
+            with mock.patch.object(source_module, '_rename_noreplace', rename_then_raise):
+                with self.assertRaises(InvalidFetchedSource):
+                    fetch_main(origin.as_uri(), work_root=workspace)
+
+            self.assertFalse((workspace / 'source').exists())
+
     def test_unavailable_secure_staging_primitives_do_not_mutate_or_run_git(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'
