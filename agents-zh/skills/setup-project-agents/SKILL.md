@@ -1,136 +1,99 @@
 ---
 name: setup-project-agents
-description: 从 wenyue/agents 公共目录初始化或更新仓库时使用。
+description: 初始化或更新仓库的 Agents Rule、Skill、Agent 与显式启用的 Hook 快照时使用。
 ---
 
 # 设置项目 Agent
 
-同步确定性的 Agent 配置，选择 Subagent 模型，并生成本流程声明的五个仓库特有资产。
+从当前规范 `main` 为一个目标仓库创建或更新受管 Agent 快照。本文件是英文
+`skills/setup-project-agents/SKILL.md` 的中文阅读镜像，不参与 runtime、生成或发布；Task 10
+会将此镜像整体迁入文档目录。该共享操作型 Skill 负责 setup 会话和项目协调，但绝不把自身安装到
+目标项目，也不修改宿主信任记录、插件缓存或升级外部工具。
 
-从已安装插件提供的活跃 Skill 开始。如果平台加载的是之前安装在项目内的副本，该副本仍可作为
-兼容旧流程的入口。
+## 前提条件
 
-模板托管的项目配置为所有开发者提供一致的仓库默认值。脚本执行部分深度合并：模板字段覆盖偏差，
-模板未声明的字段保持不变，常规同步会自动修复缺失或过期的托管值。用户配置不属于本流程。
+- 从目标仓库根目录开始，将平台已加载的 Skill 目录识别为 `SETUP_PROJECT_AGENTS_ROOT`。
+- 只询问一次要启用的平台以及是否启用 Hook。`.agents/config.json` 不存在时，默认启用 Codex、
+  Cursor、Copilot，且 Hook 关闭；文件存在时，沿用其中的平台、资产选择和 Hook 选择，除非用户
+  要求变更。
+- 整个会话保持平台和 Hook 选择不变。Hook 必须由用户显式启用；多代理能力只检查宿主实际有效
+  状态，不能写入重复默认值。
 
-## 所有权
+## 工作流
 
-- 脚本负责所有受支持平台的确定性配置。
-- 字面量模板负责项目配置值及平台原生启动 Hook；Python 只包含通用的协调逻辑。
-- 公共清单负责声明公共包必需的第三方 Skill。
-- 公共清单负责在 `.agents/config.json` 中记录的目录身份和版本。
-- 目标仓库负责在 `.agents/config.json` 中声明可选的第三方 Skill；脚本负责获取并协调所有
-  公共及项目声明。
-- LLM 负责模型选择，以及仓库特有 Rule 和 Skill 的生成。
-- `manage-agent-tools` 负责交互式工具诊断，以及经用户批准的安装或升级；项目启动 Hook 只报告
-  漂移，绝不修改工具。
-- 每个启动 Hook 按项目、按本地日期检查一次当前平台的推荐工具和策略声明的运行时实际生效值。
-  它只分析声明的检测命令输出，不直接解析项目配置或用户配置。发现问题时，Agent 先停止当前任务
-  并询问是否使用 `manage-agent-tools`；用户回复后即可继续。
-
-## 托管资产
-
-根据以下公共蓝图生成 Rule：
-
-- [`20-project-tools.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/20-project-tools.md)
-- [`21-project-rules.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/21-project-rules.md)
-- [`22-project-structure.md`](https://github.com/wenyue/agents/blob/master/agents/blueprints/rules/22-project-structure.md)
-
-根据以下公共蓝图生成 Skill：
-
-- [`worktree-environment-setup`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/worktree-environment-setup/SKILL.md)
-- [`change-set-verification`](https://github.com/wenyue/agents/blob/master/agents/blueprints/skills/change-set-verification/SKILL.md)
-
-## 项目第三方 Skill
-
-公共包第三方 Skill 会自动安装。仓库只在 `.agents/config.json` 中声明项目额外选择的 Skill；
-不要重复声明公共包 Skill：
-
-```json
-{
-  "version": 1,
-  "skills": {
-    "external": [
-      {
-        "name": "example-skill",
-        "repository": "owner/repository",
-        "ref": "main",
-        "path": "skills/example-skill"
-      }
-    ]
-  }
-}
-```
-
-每项公共或项目声明负责完整的 `.agents/skills/<name>/` 目录。同步时，脚本会从指定的
-GitHub 仓库、ref 和路径整体替换该目录，包括覆盖本地修改、删除上游已经移除的文件。删除项目
-声明不会删除已经安装的目录。
-
-写入任何公共资产或第三方 Skill 前，脚本会先下载并验证所有公共及项目来源。如果某个来源
-失败，且目标仓库没有可用的旧版本，同步会在应用任何变更前终止。如果已安装可用的旧版本，
-脚本会保留旧版本、继续同步其余内容并报告 warning；`--check` 会报告同一 warning，并以状态码
-1 退出。
-
-## 协调流程
-
-1. 在目标仓库根目录，将当前活跃的 `setup-project-agents` `SKILL.md` 所在目录解析为
-   `SETUP_PROJECT_AGENTS_ROOT`。该路径必须从平台加载的 Skill 文件推导；不要假设 Skill 位于
-   仓库本地的 `.agents/` 路径，也不要持久化特定机器的路径。在 POSIX 上运行其
-   `scripts/sync_public_agent_assets.sh` 入口；在 Windows 上运行
-   `scripts/sync_public_agent_assets.ps1`。在系统临时目录中解析一个模型配置路径，并为两个阶段保留该路径：
+1. 用 `tempfile.mkdtemp` 创建一个系统临时私有会话；在 POSIX 上确认它归当前用户所有且权限精确
+   为 `0700`。在验证完成前保留这个 `SESSION`，不要把它建在目标仓库内：
 
    ```sh
-   MODEL_CONFIG="$(python -c 'import os, tempfile; print(os.path.join(tempfile.gettempdir(), "setup-project-agent-models.json"))')"
-   sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/sync_public_agent_assets.sh" \
-     --model-request "$MODEL_CONFIG"
+   SESSION="$(python3 -c 'import tempfile; print(tempfile.mkdtemp(prefix="setup-project-agents-"))')"
    ```
 
-   该入口使用包含活跃 Skill 的已安装插件或仓库目录。项目本地旧版副本会获取其固定的目录源。
-   它会同步公共目录声明的所有平台，并写出模型请求。
-
-2. 填写 `$MODEL_CONFIG` 中的全部模型字段。根据每个 Subagent 的 `required_intelligence`，为
-   Codex、Cursor 和 GitHub 选择 `model`，并为 Codex 选择 `model_reasoning_effort`。现有
-   Wrapper 不是取值来源。
-
-3. 依次打开并执行“托管资产”中枚举的公共蓝图。Rule 输出到 `.agents/rules/<name>.md`，Skill
-   输出到 `.agents/skills/<name>/`。生成每条 Rule 时使用 `write-rule`，生成每个 Skill 时使用
-   `write-skill`。生成内容以目标仓库的当前证据为准；旧内容可在生成过程中作为参考，但不是事实源。
-   生成和验证方式由各蓝图定义。
-
-4. 所有生成文件存在后，应用填写完成的模型配置：
+2. 使用 `SETUP_PROJECT_AGENTS_ROOT/scripts/` 中的平台包装器执行 `prepare`，并提供 `--target`、
+   `--session`、每个已选平台的 `--platform` 及 `--hooks enabled|disabled`。包装器只启动
+   `bootstrap.py`。它获取规范 `main`，在 `SESSION/source` 固定一个 commit 后交给该固定来源继续。
+   远端不可用时会报告已安装来源回退；已获取来源无效时，必须在写入目标项目前停止。POSIX 示例：
 
    ```sh
-   sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/sync_public_agent_assets.sh" \
-     --model-config "$MODEL_CONFIG"
+   sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" prepare \
+     --target "$PWD" --session "$SESSION" \
+     --platform codex --platform cursor --platform copilot --hooks disabled
    ```
 
-   同一次同步会从可读模板创建或更新 Codex、Cursor 和 Copilot 的项目原生配置及 Hook 文件。
-   这些托管字段（包括记录的目录版本）统一由同步流程维护，同时保留用户级配置和模板未声明的项目字段。
+   Windows 使用携带相同参数的 `setup_project_agents.ps1`。
 
-## 审查关卡
+3. 读取 `SESSION/request.json`。它是本会话规范化目标、来源根与 commit、平台与 Hook 选择、资产
+   选择、模型请求和五个生成输出的唯一依据。写入一个 JSON object `SESSION/models.json`，满足每个
+   Agent/平台请求：每个目标平台 object 必须有非空 `model`；Codex 可选
+   `model_reasoning_effort` 和 `sandbox_mode` 存在时必须为字符串，Cursor 可选 `readonly` 存在时必须
+   为 Boolean。不得使用 `SESSION` 外的模型文件，也不得在 prepare 后修改 request。
 
-- [ ] 对照各自的公共蓝图审查每条生成的 Rule 和每个生成的 Skill。
-- [ ] 确认无关的目标仓库自有文件保持不变。
+4. 在 `SESSION/generated` 生成 request 中的每个输出，绝不直接写入目标项目。三条 Rule Blueprint
+   必须使用 `write-rule`，两条 Skill Blueprint 必须使用 `write-skill`。只能生成下列路径，不能有
+   额外文件：
 
-## 验收关卡
+   - `.agents/rules/20-project-tools.md`
+   - `.agents/rules/21-project-rules.md`
+   - `.agents/rules/22-project-structure.md`
+   - `.agents/skills/change-set-verification/SKILL.md`
+   - `.agents/skills/worktree-environment-setup/SKILL.md`
 
-- [ ] 确认所有枚举的 Rule 和 Skill 都是完整成品。
-- [ ] 确认所有必填模型字段都已解决。
-- [ ] 确认模板托管的项目配置已经协调完成。
-- [ ] 确认 `.agents/config.json` 记录了已安装的目录身份和版本。
+5. 从 `request.json` 读取来源根与 commit；记录的 commit 为 `null` 时，CLI commit 参数使用
+   `offline`。对固定来源执行
+   `skills/setup-project-agents/scripts/setup_project_agents.py apply`，传入相同的目标、会话、
+   `SESSION/models.json`、来源根、来源 commit 和 `--no-bootstrap`。apply 会在唯一一次项目事务前
+   校验会话 request、生成树、渲染结果和所有权计划：
 
-## 验证
+   ```sh
+   python3 "$SOURCE_ROOT/skills/setup-project-agents/scripts/setup_project_agents.py" apply \
+     --target "$TARGET" --session "$SESSION" --models "$SESSION/models.json" \
+     --source-root "$SOURCE_ROOT" --source-commit "$SOURCE_COMMIT" --no-bootstrap
+   ```
 
-使用同一份临时模型配置执行最终检查。脚本检查所有枚举的输出是否存在，以及确定性配置、模板和
-原生 Hook 注册是否存在偏差；内容验证由各蓝图负责。`--check` 只报告偏差而不写入文件。
+6. 使用完全相同的参数执行同一固定入口的 `check`，仅将 `apply` 替换为 `check`。apply 与 check 均会
+   向 stdout 输出唯一一个 JSON 结果，其中包括 phase、固定来源 commit、排序后的变更路径、每个平台
+   的能力状态、候选刷新命令和 `needs_restart`。check 状态码为零表示项目无变化；状态码一表示发现
+   漂移但没有写入。报告前必须读取这个结果中的来源 commit 和受管路径。
 
-```sh
-sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/sync_public_agent_assets.sh" \
-  --check --model-config "$MODEL_CONFIG"
-```
+7. 展示 JSON 结果中的候选刷新命令或官方 UI 操作。不得在 setup 中自动执行候选命令，只有用户
+   单独批准后才能执行。宿主 `needs_restart` 或 Cursor Hook 信任要求必须单独报告；两者都不属于
+   项目文件事务。
 
-同步脚本或蓝图失败时停止；启动时的项目健康检查及其内部故障不阻断验证。验证过程不调用真实模型。
+8. 仅在 apply 和 check 完成后，或报告失败后，删除 `SESSION`。
 
-## 输出
+## 停止条件
 
-报告发生变化的托管文件，以及尚未解决的模型或蓝图阻塞项。
+会话非私有、`request.json` 与本次调用不匹配、`models.json` 不是 `SESSION/models.json`、模型字段
+缺失或无效、生成输出不完整或含额外路径、固定来源无效，或所有权 Planner 发现未受管漂移时，必须
+停止且不写入项目。
+
+不得使用 archive 回退、项目本地 setup 副本、宿主信任数据库或插件缓存作为替代路径。只有在单独
+获得批准的外部工具诊断或升级时才使用 `manage-agent-tools`。
+
+## 验证与结果
+
+- [ ] 确认 `check` 与 `apply` 使用同一 `SESSION`、来源根、来源 commit、模型文件、renderer 和 planner；确认状态码为零。
+- [ ] 确认 `.agents/lock.json` 记录固定来源 commit，且只有 lock 拥有的路径或字段发生变化。
+- [ ] 确认目标快照中没有 setup-project-agents；确认 Hook 仅在显式启用时存在。
+
+报告固定来源 commit、已选平台、Hook 选择、变更的受管路径、能力或信任后续事项，以及任何未解决
+失败。验证未执行时，不得报告 setup 成功。

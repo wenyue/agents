@@ -47,8 +47,11 @@ installs itself into the target, edits host trust or plugin caches, or upgrades 
 
 3. Read `SESSION/request.json`. It is the authority for this session's normalized target, source
    root and commit, platform and Hook choices, selected assets, model requests, and five generated
-   outputs. Write one JSON-object `SESSION/models.json` that satisfies the listed model requests.
-   Do not use a models file outside `SESSION` or change the request after preparation.
+   outputs. Write one JSON-object `SESSION/models.json` that satisfies every listed agent/platform
+   request: each platform object needs a non-empty `model`; Codex optional
+   `model_reasoning_effort` and `sandbox_mode` are strings when present, and Cursor optional
+   `readonly` is Boolean when present. Do not use a models file outside `SESSION` or change the
+   request after preparation.
 
 4. Generate every request output in `SESSION/generated`, not in the target project. Use `write-rule`
    for the three requested Rule Blueprints and `write-skill` for the two requested Skill Blueprints.
@@ -74,12 +77,15 @@ installs itself into the target, edits host trust or plugin caches, or upgrades 
    ```
 
 6. Run the same pinned entry point with `check` and the identical arguments, replacing only `apply`
-   with `check`. A zero exit status means the project is unchanged; status one reports drift without
-   writing. Report the pinned source commit and managed paths changed by the apply plan.
+   with `check`. Apply and check each write exactly one JSON result to stdout with the phase, pinned
+   source commit, sorted changed paths, per-platform capability state, candidate refresh commands,
+   and `needs_restart`. A zero check status means the project is unchanged; status one reports drift
+   without writing. Read this result before reporting the pinned source commit and managed paths.
 
-7. Present any host adapter plugin-refresh command or official UI action. Execute a command only
-   after the user approves it. Report a host `needs_restart` or Hook-trust requirement separately;
-   neither is part of the project-file transaction.
+7. Present candidate refresh commands or an official UI action from the JSON result. Do not execute
+   a candidate command during setup; execute it only after the user separately approves it. Report a
+   host `needs_restart` or Cursor Hook-trust requirement separately; neither is part of the
+   project-file transaction.
 
 8. Delete `SESSION` only after apply and check have completed or after reporting a failure.
 

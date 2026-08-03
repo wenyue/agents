@@ -6,6 +6,8 @@ import stat
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path, PurePosixPath
 from unittest import mock
 
@@ -53,6 +55,23 @@ class SetupCliTest(unittest.TestCase):
             if path.is_file()
         }
 
+    @staticmethod
+    def write_models(session: Path, *, model: str = 'cursor-default') -> Path:
+        path = session / 'models.json'
+        path.write_text(
+            json.dumps(
+                {
+                    'agents': {
+                        'change-set-verifier': {
+                            'cursor': {'model': model},
+                        }
+                    }
+                }
+            ) + '\n',
+            encoding='utf-8',
+        )
+        return path
+
     def prepare(self, target: Path, session: Path, *extra: str) -> int:
         return setup_project_agents.main(
             [
@@ -77,7 +96,16 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(request['source_commit'], self.source_commit)
             self.assertEqual(request['platforms'], ['cursor'])
             self.assertTrue(request['hooks_enabled'])
-            self.assertEqual(len(request['model_requests']), 1)
+            self.assertEqual(
+                request['model_requests'],
+                [
+                    {
+                        'agent': 'change-set-verifier',
+                        'platform': 'cursor',
+                        'required_fields': ['model'],
+                    }
+                ],
+            )
             self.assertEqual(len(request['generation_requests']), 5)
             self.assertEqual(
                 {item['target'] for item in request['generation_requests']},
@@ -116,8 +144,7 @@ class SetupCliTest(unittest.TestCase):
             session = self.private_session(root)
             self.assertEqual(self.prepare(target, session), 0)
             self.write_generated_outputs(session)
-            models = session / 'models.json'
-            models.write_text('{"agents": {}}\n', encoding='utf-8')
+            models = self.write_models(session)
             outside_models = root / 'models.json'
             outside_models.write_text('{"agents": {}}\n', encoding='utf-8')
 
@@ -143,8 +170,7 @@ class SetupCliTest(unittest.TestCase):
             target.mkdir()
             session = self.private_session(root)
             self.assertEqual(self.prepare(target, session), 0)
-            models = session / 'models.json'
-            models.write_text('{"agents": {}}\n', encoding='utf-8')
+            models = self.write_models(session)
 
             self.assertEqual(
                 setup_project_agents.main(
@@ -175,8 +201,7 @@ class SetupCliTest(unittest.TestCase):
             session = self.private_session(root)
             self.assertEqual(self.prepare(target, session), 0)
             self.write_generated_outputs(session)
-            models = session / 'models.json'
-            models.write_text('{"agents": {}}\n', encoding='utf-8')
+            models = self.write_models(session)
             apply_args = ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
             check_args = ['check', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
             self.assertEqual(setup_project_agents.main(apply_args), 0)
@@ -186,6 +211,93 @@ class SetupCliTest(unittest.TestCase):
             before = self.snapshot_tree(target)
             self.assertEqual(setup_project_agents.main(check_args), 1)
             self.assertEqual(self.snapshot_tree(target), before)
+
+    def test_apply_rejects_tampered_selections_or_model_requests_without_writing(self):
+        tamper = (
+            ('selected_rules', ['unknown-rule']),
+            ('selected_skills', ['manage-agent-tools', 'manage-agent-tools']),
+            ('selected_agents', ['unknown-agent']),
+            ('model_requests', []),
+        )
+        for key, value in tamper:
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                target = root / 'target'
+                target.mkdir()
+                session = self.private_session(root)
+                self.assertEqual(self.prepare(target, session), 0)
+                self.write_generated_outputs(session)
+                models = self.write_models(session)
+                request_path = session / 'request.json'
+                request = json.loads(request_path.read_text(encoding='utf-8'))
+                request[key] = value
+                request_path.write_text(json.dumps(request), encoding='utf-8')
+
+                self.assertEqual(
+                    setup_project_agents.main(
+                        ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+                    ),
+                    2,
+                )
+                self.assertEqual(self.snapshot_tree(target), {})
+
+    def test_apply_rejects_missing_or_empty_required_models_without_writing(self):
+        for document in (
+            {'agents': {}},
+            {'agents': {'change-set-verifier': {'cursor': {'model': ''}}}},
+        ):
+            with self.subTest(document=document), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                target = root / 'target'
+                target.mkdir()
+                session = self.private_session(root)
+                self.assertEqual(self.prepare(target, session), 0)
+                self.write_generated_outputs(session)
+                models = session / 'models.json'
+                models.write_text(json.dumps(document), encoding='utf-8')
+
+                self.assertEqual(
+                    setup_project_agents.main(
+                        ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+                    ),
+                    2,
+                )
+                self.assertEqual(self.snapshot_tree(target), {})
+
+    def test_apply_and_check_emit_one_structured_result_without_running_refresh(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            session = self.private_session(root)
+            self.assertEqual(self.prepare(target, session), 0)
+            self.write_generated_outputs(session)
+            models = self.write_models(session)
+            apply_args = [
+                'apply', '--target', str(target), '--session', str(session),
+                '--models', str(models), *self.source_args(),
+            ]
+            check_args = ['check', *apply_args[1:]]
+
+            apply_output = StringIO()
+            with redirect_stdout(apply_output):
+                self.assertEqual(setup_project_agents.main(apply_args), 0)
+            apply_result = json.loads(apply_output.getvalue())
+            self.assertEqual(apply_result['version'], 1)
+            self.assertEqual(apply_result['phase'], 'apply')
+            self.assertEqual(apply_result['source_commit'], self.source_commit)
+            self.assertEqual(apply_result['changed_paths'], sorted(apply_result['changed_paths']))
+            self.assertIn('.agents/rules/00-global-rule-config.md', apply_result['changed_paths'])
+            self.assertIn('cursor', apply_result['capabilities'])
+            self.assertEqual(apply_result['refresh_actions'][0]['platform'], 'cursor')
+            self.assertEqual(apply_result['refresh_actions'][0]['command'], ['cursor', '--version'])
+
+            check_output = StringIO()
+            with redirect_stdout(check_output):
+                self.assertEqual(setup_project_agents.main(check_args), 0)
+            check_result = json.loads(check_output.getvalue())
+            self.assertEqual(check_result['phase'], 'check')
+            self.assertEqual(check_result['changed_paths'], [])
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX session ownership checks')
     def test_rejects_nonprivate_session_before_target_mutation(self):
