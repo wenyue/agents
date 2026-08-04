@@ -49,7 +49,8 @@ tools or change related configuration by themselves.
 
 When missing or outdated tools are detected, SmartKit first lists the affected items and asks the
 user. It continues only after explicit consent; items that cannot be handled automatically include
-manual instructions.
+manual instructions. Cursor blocks affected prompts in interactive sessions and uses the same
+ask-and-stop requirement as session context in headless `--print` sessions.
 
 ## Typical workflow
 

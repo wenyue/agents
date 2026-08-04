@@ -481,12 +481,30 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 'codex', other_codex_policy, cache, today, evaluator=evaluator
             )
             cursor = checker.run_hook('cursor', cursor_policy, cache, today, evaluator=evaluator)
+            cursor_context = checker.run_hook(
+                'cursor',
+                cursor_policy,
+                cache,
+                today,
+                cache_scope='cursor-context',
+                evaluator=evaluator,
+            )
+            repeated_context = checker.run_hook(
+                'cursor',
+                cursor_policy,
+                cache,
+                today,
+                cache_scope='cursor-context',
+                evaluator=evaluator,
+            )
 
             self.assertTrue(first.ran)
             self.assertFalse(second.ran)
             self.assertTrue(other_project.ran)
             self.assertTrue(cursor.ran)
-            self.assertEqual(calls, ['codex', 'codex', 'cursor'])
+            self.assertTrue(cursor_context.ran)
+            self.assertFalse(repeated_context.ran)
+            self.assertEqual(calls, ['codex', 'codex', 'cursor', 'cursor'])
 
     def test_daily_state_reruns_next_day_after_policy_change_and_with_force(self):
         checker = self.checker
@@ -661,6 +679,34 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             checker.render_hook_result(checker.HookResult(False), 'codex'),
             '',
         )
+
+    def test_cursor_context_delivery_instructs_headless_agent(self):
+        checker = self.checker
+        result = checker.HookResult(
+            True,
+            (
+                checker.Finding(
+                    'tool-missing',
+                    'Example Tool',
+                    'is missing',
+                    'Install it.',
+                ),
+            ),
+        )
+
+        rendered = json.loads(
+            checker.render_hook_result(
+                result,
+                'cursor',
+                delivery='context',
+            )
+        )
+
+        self.assertEqual(set(rendered), {'additional_context'})
+        message = rendered['additional_context']
+        self.assertIn('Example Tool', message)
+        self.assertIn('End this turn after requesting consent', message)
+        self.assertIn('maintain_recommended_tools.py', message)
 
     def test_blocking_hook_outputs_request_consent_without_showing_commands(self):
         checker = self.checker

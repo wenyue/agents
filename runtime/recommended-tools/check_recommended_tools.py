@@ -512,14 +512,16 @@ def run_hook(
     cache_root: Path | None = None,
     now: datetime | None = None,
     *,
+    cache_scope: str | None = None,
     force: bool = False,
     evaluator: Callable[[dict[str, Any]], list[Finding]] = check_policy,
 ) -> HookResult:
     cache_root = cache_root or default_cache_root()
     now = now or datetime.now().astimezone()
     project_cache = cache_root / _project_cache_key(policy_path)
-    state_path = project_cache / f'{platform}.json'
-    lock_path = project_cache / f'{platform}.lock'
+    state_key = cache_scope or platform
+    state_path = project_cache / f'{state_key}.json'
+    lock_path = project_cache / f'{state_key}.lock'
     try:
         fingerprint = _fingerprint(policy_path, Path(__file__))
         date = now.date().isoformat()
@@ -599,7 +601,12 @@ def _agent_consent_request(findings: str, platform: str) -> str:
     )
 
 
-def render_hook_result(result: HookResult, platform: str) -> str:
+def render_hook_result(
+    result: HookResult,
+    platform: str,
+    *,
+    delivery: str = 'native',
+) -> str:
     findings = render_findings(result.findings)
     if result.requires_user_prompt:
         if platform == 'codex':
@@ -616,6 +623,14 @@ def render_hook_result(result: HookResult, platform: str) -> str:
                 }
             )
         if platform == 'cursor':
+            if delivery == 'context':
+                return json.dumps(
+                    {
+                        'additional_context': _agent_consent_request(
+                            findings, platform
+                        )
+                    }
+                )
             return json.dumps(
                 {
                     'continue': False,
@@ -634,6 +649,8 @@ def render_hook_result(result: HookResult, platform: str) -> str:
     if platform == 'codex':
         return json.dumps({'continue': True, 'systemMessage': message})
     if platform == 'cursor':
+        if delivery == 'context':
+            return json.dumps({'additional_context': message})
         return json.dumps({'continue': True})
     return json.dumps({'additionalContext': message})
 
@@ -647,6 +664,11 @@ def build_parser() -> argparse.ArgumentParser:
         child.add_argument('--policy', type=Path)
         if command == 'hook':
             child.add_argument('--force', action='store_true')
+            child.add_argument(
+                '--delivery',
+                choices=('native', 'context'),
+                default='native',
+            )
     return parser
 
 
@@ -654,8 +676,22 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     policy_path = args.policy or default_policy_path(args.platform)
     if args.command == 'hook':
-        result = run_hook(args.platform, policy_path, force=args.force)
-        output = render_hook_result(result, args.platform)
+        cache_scope = (
+            f'{args.platform}-context'
+            if args.delivery == 'context'
+            else args.platform
+        )
+        result = run_hook(
+            args.platform,
+            policy_path,
+            cache_scope=cache_scope,
+            force=args.force,
+        )
+        output = render_hook_result(
+            result,
+            args.platform,
+            delivery=args.delivery,
+        )
         if output:
             print(output)
         return 0

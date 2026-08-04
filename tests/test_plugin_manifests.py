@@ -227,7 +227,16 @@ class PluginManifestTest(unittest.TestCase):
         )
         self.assertEqual(
             set(load_json('hooks/cursor.json')['hooks']),
-            {'beforeSubmitPrompt'},
+            {'sessionStart', 'beforeSubmitPrompt'},
+        )
+        cursor_hooks = load_json('hooks/cursor.json')['hooks']
+        self.assertIn(
+            '--delivery context',
+            cursor_hooks['sessionStart'][0]['command'],
+        )
+        self.assertNotIn(
+            '--delivery context',
+            cursor_hooks['beforeSubmitPrompt'][0]['command'],
         )
         self.assertEqual(
             set(load_json('hooks/copilot.json')['hooks']),
