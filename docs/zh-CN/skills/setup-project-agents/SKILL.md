@@ -1,105 +1,82 @@
 ---
 name: setup-project-agents
-description: 初始化或更新仓库的 Agents Rule、Skill 与 Agent 快照时使用。
+description: Use when initializing or updating a repository with the Agents Rules, Skills, and Agents snapshot.
 ---
 
-# 设置项目 Agent
+# Setup Project Agents
 
-从当前规范 `main` 为一个目标仓库创建或更新受管 Agent 快照。该共享操作型 Skill 负责 setup 会话和
-项目协调工作流；它绝不把自身安装到目标项目，不修改宿主信任记录或插件缓存，也不升级外部工具。
+为一个目标仓库运行由脚本支持的 setup 工作流。Agent 选择平台和模型、创作请求的项目专属内容、
+审查内容并消费结构化结果；脚本负责所有确定性 setup 操作。
 
-## 前提条件
+## 所有权
 
-- 从目标仓库根目录开始，将平台已加载的 Skill 目录识别为 `SETUP_PROJECT_AGENTS_ROOT`。
-- 只询问一次要启用的平台。`.agents/config.json` 不存在时，默认启用 Codex、Cursor 与 Copilot；
-  文件存在时，沿用其中的平台和资产选择，除非用户要求变更。
-- 整个会话保持平台选择不变。插件自带 Hook、宿主能力和外部工具维护均不属于项目事务。
+不要自行重建来源选择、发现、覆盖、删除、验证、事务、检查、汇总或清理行为。调用公开工作流，
+并把它的结果作为权威。宿主信任、插件缓存、插件自带 Hook 和外部工具安装不属于这个工作流。
 
-## 工作流
+## 受管资产
 
-1. 用 `tempfile.mkdtemp` 创建一个系统临时私有会话；在 POSIX 上确认它归当前用户所有且权限精确
-   为 `0700`。在验证完成前保留这个 `SESSION`，不要把它建在目标仓库内：
+Agent 只能编辑这些工作流输入：
+
+- 返回的 `models.json` 中请求的空模型值；
+- 返回的 `generated` 目录下 `generation_requests` 列出的三个 Rule 和两个 Skill 目标。
+
+不要编辑 `request.json`，也不要创建另一个 models 或 generated 根目录。
+
+## 前置条件
+
+- 从目标仓库根目录开始，并把已加载 Skill 的目录识别为 `SETUP_PROJECT_AGENTS_ROOT`。
+- 只询问一次要启用的平台。存在 `.agents/config.json` 时，除非用户修改，否则使用其中的平台；
+  不存在时默认使用 Codex、Cursor 和 Copilot。
+
+## 协调工作流
+
+1. 使用 `start`、目标路径和每个所选平台调用平台 wrapper：
 
    ```sh
-   SESSION="$(python3 -c 'import tempfile; print(tempfile.mkdtemp(prefix="setup-project-agents-"))')"
+   sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" start \
+     --target "$PWD" --platform codex --platform cursor --platform copilot
    ```
 
-2. 使用 `SETUP_PROJECT_AGENTS_ROOT/scripts/` 中的平台包装器执行 `prepare`，并提供 `--target`、
-   `--session` 及每个已选平台的 `--platform`。包装器只启动
-   `bootstrap.py`。它获取规范 `main`，在 `SESSION/source` 固定一个 commit 后交给该固定来源继续。
-   远端不可用时会报告已安装来源回退；已获取来源无效时，必须在写入目标项目前停止。POSIX 示例：
+   Windows 使用相同参数调用 `setup_project_agents.ps1`。结果非零时停止。从单个 JSON 结果中把
+   `session` 记录为 `SESSION`，并使用其中返回的 request、models、generated 和 source 路径。
 
-   ```sh
-   sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" prepare \
-     --target "$PWD" --session "$SESSION" \
-     --platform codex --platform cursor --platform copilot
-   ```
+2. 读取 `SESSION/request.json`。根据请求的 agent 和 `model_key`，填写返回的 `models.json` 中
+   每个空的必填 `model`。Codex 可选的 `model_reasoning_effort` 和 `sandbox_mode` 是字符串；
+   Cursor 可选的 `readonly` 是布尔值。
 
-   Windows 使用携带相同参数的 `setup_project_agents.ps1`。
-
-3. 读取 `SESSION/request.json`。它是本会话规范化目标、来源根与 commit、平台选择、资产
-   选择、模型请求和五个生成输出的唯一依据。写入一个 JSON object `SESSION/models.json`，满足每个
-   Agent/平台请求中指定的 `model_key`：Codex 与 Cursor 分别使用 `codex`、`cursor`，Copilot 使用
-   `github`。每个目标平台 object 必须有非空 `model`；Codex 可选
-   `model_reasoning_effort` 和 `sandbox_mode` 存在时必须为字符串，Cursor 可选 `readonly` 存在时必须
-   为 Boolean。不得使用 `SESSION` 外的模型文件，也不得在 prepare 后修改 request。
-
-   ```json
-   {
-     "agents": {
-       "change-set-verifier": {
-         "codex": {"model": "codex-model"},
-         "cursor": {"model": "cursor-model"},
-         "github": {"model": "copilot-model"}
-       }
-     }
-   }
-   ```
-
-4. 将 `request.json` 中记录的 `source_root` 解析为 `SOURCE_ROOT`，然后完整读取
+3. 把返回的 `source_root` 解析为 `SOURCE_ROOT`。读取
    `SOURCE_ROOT/setup-assets/skills/write-rule/SKILL.md` 和
-   `SOURCE_ROOT/setup-assets/skills/write-skill/SKILL.md` 中的 authoring contract。将前者应用于三条
-   Rule Blueprint，将后者应用于两条 Skill Blueprint。在 `SESSION/generated` 生成 request 中的每个
-   输出，绝不直接写入目标项目；只能生成下列路径，不能有额外文件：
+   `SOURCE_ROOT/setup-assets/skills/write-skill/SKILL.md` 中完整的创作契约。应用列出的 Blueprint，
+   并在返回的 generated 目录下准确写入五个 `generation_requests` 目标。
 
-   - `.agents/rules/20-project-tools.md`
-   - `.agents/rules/21-project-rules.md`
-   - `.agents/rules/22-project-structure.md`
-   - `.agents/skills/change-set-verification/SKILL.md`
-   - `.agents/skills/worktree-environment-setup/SKILL.md`
-
-5. 从 `request.json` 读取来源根与 commit；记录的 commit 为 `null` 时，CLI commit 参数使用
-   `offline`。对固定来源执行
-   `skills/setup-project-agents/scripts/setup_project_agents.py apply`，传入相同的目标、会话、
-   `SESSION/models.json`、来源根、来源 commit 和 `--no-bootstrap`。apply 会在唯一一次项目事务前
-   校验会话 request、生成树、渲染结果和所有权计划：
+4. 审查关口通过后，只使用会话路径和 `finish` 调用同一个 wrapper：
 
    ```sh
-   python3 "$SOURCE_ROOT/skills/setup-project-agents/scripts/setup_project_agents.py" apply \
-     --target "$TARGET" --session "$SESSION" --models "$SESSION/models.json" \
-     --source-root "$SOURCE_ROOT" --source-commit "$SOURCE_COMMIT" --no-bootstrap
+   sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" finish \
+     --session "$SESSION"
    ```
 
-6. 使用完全相同的参数执行同一固定入口的 `check`，仅将 `apply` 替换为 `check`。apply 与 check 均会
-   向 stdout 输出唯一一个 JSON 结果，其中包括 phase、固定来源 commit、排序后的变更路径和
-   `drift`。check 状态码为零时 `drift: null`；状态码一会提供稳定的漂移类型、消息和可安全解析的
-   路径（适用时还包括字段），且不写入文件。报告前必须读取这个结果中的来源 commit 和受管路径。
+   不要直接调用内部 prepare/apply/check 命令。
 
-7. 仅在 apply 和 check 完成后，或报告失败后，删除 `SESSION`。
+5. 成功 start 后，如果工作流无法到达 finish，只使用 `--session "$SESSION"` 调用 `cancel`。
 
 ## 停止条件
 
-会话非私有、`request.json` 与本次调用不匹配、`models.json` 不是 `SESSION/models.json`、生成输出
-不完整或含额外路径、固定来源无效，或所有权 Planner 发现未受管漂移时，必须停止且不写入项目。
+start、finish 或 cancel 发生任何错误时停止并准确报告。不要修复脚本拥有的状态、逐文件选择覆盖
+关系、修改请求、向 finish 传递未请求的路径或手动删除会话；解决报告的原因后重新 start。
 
-不得使用 archive 回退、项目本地 setup 副本、宿主信任数据库或插件缓存作为替代路径。宿主能力和
-外部工具维护的后续动作归插件 Hook 所有。
+## 审查关口
+
+- [ ] 阅读每个完整生成 Rule 和 Skill；确认它遵循创作契约并使用当前目标证据。
+- [ ] 阅读填写完成的 models 文件；确认每个请求的 agent/平台都有非空模型。
+- [ ] 确认请求未改变，并且 generated 目录准确包含请求的五个文件。
+
+## 验收关口
+
+- [ ] 运行一次 finish；只有其 JSON 报告 `phase: finish` 和 `check: clean` 时才接受 setup。
 
 ## 验证与结果
 
-- [ ] 确认生成、`apply` 与 `check` 使用同一 `SESSION`、来源根、来源 commit、模型文件、renderer 和 planner；确认 check 状态码为零。
-- [ ] 确认 `.agents/lock.json` 记录固定来源 commit，且只有 lock 拥有的路径或字段发生变化。
-- [ ] 确认目标快照中没有 setup-project-agents 和宿主 Hook 定义。
-
-报告固定来源 commit、已选平台、变更的受管路径，以及任何未解决失败。验证未执行时，不得报告
-setup 成功。
+报告 finish 返回的字段：固定来源 commit、所选平台、变更路径、第三方 Skill、保留的项目自有路径
+和 check 状态。失败时报告脚本的准确错误；没有干净的 finish 结果时，不要推断 setup 完全或部分
+成功。

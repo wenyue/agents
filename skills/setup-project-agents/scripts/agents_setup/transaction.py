@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import secrets
 import stat
@@ -8,12 +7,11 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .catalog import ContractError, safe_relative, validate_lock_state
-from .models import Change, ChangeKind, LockState, Plan
+from .catalog import ContractError, safe_relative
+from .models import Change, ChangeKind, Plan
 from .project import ProjectError, confined_target
 
 
-_LOCK_PATH = PurePosixPath('.agents/lock.json')
 _replace = os.replace
 _DIRECTORY_FLAGS = os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0) | getattr(os, 'O_NOFOLLOW', 0)
 _FILE_FLAGS = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
@@ -63,19 +61,6 @@ def _path_key(path: PurePosixPath) -> str:
     return path.as_posix()
 
 
-def _lock_bytes(lock: LockState) -> bytes:
-    document = {
-        'version': lock.version,
-        'source_commit': lock.source_commit,
-        'managed_files': [{'path': item.path.as_posix(), 'sha256': item.sha256} for item in lock.managed_files],
-        'managed_fields': [
-            {'path': item.path.as_posix(), 'key': item.key, 'sha256': item.sha256}
-            for item in lock.managed_fields
-        ],
-    }
-    return (json.dumps(document, sort_keys=True, indent=2) + '\n').encode('utf-8')
-
-
 def _validate_change(change: Change) -> PurePosixPath:
     if not isinstance(change, Change) or not isinstance(change.path, PurePosixPath):
         raise TransactionError(TypeError('plan change must have a relative POSIX path'))
@@ -92,26 +77,20 @@ def _validate_change(change: Change) -> PurePosixPath:
     return path
 
 
-def _operations(plan: Plan) -> tuple[tuple[_Operation, ...], LockState]:
+def _operations(plan: Plan) -> tuple[_Operation, ...]:
     if not isinstance(plan, Plan):
         raise TransactionError(TypeError('plan must be a Plan'))
-    try:
-        lock = validate_lock_state(plan.next_lock)
-    except ContractError as error:
-        raise TransactionError(error) from error
     seen: set[PurePosixPath] = set()
     operations: list[_Operation] = []
     for change in plan.changes:
         path = _validate_change(change)
-        if path == _LOCK_PATH:
-            raise TransactionError(ValueError('plan cannot change .agents/lock.json directly'))
         if path in seen:
             raise TransactionError(ValueError(f'duplicate plan change: {_path_key(path)}'))
         seen.add(path)
         if change.kind is not ChangeKind.UNCHANGED:
             operations.append(_Operation(path, change.kind, change.content))
     operations.sort(key=lambda operation: _path_key(operation.path))
-    return tuple(operations), lock
+    return tuple(operations)
 
 
 def _open_root(root: Path) -> int:
@@ -245,19 +224,17 @@ def _same_parent(root_fd: int, path: PurePosixPath, parent_fd: int) -> None:
         os.close(fresh_fd)
 
 
-def _expected(root_fd: int, operation: _Operation, *, lock: bool = False) -> None:
+def _expected(root_fd: int, operation: _Operation) -> None:
     try:
         parent_fd = _open_parent(root_fd, operation.path, create=False, created=[])
     except FileNotFoundError:
-        if operation.kind is ChangeKind.CREATE or lock:
+        if operation.kind is ChangeKind.CREATE:
             return
         raise TransactionError(f'target disappeared after planning: {_path_key(operation.path)}')
     try:
         entry = _stat_at(parent_fd, operation.path.name)
     finally:
         os.close(parent_fd)
-    if lock:
-        return
     if operation.kind is ChangeKind.CREATE and entry is not None:
         raise TransactionError(f'create target appeared after planning: {_path_key(operation.path)}')
     if operation.kind in {ChangeKind.UPDATE, ChangeKind.DELETE} and entry is None:
@@ -327,7 +304,7 @@ def _verify_desired(root_fd: int, changes: tuple[Change, ...]) -> None:
         except FileNotFoundError:
             if change.kind is ChangeKind.DELETE:
                 continue
-            raise TransactionError(f'content changed before lock commit: {_path_key(change.path)}')
+            raise TransactionError(f'content changed before transaction commit: {_path_key(change.path)}')
         try:
             current = _read_at(parent_fd, change.path.name)
         except FileNotFoundError:
@@ -338,7 +315,7 @@ def _verify_desired(root_fd: int, changes: tuple[Change, ...]) -> None:
             if current is not None:
                 raise TransactionError(f'delete result changed: {_path_key(change.path)}')
         elif current is None or current[0] != change.content:
-            raise TransactionError(f'content changed before lock commit: {_path_key(change.path)}')
+            raise TransactionError(f'content changed before transaction commit: {_path_key(change.path)}')
 
 
 def _restore(root_fd: int, mutation: _Mutation, created: list[PurePosixPath]) -> None:
@@ -404,28 +381,23 @@ def _rollback(root_fd: int, guard: _RootGuard, applied: list[_Mutation], created
 
 
 def _apply_secure(target_root: Path, plan: Plan) -> None:
-    operations, lock = _operations(plan)
+    operations = _operations(plan)
     guard, root_fd = _root_guard(target_root)
     applied: list[_Mutation] = []
     created: list[PurePosixPath] = []
     try:
         for change in plan.changes:
             _expected(root_fd, _Operation(_validate_change(change), change.kind, change.content))
-        lock_operation = _Operation(_LOCK_PATH, ChangeKind.UPDATE, _lock_bytes(lock))
-        _expected(root_fd, lock_operation, lock=True)
         with tempfile.TemporaryDirectory(prefix='agents-setup-transaction-') as temporary_root:
             try:
-                all_operations = (*operations, lock_operation)
                 backups = {
                     operation.path: _backup(root_fd, operation, Path(temporary_root), index)
-                    for index, operation in enumerate(all_operations)
+                    for index, operation in enumerate(operations)
                 }
                 for operation in operations:
                     _expected(root_fd, operation)
                     _apply(root_fd, guard, operation, backups[operation.path], created, applied)
                 _verify_desired(root_fd, plan.changes)
-                _expected(root_fd, lock_operation, lock=True)
-                _apply(root_fd, guard, lock_operation, backups[lock_operation.path], created, applied)
             except BaseException as error:
                 original = error.original_error if isinstance(error, TransactionError) else error
                 raise TransactionError(original, _rollback(root_fd, guard, applied, created)) from error
@@ -435,7 +407,7 @@ def _apply_secure(target_root: Path, plan: Plan) -> None:
 
 def _apply_fallback(target_root: Path, plan: Plan) -> None:
     """Functional fallback with repeated confinement; it cannot provide POSIX openat guarantees."""
-    operations, lock = _operations(plan)
+    operations = _operations(plan)
     root = Path(target_root)
     root_entry = root.lstat()
     root_identity = (root_entry.st_dev, root_entry.st_ino)
@@ -483,7 +455,11 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
         ensure_parent(path)
         temporary = path.parent / f'.{path.name}.agents-setup-{secrets.token_hex(12)}.tmp'
         guard()
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0),
+            0o666,
+        )
         try:
             view = memoryview(content)
             while view:
@@ -496,10 +472,8 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
             temporary.chmod(mode)
         return temporary
 
-    def expected(operation: _Operation, *, is_lock: bool = False) -> None:
+    def expected(operation: _Operation) -> None:
         current = entry(target(operation.path))
-        if is_lock:
-            return
         if operation.kind is ChangeKind.CREATE and current is not None:
             raise TransactionError(f'create target appeared after planning: {_path_key(operation.path)}')
         if operation.kind in {ChangeKind.UPDATE, ChangeKind.DELETE} and current is None:
@@ -507,65 +481,53 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
         if operation.kind is ChangeKind.UNCHANGED:
             assert operation.content is not None
             if current is None or target(operation.path).read_bytes() != operation.content:
-                raise TransactionError(f'content changed before lock commit: {_path_key(operation.path)}')
+                raise TransactionError(f'content changed before transaction commit: {_path_key(operation.path)}')
 
+    temporary_context = tempfile.TemporaryDirectory(prefix='agents-setup-transaction-')
     try:
         for change in plan.changes:
             expected(_Operation(change.path, change.kind, change.content))
-        lock_operation = _Operation(_LOCK_PATH, ChangeKind.UPDATE, _lock_bytes(lock))
-        expected(lock_operation, is_lock=True)
-        with tempfile.TemporaryDirectory(prefix='agents-setup-transaction-') as temporary_root:
-            snapshots = Path(temporary_root)
-            all_operations = (*operations, lock_operation)
-            backups: dict[PurePosixPath, _Backup] = {}
-            for index, operation in enumerate(all_operations):
-                path = target(operation.path)
-                item = entry(path)
-                if item is None:
-                    backups[operation.path] = _Backup(operation, None, None, None)
-                else:
-                    snapshot = snapshots / f'{index:04d}'
-                    snapshot.write_bytes(path.read_bytes())
-                    backups[operation.path] = _Backup(operation, snapshot, stat.S_IMODE(item.st_mode), (item.st_dev, item.st_ino))
-            for operation in (*operations, lock_operation):
-                if operation.path == _LOCK_PATH:
-                    for change in plan.changes:
-                        change_path = target(change.path)
-                        current = entry(change_path)
-                        if change.kind is ChangeKind.DELETE:
-                            if current is not None:
-                                raise TransactionError(f'delete result changed: {_path_key(change.path)}')
-                        elif current is None or change_path.read_bytes() != change.content:
-                            raise TransactionError(f'content changed before lock commit: {_path_key(change.path)}')
-                expected(operation, is_lock=operation.path == _LOCK_PATH)
-                backup = backups[operation.path]
-                path = target(operation.path)
-                guard()
-                current = entry(path)
+        snapshots = Path(temporary_context.name)
+        backups: dict[PurePosixPath, _Backup] = {}
+        for index, operation in enumerate(operations):
+            path = target(operation.path)
+            item = entry(path)
+            if item is None:
+                backups[operation.path] = _Backup(operation, None, None, None)
+            else:
+                snapshot = snapshots / f'{index:04d}'
+                snapshot.write_bytes(path.read_bytes())
+                backups[operation.path] = _Backup(operation, snapshot, stat.S_IMODE(item.st_mode), (item.st_dev, item.st_ino))
+        for operation in operations:
+            expected(operation)
+            backup = backups[operation.path]
+            path = target(operation.path)
+            guard()
+            current = entry(path)
+            identity = None if current is None else (current.st_dev, current.st_ino)
+            if identity != backup.identity:
+                raise TransactionError(f'unsafe fallback final target changed: {_path_key(operation.path)}')
+            if operation.kind is ChangeKind.DELETE:
+                applied.append(_Mutation(backup, None))
+                path.unlink()
+                continue
+            assert operation.content is not None
+            temporary = sibling(path, operation.content, backup.mode)
+            try:
+                current = entry(target(operation.path))
                 identity = None if current is None else (current.st_dev, current.st_ino)
                 if identity != backup.identity:
                     raise TransactionError(f'unsafe fallback final target changed: {_path_key(operation.path)}')
-                if operation.kind is ChangeKind.DELETE:
-                    applied.append(_Mutation(backup, None))
-                    path.unlink()
-                    continue
-                assert operation.content is not None
-                temporary = sibling(path, operation.content, backup.mode)
-                try:
-                    current = entry(target(operation.path))
-                    identity = None if current is None else (current.st_dev, current.st_ino)
-                    if identity != backup.identity:
-                        raise TransactionError(f'unsafe fallback final target changed: {_path_key(operation.path)}')
-                    current_parent = target(operation.path).parent.stat()
-                    temporary_parent = temporary.parent.stat()
-                    if (current_parent.st_dev, current_parent.st_ino) != (temporary_parent.st_dev, temporary_parent.st_ino):
-                        raise TransactionError(f'unsafe fallback parent changed: {_path_key(operation.path)}')
-                    temp_entry = temporary.stat()
-                    applied.append(_Mutation(backup, (temp_entry.st_dev, temp_entry.st_ino)))
-                    guard()
-                    _replace(temporary, path)
-                finally:
-                    temporary.unlink(missing_ok=True)
+                current_parent = target(operation.path).parent.stat()
+                temporary_parent = temporary.parent.stat()
+                if (current_parent.st_dev, current_parent.st_ino) != (temporary_parent.st_dev, temporary_parent.st_ino):
+                    raise TransactionError(f'unsafe fallback parent changed: {_path_key(operation.path)}')
+                temp_entry = temporary.stat()
+                applied.append(_Mutation(backup, (temp_entry.st_dev, temp_entry.st_ino)))
+                guard()
+                _replace(temporary, path)
+            finally:
+                temporary.unlink(missing_ok=True)
     except BaseException as error:
         rollback_errors: list[BaseException] = []
         try:
@@ -614,6 +576,8 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
                     break
         original = error.original_error if isinstance(error, TransactionError) else error
         raise TransactionError(original, tuple(rollback_errors)) from error
+    finally:
+        temporary_context.cleanup()
 
 
 def apply_plan(target_root: Path, plan: Plan) -> None:
@@ -626,8 +590,9 @@ def apply_plan(target_root: Path, plan: Plan) -> None:
                 raise
             raise TransactionError(error) from error
         return
-    # Validate the in-memory plan before refusing; callers can still surface contract errors.
-    _operations(plan)
-    raise TransactionError(
-        OSError('secure directory-relative transactional apply is unsupported on this platform')
-    )
+    try:
+        _apply_fallback(Path(target_root), plan)
+    except BaseException as error:
+        if isinstance(error, TransactionError):
+            raise
+        raise TransactionError(error) from error

@@ -208,6 +208,7 @@ class SetupSourceTest(unittest.TestCase):
                     with self.assertRaises(InvalidFetchedSource):
                         validate_source(source)
 
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX retry markers')
     def test_fetch_failure_leaves_a_marker_only_candidate_and_retries(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'
@@ -231,6 +232,7 @@ class SetupSourceTest(unittest.TestCase):
                 workspace / 'source',
             )
 
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX retry markers')
     def test_initial_marker_write_failure_leaves_a_retryable_marker_only_candidate(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
@@ -265,6 +267,7 @@ class SetupSourceTest(unittest.TestCase):
                 workspace / 'source',
             )
 
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX retry markers')
     def test_permanent_initial_marker_write_failure_does_not_reserve_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
@@ -298,6 +301,7 @@ class SetupSourceTest(unittest.TestCase):
 
             self.assertFalse((outside / 'session').exists())
 
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX ownership and mode checks')
     def test_fetch_main_rejects_a_nonprivate_workspace_before_git(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'
@@ -380,6 +384,7 @@ class SetupSourceTest(unittest.TestCase):
                 fetch_main(origin.as_uri(), work_root=source.parent)
             self.assertTrue(source.is_dir())
 
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX retry markers')
     def test_fetch_main_reuses_a_preexisting_marker_only_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
@@ -555,6 +560,7 @@ class SetupSourceTest(unittest.TestCase):
                 {source_module._INCOMPLETE_MARKER},
             )
 
+    @unittest.skipUnless(os.name == 'posix', 'Windows uses its guarded fallback')
     def test_unavailable_secure_staging_primitives_do_not_mutate_or_run_git(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'
@@ -568,6 +574,7 @@ class SetupSourceTest(unittest.TestCase):
             mkdir.assert_not_called()
             run.assert_not_called()
 
+    @unittest.skipUnless(os.name == 'posix', 'requires POSIX retry markers')
     def test_fetch_main_classifies_post_fetch_git_failures_as_invalid(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'

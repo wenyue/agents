@@ -11,7 +11,6 @@ sys.path.insert(0, str(REPO_ROOT / 'skills' / 'setup-project-agents' / 'scripts'
 from agents_setup.catalog import (  # noqa: E402
     ContractError,
     load_catalog,
-    load_lock,
     load_project_config,
     parse_asset,
     safe_relative,
@@ -336,51 +335,58 @@ class SetupCatalogTest(unittest.TestCase):
             '.cursor/rules/{rule-name}.mdc',
         )
 
-    def test_lock_validates_commit_and_owned_paths(self):
+    def test_external_skills_and_retired_assets_are_current_contracts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / 'lock.json'
+            path = Path(temp_dir) / 'config.json'
             path.write_text(
                 json.dumps(
                     {
+                        '$schema': 'project-config.schema.json',
                         'version': 1,
-                        'managed_files': [],
-                        'managed_fields': [],
+                        'skills': {
+                            'external': [
+                                {
+                                    'name': 'sentry-debug-issue',
+                                    'repository': 'getsentry/plugin-codex',
+                                    'ref': 'main',
+                                    'path': 'plugins/sentry/skills/sentry-debug-issue',
+                                }
+                            ]
+                        },
                     }
                 ),
                 encoding='utf-8',
             )
-            with self.assertRaisesRegex(ContractError, 'requires source_commit'):
-                load_lock(path)
-
+            config = load_project_config(path, catalog=load_catalog(REPO_ROOT))
+            self.assertEqual(config.external_skills[0].name, 'sentry-debug-issue')
+            self.assertEqual(
+                config.external_skills[0].path.as_posix(),
+                'plugins/sentry/skills/sentry-debug-issue',
+            )
+            self.assertIn(
+                '.agents/lock.json',
+                {item.as_posix() for item in load_catalog(REPO_ROOT).retired_assets},
+            )
             path.write_text(
                 json.dumps(
                     {
                         'version': 1,
-                        'source_commit': 'not-a-commit',
-                        'managed_files': [],
-                        'managed_fields': [],
+                        'skills': {
+                            'external': [
+                                {
+                                    'name': 'bad',
+                                    'repository': 'https://example.invalid/repo.git',
+                                    'ref': 'main',
+                                    'path': 'skill',
+                                }
+                            ]
+                        },
                     }
                 ),
                 encoding='utf-8',
             )
-            with self.assertRaisesRegex(ContractError, '40-character hexadecimal'):
-                load_lock(path)
-
-            path.write_text(
-                json.dumps(
-                    {
-                        'version': 1,
-                        'source_commit': 'a' * 40,
-                        'managed_files': [
-                            {'path': '../escape', 'sha256': 'b' * 64}
-                        ],
-                        'managed_fields': [],
-                    }
-                ),
-                encoding='utf-8',
-            )
-            with self.assertRaisesRegex(ContractError, 'relative path'):
-                load_lock(path)
+            with self.assertRaisesRegex(ContractError, 'owner/name'):
+                load_project_config(path, catalog=load_catalog(REPO_ROOT))
 
 
 if __name__ == '__main__':

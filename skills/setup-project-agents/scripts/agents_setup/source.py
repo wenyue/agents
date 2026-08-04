@@ -15,6 +15,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import stat
 import subprocess
 from dataclasses import dataclass
@@ -45,6 +46,12 @@ class SourceUnavailable(RuntimeError):
 
 class InvalidFetchedSource(ValueError):
     """Raised when a fetched or installed source fails the source contract."""
+
+
+def _is_link_like(path: Path) -> bool:
+    return path.is_symlink() or (
+        hasattr(path, 'is_junction') and path.is_junction()
+    )
 
 
 @dataclass(frozen=True)
@@ -81,7 +88,7 @@ def _safe_root(value: Path, label: str) -> Path:
     current = Path(root.anchor)
     for part in root.parts[1:]:
         current /= part
-        if current.is_symlink():
+        if _is_link_like(current):
             raise InvalidFetchedSource(f'{label} contains a symlink: {current}')
     if not root.is_dir():
         raise InvalidFetchedSource(f'{label} is not a directory: {root}')
@@ -92,7 +99,7 @@ def _safe_required(root: Path, relative: PurePosixPath, *, directory: bool = Fal
     current = root
     for part in relative.parts:
         current /= part
-        if current.is_symlink():
+        if _is_link_like(current):
             raise InvalidFetchedSource(f'source path contains a symlink: {current}')
     if directory:
         if not current.is_dir():
@@ -107,7 +114,7 @@ def _reject_source_symlinks(root: Path) -> None:
         parent = Path(directory)
         for name in (*directories, *files):
             candidate = parent / name
-            if candidate.is_symlink():
+            if _is_link_like(candidate):
                 raise InvalidFetchedSource(f'source path contains a symlink: {candidate}')
 
 
@@ -132,7 +139,7 @@ def _validate_catalog_sources(root: Path, catalog_sources: tuple[PurePosixPath, 
         current = root
         for part in relative.parts:
             current /= part
-            if current.is_symlink():
+            if _is_link_like(current):
                 raise InvalidFetchedSource(f'source path contains a symlink: {current}')
         if not current.exists():
             raise InvalidFetchedSource(f'catalog source is missing: {relative.as_posix()}')
@@ -154,7 +161,7 @@ def _validate_source(source_root: Path, *, fd_root: bool) -> Path:
         _load_manifest(_safe_required(root, relative), version, expected_roots)
 
     git_dir = root / '.git'
-    if git_dir.exists() or git_dir.is_symlink():
+    if git_dir.exists() or _is_link_like(git_dir):
         _safe_required(root, PurePosixPath('.git'), directory=True)
 
     entrypoint = _safe_required(root, _ENTRYPOINT)
@@ -306,6 +313,48 @@ def _open_safe_workspace_fallback(value: Path) -> _Workspace:
         if stat.S_ISLNK(status.st_mode) or not stat.S_ISDIR(status.st_mode):
             raise InvalidFetchedSource(f'source workspace contains unsafe path: {current}')
     return _Workspace(path, None)
+
+
+def _fetch_main_fallback(repository: str, work_root: Path) -> SourceSnapshot:
+    """Fetch one snapshot in a private Windows session without POSIX dir-fd primitives."""
+    workspace = _open_safe_workspace_fallback(work_root)
+    source = workspace.path / 'source'
+    if source.exists() or _is_link_like(source):
+        raise InvalidFetchedSource('source checkout already exists')
+    candidate = workspace.path / f'.agents-setup-source-{secrets.token_hex(16)}'
+    try:
+        candidate.mkdir()
+        marker = candidate / _INCOMPLETE_MARKER
+        marker.write_bytes(_INCOMPLETE_MARKER_BYTES)
+        _run_git(('git', 'init', '--quiet', str(candidate)), failure=SourceUnavailable)
+        _run_git(
+            ('git', '-C', str(candidate), 'remote', 'add', 'origin', repository),
+            failure=SourceUnavailable,
+        )
+        _run_git(
+            ('git', '-C', str(candidate), 'fetch', '--depth=1', 'origin', 'main'),
+            failure=SourceUnavailable,
+        )
+        _run_git(
+            ('git', '-C', str(candidate), 'checkout', '--quiet', '--detach', 'FETCH_HEAD'),
+            failure=InvalidFetchedSource,
+        )
+        commit = _run_git(
+            ('git', '-C', str(candidate), 'rev-parse', 'HEAD'),
+            failure=InvalidFetchedSource,
+        ).stdout.strip()
+        if not _COMMIT.fullmatch(commit):
+            raise InvalidFetchedSource('Git returned an invalid source commit')
+        marker.unlink()
+        validate_source(candidate)
+        if source.exists() or _is_link_like(source):
+            raise InvalidFetchedSource('source checkout already exists')
+        candidate.rename(source)
+        validate_source(source)
+        return SourceSnapshot(source, commit.lower())
+    except (OSError, SourceUnavailable, InvalidFetchedSource):
+        shutil.rmtree(candidate, ignore_errors=True)
+        raise
 
 
 def _open_safe_workspace(value: Path) -> _Workspace:
@@ -580,6 +629,8 @@ def fetch_main(repository: str, *, work_root: Path) -> SourceSnapshot:
     """Fetch one depth-one `main` snapshot into ``work_root / 'source'``."""
     repository = _validate_repository(repository)
     if not _secure_fetch_supported():
+        if os.name == 'nt':
+            return _fetch_main_fallback(repository, work_root)
         raise SourceUnavailable('secure remote source fetch is unavailable on this platform')
     workspace = _open_safe_workspace(work_root)
     source: _HeldSource | None = None

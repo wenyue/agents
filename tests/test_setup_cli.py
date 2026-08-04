@@ -127,6 +127,7 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(request['source_root'], str(REPO_ROOT.absolute()))
             self.assertEqual(request['source_commit'], self.source_commit)
             self.assertEqual(request['platforms'], ['cursor'])
+            self.assertEqual(request['external_skills'], [])
             self.assertNotIn('hooks_enabled', request)
             self.assertEqual(
                 request['model_requests'],
@@ -153,19 +154,6 @@ class SetupCliTest(unittest.TestCase):
             self.assertTrue((session / 'generated/.agents/rules').is_dir())
             self.assertTrue((session / 'generated/.agents/skills').is_dir())
             self.assertEqual(self.snapshot_tree(target), {})
-
-    @unittest.skipUnless(os.name == 'posix', 'requires POSIX session ownership checks')
-    def test_create_session_uses_a_private_current_user_temporary_directory(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            session = Path(temp_dir) / 'session'
-            session.mkdir(mode=0o755)
-            with mock.patch.object(setup_project_agents.tempfile, 'mkdtemp', return_value=str(session)):
-                created = setup_project_agents.create_session()
-
-            status = created.stat()
-            self.assertEqual(created, session)
-            self.assertEqual(status.st_uid, os.geteuid())
-            self.assertEqual(stat.S_IMODE(status.st_mode), 0o700)
 
     def test_apply_rejects_cross_target_replay_and_models_outside_its_session(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -223,8 +211,67 @@ class SetupCliTest(unittest.TestCase):
             self.assertTrue((target / '.agents/rules/00-global-rule-config.md').is_file())
             self.assertTrue((target / '.agents/rules/20-project-tools.md').is_file())
             self.assertTrue((target / '.agents/skills/change-set-verification/SKILL.md').is_file())
-            lock = json.loads((target / '.agents/lock.json').read_text(encoding='utf-8'))
-            self.assertEqual(lock['source_commit'], self.source_commit)
+            self.assertFalse((target / '.agents/lock.json').exists())
+
+    def test_external_skill_is_snapshotted_and_force_replaces_its_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            config = target / '.agents/config.json'
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                json.dumps(
+                    {
+                        'version': 1,
+                        'skills': {
+                            'external': [
+                                {
+                                    'name': 'external-check',
+                                    'repository': 'example/repository',
+                                    'ref': 'main',
+                                    'path': 'skills/external-check',
+                                }
+                            ]
+                        },
+                    }
+                ),
+                encoding='utf-8',
+            )
+            installed = target / '.agents/skills/external-check'
+            installed.mkdir(parents=True)
+            (installed / 'stale.txt').write_text('stale\n', encoding='utf-8')
+            (installed / 'SKILL.md').write_text('locally changed\n', encoding='utf-8')
+            session = self.private_session(root)
+
+            def snapshot(specs, *, session):
+                self.assertEqual([item.name for item in specs], ['external-check'])
+                destination = session / 'external-skills/external-check'
+                destination.mkdir(parents=True)
+                (destination / 'SKILL.md').write_text(
+                    '---\nname: external-check\ndescription: Use for checks.\n---\n',
+                    encoding='utf-8',
+                )
+                return destination.parent
+
+            with mock.patch.object(
+                setup_project_agents,
+                'snapshot_external_skills',
+                side_effect=snapshot,
+            ):
+                self.assertEqual(self.prepare(target, session), 0)
+            request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
+            self.assertEqual(request['external_skills'][0]['name'], 'external-check')
+            self.write_generated_outputs(session)
+            models = self.write_models(session)
+            self.assertEqual(
+                setup_project_agents.main(
+                    ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+                ),
+                0,
+            )
+            self.assertFalse((installed / 'stale.txt').exists())
+            self.assertIn('name: external-check', (installed / 'SKILL.md').read_text())
 
     def test_check_shares_apply_planning_and_never_writes_target(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -249,9 +296,9 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(
                 drift['drift'],
                 {
-                    'kind': 'managed_content_changed',
-                    'message': 'managed content changed: .agents/rules/00-global-rule-config.md',
-                    'path': '.agents/rules/00-global-rule-config.md',
+                    'kind': 'desired_state_diff',
+                    'message': 'desired state differs from the target project',
+                    'paths': ['.agents/rules/00-global-rule-config.md'],
                 },
             )
             self.assertEqual(drift['changed_paths'], ['.agents/rules/00-global-rule-config.md'])
@@ -280,13 +327,12 @@ class SetupCliTest(unittest.TestCase):
             with redirect_stdout(output):
                 self.assertEqual(setup_project_agents.main(check_args), 1)
             result = json.loads(output.getvalue())
-            self.assertEqual(result['drift']['kind'], 'managed_field_changed')
-            self.assertEqual(result['drift']['path'], '.cursor/cli.json')
-            self.assertEqual(result['drift']['field'], 'permissions.allow')
+            self.assertEqual(result['drift']['kind'], 'desired_state_diff')
+            self.assertEqual(result['drift']['paths'], ['.cursor/cli.json'])
             self.assertEqual(result['changed_paths'], ['.cursor/cli.json'])
             self.assertEqual(self.snapshot_tree(target), before)
 
-    def test_check_reports_unmanaged_collision_without_writing(self):
+    def test_existing_managed_path_is_reported_then_force_overwritten(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -309,10 +355,20 @@ class SetupCliTest(unittest.TestCase):
                     1,
                 )
             result = json.loads(output.getvalue())
-            self.assertEqual(result['drift']['kind'], 'unmanaged_collision')
-            self.assertEqual(result['drift']['path'], '.agents/rules/00-global-rule-config.md')
-            self.assertEqual(result['changed_paths'], ['.agents/rules/00-global-rule-config.md'])
+            self.assertEqual(result['drift']['kind'], 'desired_state_diff')
+            self.assertIn('.agents/rules/00-global-rule-config.md', result['drift']['paths'])
+            self.assertIn('.agents/rules/00-global-rule-config.md', result['changed_paths'])
             self.assertEqual(self.snapshot_tree(target), before)
+            self.assertEqual(
+                setup_project_agents.main(
+                    ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+                ),
+                0,
+            )
+            self.assertEqual(
+                collision.read_bytes(),
+                (REPO_ROOT / 'setup-assets/rules/00-global-rule-config.md').read_bytes(),
+            )
 
     def test_apply_rejects_tampered_selections_or_model_requests_without_writing(self):
         tamper = (
@@ -391,9 +447,15 @@ class SetupCliTest(unittest.TestCase):
             self.assertIsNone(apply_result['drift'])
             self.assertEqual(apply_result['changed_paths'], sorted(apply_result['changed_paths']))
             self.assertIn('.agents/rules/00-global-rule-config.md', apply_result['changed_paths'])
+            self.assertEqual(apply_result['platforms'], ['cursor'])
+            self.assertEqual(apply_result['external_skills'], [])
+            self.assertEqual(apply_result['preserved_paths'], [])
             self.assertEqual(
                 set(apply_result),
-                {'version', 'phase', 'source_commit', 'changed_paths', 'drift'},
+                {
+                    'version', 'phase', 'source_commit', 'changed_paths', 'platforms',
+                    'external_skills', 'preserved_paths', 'drift',
+                },
             )
 
             check_output = StringIO()
@@ -583,8 +645,7 @@ class SetupEndToEndTest(unittest.TestCase):
             self.write_generated_outputs(first_session)
             first_result, _ = self.apply_pinned(target, first_session)
             self.assertEqual(first_result, 0)
-            first_lock = json.loads((target / '.agents/lock.json').read_text(encoding='utf-8'))
-            self.assertEqual(first_lock['source_commit'], run_git(work, 'rev-parse', 'main'))
+            self.assertFalse((target / '.agents/lock.json').exists())
             self.assertFalse((target / '.codex/hooks.json').exists())
             self.assertFalse((target / '.cursor/hooks.json').exists())
             self.assertFalse((target / '.github/hooks/project-agent-tool-check.json').exists())
@@ -612,8 +673,6 @@ class SetupEndToEndTest(unittest.TestCase):
             self.assertEqual(second_result, 0)
             assert second_output is not None
             self.assertIn('.agents/rules/00-global-rule-config.md', second_output['changed_paths'])
-            second_lock = json.loads((target / '.agents/lock.json').read_text(encoding='utf-8'))
-            self.assertNotEqual(first_lock['source_commit'], second_lock['source_commit'])
             self.assertEqual((target / 'unmanaged.txt').read_bytes(), before_upgrade['unmanaged.txt'])
             after_upgrade = self.snapshot_tree(target)
             changed = {
@@ -622,7 +681,7 @@ class SetupEndToEndTest(unittest.TestCase):
             }
             self.assertEqual(
                 changed,
-                {'.agents/rules/00-global-rule-config.md', '.agents/lock.json'},
+                {'.agents/rules/00-global-rule-config.md'},
             )
 
             third_session = self.private_session(root, 'third-session')
@@ -685,7 +744,6 @@ class SetupEndToEndTest(unittest.TestCase):
             collision = collision_target / '.agents/rules/00-global-rule-config.md'
             collision.parent.mkdir(parents=True)
             collision.write_text('user collision\n', encoding='utf-8')
-            collision_before = self.snapshot_tree(collision_target)
             collision_session = self.private_session(root, 'collision-session')
             self.assertEqual(setup_project_agents.main([
                 'prepare', '--target', str(collision_target), '--session', str(collision_session),
@@ -693,11 +751,19 @@ class SetupEndToEndTest(unittest.TestCase):
                 '--source-commit', 'a' * 40, '--no-bootstrap',
             ]), 0)
             self.write_generated_outputs(collision_session)
-            self.assertEqual(self.apply_pinned(collision_target, collision_session)[0], 2)
-            self.assertEqual(self.snapshot_tree(collision_target), collision_before)
+            self.assertEqual(self.apply_pinned(collision_target, collision_session)[0], 0)
+            self.assertEqual(
+                collision.read_bytes(),
+                (source / 'setup-assets/rules/00-global-rule-config.md').read_bytes(),
+            )
 
             source_rule = source / 'setup-assets/rules/00-global-rule-config.md'
             source_rule.write_text(source_rule.read_text(encoding='utf-8') + '\nchanged once\n', encoding='utf-8')
+            second_source_rule = source / 'setup-assets/rules/01-global-personality.md'
+            second_source_rule.write_text(
+                second_source_rule.read_text(encoding='utf-8') + '\nchanged twice\n',
+                encoding='utf-8',
+            )
             rollback_session = self.private_session(root, 'rollback-session')
             self.assertEqual(setup_project_agents.main([
                 'prepare', '--target', str(target), '--session', str(rollback_session),

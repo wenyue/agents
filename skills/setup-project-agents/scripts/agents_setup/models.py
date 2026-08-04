@@ -35,43 +35,29 @@ class ProjectConfig:
     selected_rules: tuple[str, ...]
     selected_skills: tuple[str, ...]
     selected_agents: tuple[str, ...]
+    external_skills: tuple[ExternalSkillSpec, ...] = ()
 
 
 @dataclass(frozen=True)
-class ManagedFile:
+class ExternalSkillSpec:
+    name: str
+    repository: str
+    ref: str
     path: PurePosixPath
-    sha256: str
 
 
 @dataclass(frozen=True)
-class ManagedField:
+class ProjectRuleSpec:
     path: PurePosixPath
-    key: str
-    sha256: str
+    section: str
+    read_when: str
+    strength: str
 
 
 @dataclass(frozen=True)
-class LockState:
-    version: int
-    source_commit: str | None
-    managed_files: tuple[ManagedFile, ...]
-    managed_fields: tuple[ManagedField, ...]
-
-    @classmethod
-    def empty(cls) -> LockState:
-        return cls(1, None, (), ())
-
-    @classmethod
-    def from_files(cls, files: Mapping[str, str]) -> LockState:
-        return cls(
-            version=1,
-            source_commit=None,
-            managed_files=tuple(
-                ManagedFile(PurePosixPath(path), sha256)
-                for path, sha256 in sorted(files.items())
-            ),
-            managed_fields=(),
-        )
+class ProjectSkillSpec:
+    name: str
+    path: PurePosixPath
 
 
 class ChangeKind(str, Enum):
@@ -105,7 +91,6 @@ class Change:
 @dataclass(frozen=True)
 class Plan:
     changes: tuple[Change, ...]
-    next_lock: LockState
 
 
 @dataclass(frozen=True)
@@ -115,3 +100,4 @@ class Catalog:
     repository: str
     ref: str
     assets: tuple[AssetSpec, ...]
+    retired_assets: tuple[PurePosixPath, ...] = ()

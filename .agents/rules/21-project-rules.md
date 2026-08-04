@@ -36,6 +36,11 @@ evolution, and test contracts for this repository.
 
 - Preserve `.agents/` as the installation root in public setup prompts, templates, manifests,
   scripts, and documentation for target repositories.
+- Treat catalog-selected sources, generated outputs, platform wrappers, and configured external
+  Skill directories as force-converged setup content. Treat automatically discovered project-owned
+  Rules and Skills as preserved target content, and keep non-template structured fields unchanged.
+- Declare obsolete managed paths through `retired_assets`; do not infer deletion ownership from a
+  previous project state file.
 - Unit tests may assert structured configuration, schemas, filesystem effects, state transitions,
   exit behavior, and documented repository-boundary facts. Review prose, prompts, and Hook wording
   semantically in addition to automated checks.

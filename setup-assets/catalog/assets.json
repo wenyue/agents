@@ -5,6 +5,7 @@
     "repository": "https://github.com/wenyue/agents.git",
     "ref": "main"
   },
+  "retired_assets": [".agents/lock.json"],
   "assets": [
     {"id": "00-global-rule-config", "kind": "rule", "source": "setup-assets/rules/00-global-rule-config.md", "target": ".agents/rules/00-global-rule-config.md", "metadata": {"section": "global", "read_when": "Starting any repository task", "strength": "Mandatory", "cursor": {"description": "[mandatory] Rule strength, conflict precedence, and shared config policy", "alwaysApply": true}, "github": {"applyTo": "**"}}},
     {"id": "01-global-personality", "kind": "rule", "source": "setup-assets/rules/01-global-personality.md", "target": ".agents/rules/01-global-personality.md", "metadata": {"section": "global", "read_when": "Starting any repository task", "strength": "Default", "cursor": {"description": "[default] Agent reasoning, judgment, collaboration, and temperament", "alwaysApply": true}, "github": {"applyTo": "**"}}},

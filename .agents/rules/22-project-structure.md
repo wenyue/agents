@@ -13,7 +13,7 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
 - `setup-assets/rules/`, `setup-assets/skills/`, and `setup-assets/agents/` contain content that
   becomes runtime capability only after setup installs it. `setup-assets/blueprints/` and
   `setup-assets/templates/` contain generation and rendering inputs, while `setup-assets/catalog/`
-  owns asset selection and lock/configuration contracts.
+  owns asset selection, retired paths, and project-configuration contracts.
 - `docs/` contains design material and `docs/zh-CN/` contains Simplified-Chinese documentation.
   Documentation is outside runtime loading and target installation.
 - `.agents/rules/` owns this repository's development instructions, `.agents/plugins/` owns its
@@ -24,8 +24,9 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
 
 ## Distribution Flow
 
-- Setup reads `setup-assets/catalog/assets.json`, then applies only catalog-selected public sources
-  to a target repository. Recommended-tool runtime and policy files remain plugin-private.
+- Setup reads `setup-assets/catalog/assets.json`, then force-converges catalog-selected public
+  sources while preserving automatically discovered project-owned Rules and Skills. Recommended-tool
+  runtime and policy files remain plugin-private.
 - Blueprints guide creation of complete target-owned Rules and Skills; they are not installed as
   runtime content themselves.
 - The setup control plane remains in `skills/setup-project-agents/`. Target changes have no reverse

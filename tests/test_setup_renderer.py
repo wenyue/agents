@@ -21,7 +21,7 @@ from agents_setup.models import (  # noqa: E402
     Platform,
     ProjectConfig,
 )
-from agents_setup.planner import PlanningError, build_plan  # noqa: E402
+from agents_setup.planner import build_plan  # noqa: E402
 from agents_setup.renderer import (  # noqa: E402
     RenderError,
     _copy_asset,
@@ -256,7 +256,10 @@ class SetupRendererTest(unittest.TestCase):
                 {},
             )
 
-            self.assertEqual(rendered.files_by_path[target_path.as_posix()], b'generated\n')
+            self.assertEqual(
+                rendered.files_by_path[target_path.as_posix()],
+                (generated / 'shared.md').read_bytes(),
+            )
 
     def test_renderer_uses_catalog_metadata_without_a_legacy_references_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -314,7 +317,7 @@ class SetupRendererTest(unittest.TestCase):
             )
             rendered = self.render(target, self.generated_tree(root))
 
-            plan = build_plan(target, rendered.files, rendered.fields, self.empty_lock())
+            plan = build_plan(target, rendered.files, rendered.fields)
             desired_config = json.loads(rendered.files_by_path['.agents/config.json'])
 
             config_change = next(
@@ -333,7 +336,7 @@ class SetupRendererTest(unittest.TestCase):
                 {'version'},
             )
 
-    def test_first_setup_rejects_conflicting_owned_config_field(self):
+    def test_force_convergence_overwrites_conflicting_owned_config_field(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -342,13 +345,150 @@ class SetupRendererTest(unittest.TestCase):
             config_path.write_text('{"version": 2}\n', encoding='utf-8')
             rendered = self.render(target, self.generated_tree(root))
 
-            with self.assertRaisesRegex(PlanningError, 'unmanaged field collision'):
-                build_plan(target, rendered.files, rendered.fields, self.empty_lock())
+            plan = build_plan(target, rendered.files, rendered.fields)
+            change = next(
+                item for item in plan.changes if item.path.as_posix() == '.agents/config.json'
+            )
+            self.assertEqual(change.kind, ChangeKind.UPDATE)
+            self.assertEqual(json.loads(change.content)['version'], 1)
 
-    @staticmethod
-    def empty_lock():
-        from agents_setup.models import LockState
-        return LockState.empty()
+    def test_deselected_assets_and_platform_outputs_are_removed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            stale_paths = (
+                '.agents/rules/01-global-personality.md',
+                '.agents/agents/change-set-verifier.md',
+                '.cursor/rules/01-global-personality.mdc',
+                '.github/agents/change-set-verifier.agent.md',
+            )
+            for relative in stale_paths:
+                path = target.joinpath(*PurePosixPath(relative).parts)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('stale\n', encoding='utf-8')
+
+            config = ProjectConfig(
+                1,
+                (Platform.CODEX,),
+                ('00-global-rule-config',),
+                ('refactor-code',),
+                (),
+            )
+            rendered = render_desired_state(
+                REPO_ROOT,
+                target,
+                self.catalog,
+                config,
+                self.generated_tree(root),
+                {},
+            )
+            plan = build_plan(
+                target,
+                rendered.files,
+                rendered.fields,
+                delete_paths=rendered.delete_paths,
+                replace_roots=rendered.replace_roots,
+            )
+            deleted = {
+                item.path.as_posix()
+                for item in plan.changes
+                if item.kind is ChangeKind.DELETE
+            }
+
+            self.assertTrue(set(stale_paths).issubset(deleted))
+
+    def test_disabled_structured_platform_removes_only_template_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            settings = target / '.github/copilot/settings.json'
+            settings.parent.mkdir(parents=True)
+            settings.write_text(
+                json.dumps({
+                    'extraKnownMarketplaces': {
+                        'superpowers-marketplace': {
+                            'source': {'source': 'github', 'repo': 'old/value'}
+                        }
+                    },
+                    'enabledPlugins': {'superpowers@superpowers-marketplace': False},
+                    'unmanaged': {'keep': True},
+                }),
+                encoding='utf-8',
+            )
+            config = ProjectConfig(
+                1,
+                (Platform.CODEX,),
+                ('00-global-rule-config',),
+                ('refactor-code',),
+                (),
+            )
+
+            rendered = render_desired_state(
+                REPO_ROOT,
+                target,
+                self.catalog,
+                config,
+                self.generated_tree(root),
+                {},
+            )
+            remaining = json.loads(
+                rendered.files_by_path['.github/copilot/settings.json']
+            )
+
+            self.assertEqual(remaining, {'unmanaged': {'keep': True}})
+            self.assertNotIn(
+                PurePosixPath('.github/copilot/settings.json'),
+                rendered.delete_paths,
+            )
+
+    def test_project_rules_and_skills_are_discovered_without_becoming_managed_content(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            rule = target / '.agents/rules/40-domain-testing.md'
+            rule.parent.mkdir(parents=True)
+            rule.write_text(
+                '# Testing\n\nStrength: `Default`\n\n'
+                'Scope: Tests under `test/` and plugin test directories.\n',
+                encoding='utf-8',
+            )
+            skill = target / '.agents/skills/local-check/SKILL.md'
+            skill.parent.mkdir(parents=True)
+            skill.write_text(
+                '---\nname: local-check\ndescription: Use for local checks.\n---\n',
+                encoding='utf-8',
+            )
+
+            rendered = self.render(target, self.generated_tree(root))
+            agents = rendered.files_by_path['AGENTS.md'].decode()
+            self.assertIn('`.agents/rules/40-domain-testing.md`', agents)
+            self.assertNotIn('.agents/rules/40-domain-testing.md', rendered.files_by_path)
+            self.assertNotIn('.agents/skills/local-check/SKILL.md', rendered.files_by_path)
+            self.assertIn(
+                PurePosixPath('.agents/skills/local-check/SKILL.md'),
+                rendered.preserved_paths,
+            )
+            validate_rendered_state(rendered)
+
+    def test_generated_blueprint_skills_are_not_rediscovered_as_project_owned(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            generated = self.generated_tree(root)
+            first = self.render(target, generated)
+            self.materialize(target, first.files)
+
+            second = self.render(target, generated)
+
+            self.assertNotIn(
+                PurePosixPath('.agents/skills/change-set-verification/SKILL.md'),
+                second.preserved_paths,
+            )
+            self.assertNotIn(
+                PurePosixPath('.agents/skills/worktree-environment-setup/SKILL.md'),
+                second.preserved_paths,
+            )
 
     @staticmethod
     def materialize(target: Path, files) -> None:
@@ -356,27 +496,6 @@ class SetupRendererTest(unittest.TestCase):
             path = target.joinpath(*item.path.parts)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(item.content)
-
-    @staticmethod
-    def write_lock(target: Path, lock) -> None:
-        path = target / '.agents/lock.json'
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps({
-                'version': lock.version,
-                'source_commit': lock.source_commit,
-                'managed_files': [
-                    {'path': item.path.as_posix(), 'sha256': item.sha256}
-                    for item in lock.managed_files
-                ],
-                'managed_fields': [
-                    {'path': item.path.as_posix(), 'key': item.key, 'sha256': item.sha256}
-                    for item in lock.managed_fields
-                ],
-            }),
-            encoding='utf-8',
-        )
-
 
 if __name__ == '__main__':
     unittest.main()

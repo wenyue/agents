@@ -3,10 +3,31 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "$schema": {"type": "string"},
     "version": {"const": 1},
     "platforms": {"type": "array", "uniqueItems": true, "items": {"enum": ["codex", "cursor", "copilot"]}},
     "selected_rules": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
     "selected_skills": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
-    "selected_agents": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+    "selected_agents": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "skills": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "external": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "repository", "ref", "path"],
+            "properties": {
+              "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+              "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+              "ref": {"type": "string", "pattern": "^[A-Za-z0-9._/-]+$"},
+              "path": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    }
   }
 }

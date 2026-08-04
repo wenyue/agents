@@ -27,10 +27,18 @@ Run both commands for every completed change set; together they form the require
 
 ## Project Setup Tooling
 
-- `skills/setup-project-agents/scripts/setup_project_agents.py` is the public setup control plane.
-- The setup command reads `setup-assets/catalog/assets.json`, fetches canonical `main` for an online
-  session, and applies only the lock-owned target snapshot.
-- `check` reports target drift without writes. Neither command is a formatter, fixer, or
+- `skills/setup-project-agents/scripts/workflow.py`, reached through the paired shell wrappers, is
+  the public `start`/`finish`/`cancel` control plane. The pinned
+  `setup_project_agents.py` prepare/apply/check phases are internal workflow operations.
+- Start creates and owns the private session, reads `setup-assets/catalog/assets.json`, fetches
+  canonical `main`, snapshots external Skills, and creates the request and models template. Finish
+  discovers project-owned Rules and Skills, force-converges catalog-managed, generated, and
+  configured external content, checks convergence, summarizes, and cleans up without a project
+  lock. Cancel safely cleans up an unfinished workflow-owned session.
+- Setup preserves structured fields outside catalog templates and project-owned Rule and Skill
+  content. It removes deselected known catalog outputs, paths declared by `retired_assets`, and
+  stale files inside a managed Skill directory.
+- `check` reports desired-state drift without writes. Neither command is a formatter, fixer, or
   replacement for this repository's test command.
 - Keep this repository's local `.agents/` directory limited to its `plugins/` marketplace
   configuration, `rules/` development instructions, and thin Skill discovery wrappers.

@@ -10,9 +10,7 @@ from .models import (
     AssetSpec,
     Catalog,
     ContractError,
-    LockState,
-    ManagedField,
-    ManagedFile,
+    ExternalSkillSpec,
     Platform,
     ProjectConfig,
 )
@@ -24,9 +22,9 @@ _SEMVER = re.compile(
     r'(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?'
     r'(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'
 )
-_HEX_40 = re.compile(r'^[0-9a-fA-F]{40}$')
-_HEX_64 = re.compile(r'^[0-9a-fA-F]{64}$')
 _NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')
+_REPOSITORY = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
+_GIT_REF = re.compile(r'^[A-Za-z0-9._/-]+$')
 _FIELD_NAME = re.compile(r'^[A-Za-z][A-Za-z0-9_@-]*$')
 _WINDOWS_RESERVED_CHARACTERS = frozenset('<>:"\\|?*')
 _WINDOWS_RESERVED_NAMES = frozenset(
@@ -35,14 +33,13 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     | {f'LPT{number}' for number in range(1, 10)}
 )
 _ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode', 'control_plane', 'metadata'})
-_CATALOG_FIELDS = frozenset({'plugin', 'assets'})
+_CATALOG_FIELDS = frozenset({'plugin', 'assets', 'retired_assets'})
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
 _PROJECT_CONFIG_FIELDS = frozenset(
-    {'version', 'platforms', 'selected_rules', 'selected_skills', 'selected_agents'}
+    {'$schema', 'version', 'platforms', 'selected_rules', 'selected_skills', 'selected_agents', 'skills'}
 )
-_LOCK_FIELDS = frozenset({'version', 'source_commit', 'managed_files', 'managed_fields'})
-_MANAGED_FILE_FIELDS = frozenset({'path', 'sha256'})
-_MANAGED_FIELD_FIELDS = frozenset({'path', 'key', 'sha256'})
+_SKILLS_FIELDS = frozenset({'external'})
+_EXTERNAL_SKILL_FIELDS = frozenset({'name', 'repository', 'ref', 'path'})
 
 
 def safe_relative(value: str, label: str) -> PurePosixPath:
@@ -256,7 +253,19 @@ def load_catalog(source_root: Path) -> Catalog:
     targets = [asset.target for asset in assets if asset.target is not None]
     if len(set(targets)) != len(targets):
         raise ContractError('catalog has duplicate asset targets')
-    return Catalog(plugin_id, plugin_version, repository, ref, assets)
+    retired_value = document.get('retired_assets', [])
+    if not isinstance(retired_value, list) or not all(
+        isinstance(item, str) for item in retired_value
+    ):
+        raise ContractError('catalog retired_assets must be an array of paths')
+    retired_assets = tuple(
+        safe_relative(item, 'catalog retired asset') for item in retired_value
+    )
+    if len(set(retired_assets)) != len(retired_assets):
+        raise ContractError('catalog has duplicate retired assets')
+    if set(retired_assets).intersection(targets):
+        raise ContractError('catalog asset cannot be active and retired')
+    return Catalog(plugin_id, plugin_version, repository, ref, assets, retired_assets)
 
 
 def _selected(value: object, label: str, catalog: Catalog, kind: str) -> tuple[str, ...]:
@@ -281,6 +290,42 @@ def _selected(value: object, label: str, catalog: Catalog, kind: str) -> tuple[s
     return selected
 
 
+def parse_external_skills(value: object, catalog: Catalog) -> tuple[ExternalSkillSpec, ...]:
+    if value is None:
+        return ()
+    skills = _object(value, 'project config skills')
+    _fields(skills, _SKILLS_FIELDS, 'project config skills')
+    external = skills.get('external', [])
+    if not isinstance(external, list):
+        raise ContractError('project config skills.external must be an array')
+    reserved = {asset.id for asset in catalog.assets if asset.kind == 'skill'}
+    result: list[ExternalSkillSpec] = []
+    for index, item in enumerate(external):
+        document = _object(item, f'project config skills.external[{index}]')
+        _fields(document, _EXTERNAL_SKILL_FIELDS, 'external skill')
+        name = _name(_required(document, 'name', 'external skill'), 'external skill name')
+        repository = _nonempty_string(
+            _required(document, 'repository', 'external skill'),
+            'external skill repository',
+        )
+        if not _REPOSITORY.fullmatch(repository):
+            raise ContractError('external skill repository must be owner/name')
+        ref = _nonempty_string(_required(document, 'ref', 'external skill'), 'external skill ref')
+        if ref.startswith('-') or not _GIT_REF.fullmatch(ref):
+            raise ContractError('external skill ref must be a safe Git argument')
+        path_value = _required(document, 'path', 'external skill')
+        if not isinstance(path_value, str):
+            raise ContractError('external skill path must be a relative path')
+        path = safe_relative(path_value, 'external skill path')
+        if name in reserved:
+            raise ContractError(f'external skill conflicts with shared skill: {name}')
+        result.append(ExternalSkillSpec(name, repository, ref, path))
+    names = [item.name for item in result]
+    if len(set(names)) != len(names):
+        raise ContractError('project config skills.external has duplicate names')
+    return tuple(result)
+
+
 def load_project_config(path: Path | None, *, catalog: Catalog) -> ProjectConfig:
     document: Mapping[str, object]
     if path is None or not path.exists():
@@ -297,91 +342,5 @@ def load_project_config(path: Path | None, *, catalog: Catalog) -> ProjectConfig
         _selected(document.get('selected_rules'), 'selected_rules', catalog, 'rule'),
         _selected(document.get('selected_skills'), 'selected_skills', catalog, 'skill'),
         _selected(document.get('selected_agents'), 'selected_agents', catalog, 'agent'),
+        parse_external_skills(document.get('skills'), catalog),
     )
-
-
-def _sha256(value: object, label: str) -> str:
-    if not isinstance(value, str) or not _HEX_64.fullmatch(value):
-        raise ContractError(f'{label} must be a 64-character hexadecimal SHA-256')
-    return value
-
-
-def _managed_file(value: object) -> ManagedFile:
-    item = _object(value, 'managed file')
-    _fields(item, _MANAGED_FILE_FIELDS, 'managed file')
-    path = _required(item, 'path', 'managed file')
-    if not isinstance(path, str):
-        raise ContractError('managed file path must be a relative path')
-    return ManagedFile(safe_relative(path, 'managed file path'), _sha256(_required(item, 'sha256', 'managed file'), 'managed file sha256'))
-
-
-def _managed_field(value: object) -> ManagedField:
-    item = _object(value, 'managed field')
-    _fields(item, _MANAGED_FIELD_FIELDS, 'managed field')
-    path = _required(item, 'path', 'managed field')
-    if not isinstance(path, str):
-        raise ContractError('managed field path must be a relative path')
-    return ManagedField(
-        safe_relative(path, 'managed field path'),
-        safe_field_key(_required(item, 'key', 'managed field'), 'managed field key'),
-        _sha256(_required(item, 'sha256', 'managed field'), 'managed field sha256'),
-    )
-
-
-def validate_lock_state(lock: LockState) -> LockState:
-    """Validate an in-memory lock with the same contract as a parsed lock document."""
-    if not isinstance(lock, LockState):
-        raise ContractError('lock state must be a LockState')
-    if type(lock.version) is not int or lock.version != 1:
-        raise ContractError('lock version must be 1')
-    if lock.source_commit is not None and (
-        not isinstance(lock.source_commit, str) or not _HEX_40.fullmatch(lock.source_commit)
-    ):
-        raise ContractError('lock source_commit must be a 40-character hexadecimal commit')
-    files: list[ManagedFile] = []
-    fields: list[ManagedField] = []
-    for item in lock.managed_files:
-        if not isinstance(item, ManagedFile) or not isinstance(item.path, PurePosixPath):
-            raise ContractError('lock managed file must be a ManagedFile')
-        path = safe_relative(item.path.as_posix(), 'managed file path')
-        files.append(ManagedFile(path, _sha256(item.sha256, 'managed file sha256')))
-    for item in lock.managed_fields:
-        if not isinstance(item, ManagedField) or not isinstance(item.path, PurePosixPath):
-            raise ContractError('lock managed field must be a ManagedField')
-        path = safe_relative(item.path.as_posix(), 'managed field path')
-        fields.append(
-            ManagedField(
-                path,
-                safe_field_key(item.key, 'managed field key'),
-                _sha256(item.sha256, 'managed field sha256'),
-            )
-        )
-    if len({item.path for item in files}) != len(files):
-        raise ContractError('lock has duplicate managed file paths')
-    if len({(item.path, item.key) for item in fields}) != len(fields):
-        raise ContractError('lock has duplicate managed fields')
-    return LockState(lock.version, lock.source_commit, tuple(files), tuple(fields))
-
-
-def load_lock(path: Path | None) -> LockState:
-    if path is None or not path.exists():
-        return LockState.empty()
-    document = _load_json(path, 'lock')
-    _fields(document, _LOCK_FIELDS, 'lock')
-    version = _required(document, 'version', 'lock')
-    if type(version) is not int or version != 1:
-        raise ContractError('lock version must be 1')
-    source_commit = _required(document, 'source_commit', 'lock')
-    if source_commit is not None and (not isinstance(source_commit, str) or not _HEX_40.fullmatch(source_commit)):
-        raise ContractError('lock source_commit must be a 40-character hexadecimal commit')
-    file_values = _required(document, 'managed_files', 'lock')
-    field_values = _required(document, 'managed_fields', 'lock')
-    if not isinstance(file_values, list) or not isinstance(field_values, list):
-        raise ContractError('lock managed collections must be arrays')
-    files = tuple(_managed_file(item) for item in file_values)
-    fields = tuple(_managed_field(item) for item in field_values)
-    if len({item.path for item in files}) != len(files):
-        raise ContractError('lock has duplicate managed file paths')
-    if len({(item.path, item.key) for item in fields}) != len(fields):
-        raise ContractError('lock has duplicate managed fields')
-    return validate_lock_state(LockState(version, source_commit, files, fields))

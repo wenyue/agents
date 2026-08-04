@@ -6,11 +6,12 @@ import os
 import re
 import stat
 import sys
-import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 
-from agents_setup.catalog import ContractError, load_catalog, safe_field_key, safe_relative
+from agents_setup.catalog import ContractError, load_catalog, parse_external_skills
+from agents_setup.discovery import DiscoveryError
+from agents_setup.external import ExternalSkillError, snapshot_external_skills
 from agents_setup.models import Catalog, Platform, ProjectConfig
 from agents_setup.planner import PlanningError, build_plan
 from agents_setup.project import ProjectError, inspect_project
@@ -41,25 +42,13 @@ class SetupError(ValueError):
     """Raised when a pinned setup session cannot be used safely."""
 
 
-class CheckDrift(PlanningError):
-    """Raised after check has emitted its machine-readable drift result."""
-
-
 def normalize_source_commit(source_commit: str) -> str | None:
-    """Convert the bootstrap-only offline sentinel before any lock is built."""
+    """Convert the bootstrap-only offline sentinel at the pinned CLI boundary."""
     if source_commit == 'offline':
         return None
     if not isinstance(source_commit, str) or not _COMMIT.fullmatch(source_commit):
         raise ValueError('source_commit must be offline or a 40-character hexadecimal commit')
     return source_commit.lower()
-
-
-def create_session() -> Path:
-    """Allocate the private, system-temporary session required by normal orchestration."""
-    session = Path(tempfile.mkdtemp(prefix='setup-project-agents-'))
-    if os.name == 'posix':
-        session.chmod(0o700)
-    return session
 
 
 def _private_session(value: Path) -> Path:
@@ -71,8 +60,10 @@ def _private_session(value: Path) -> Path:
             status = current.lstat()
         except OSError as error:
             raise SetupError(f'session path cannot be inspected: {current}') from error
-        if stat.S_ISLNK(status.st_mode):
-            raise SetupError(f'session path contains a symlink: {current}')
+        if stat.S_ISLNK(status.st_mode) or (
+            hasattr(current, 'is_junction') and current.is_junction()
+        ):
+            raise SetupError(f'session path contains an unsafe link: {current}')
     try:
         status = session.stat()
     except OSError as error:
@@ -146,6 +137,15 @@ def _request(
         'selected_rules': list(config.selected_rules),
         'selected_skills': list(config.selected_skills),
         'selected_agents': list(config.selected_agents),
+        'external_skills': [
+            {
+                'name': item.name,
+                'repository': item.repository,
+                'ref': item.ref,
+                'path': item.path.as_posix(),
+            }
+            for item in config.external_skills
+        ],
         'model_requests': model_requests,
         'generation_requests': generation_requests,
     }
@@ -194,7 +194,8 @@ def _request_config(
 ) -> ProjectConfig:
     required = {
         'version', 'target', 'source_root', 'source_commit', 'platforms', 'selected_rules',
-        'selected_skills', 'selected_agents', 'model_requests', 'generation_requests',
+        'selected_skills', 'selected_agents', 'external_skills', 'model_requests',
+        'generation_requests',
     }
     if set(request) != required or request.get('version') != 1:
         raise SetupError('session request has an invalid shape')
@@ -236,7 +237,10 @@ def _request_config(
             )
         ):
             raise ValueError
-        config = ProjectConfig(1, platforms, *selections)
+        external_skills = parse_external_skills(
+            {'external': request['external_skills']}, catalog
+        )
+        config = ProjectConfig(1, platforms, *selections, external_skills)
         if request['model_requests'] != _model_requests(config):
             raise ValueError
     except (KeyError, TypeError, ValueError, SetupError) as error:
@@ -315,6 +319,9 @@ def _emit_result(
     phase: str,
     source_commit: str | None,
     changed_paths: Sequence[str],
+    platforms: Sequence[str],
+    external_skills: Sequence[str],
+    preserved_paths: Sequence[str],
     drift: Mapping[str, object] | None = None,
 ) -> None:
     print(json.dumps({
@@ -322,44 +329,11 @@ def _emit_result(
         'phase': phase,
         'source_commit': source_commit,
         'changed_paths': sorted(changed_paths),
+        'platforms': list(platforms),
+        'external_skills': sorted(external_skills),
+        'preserved_paths': sorted(preserved_paths),
         'drift': drift,
     }, sort_keys=True))
-
-
-def _planning_drift(error: PlanningError) -> dict[str, object]:
-    message = str(error)
-    prefixes = (
-        ('managed content changed: ', 'managed_content_changed', False),
-        ('managed field changed: ', 'managed_field_changed', True),
-        ('unmanaged collision: ', 'unmanaged_collision', False),
-        ('unmanaged field collision: ', 'unmanaged_field_collision', True),
-    )
-    for prefix, kind, has_field in prefixes:
-        if not message.startswith(prefix):
-            continue
-        detail = message.removeprefix(prefix)
-        path = detail
-        field: str | None = None
-        if has_field:
-            path, separator, field = detail.rpartition(':')
-            if not separator:
-                continue
-        try:
-            safe_path = safe_relative(path, 'drift path').as_posix()
-            if has_field:
-                assert field is not None
-                safe_field = safe_field_key(field, 'drift field')
-        except ContractError:
-            continue
-        result: dict[str, object] = {
-            'kind': kind,
-            'message': message,
-            'path': safe_path,
-        }
-        if has_field:
-            result['field'] = safe_field
-        return result
-    return {'kind': 'planning_error', 'message': message}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -400,6 +374,7 @@ def _prepare(args: argparse.Namespace, session: Path, source_commit: str | None)
         project.config.selected_rules,
         project.config.selected_skills,
         project.config.selected_agents,
+        project.config.external_skills,
     )
     generated = session / _GENERATED_NAME
     generated_rules = generated / '.agents' / 'rules'
@@ -409,6 +384,7 @@ def _prepare(args: argparse.Namespace, session: Path, source_commit: str | None)
         generated_skills.mkdir(parents=True, exist_ok=False)
     except OSError as error:
         raise SetupError('cannot create generated output directories') from error
+    snapshot_external_skills(config.external_skills, session=session)
     _write_json(
         session / _REQUEST_NAME,
         _request(
@@ -444,28 +420,17 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
         config,
         generated,
         models,
+        session / 'external-skills' if config.external_skills else None,
     )
     validate_rendered_state(rendered)
-    try:
-        plan = build_plan(
-            project.root,
-            rendered.files,
-            rendered.fields,
-            project.lock,
-            source_commit=source_commit,
-        )
-    except PlanningError as error:
-        if args.phase == 'check':
-            drift = _planning_drift(error)
-            _emit_result(
-                phase=args.phase,
-                source_commit=source_commit,
-                changed_paths=(drift['path'],) if 'path' in drift else (),
-                drift=drift,
-            )
-            raise CheckDrift() from error
-        raise
-    return plan, project.root
+    plan = build_plan(
+        project.root,
+        rendered.files,
+        rendered.fields,
+        delete_paths=rendered.delete_paths,
+        replace_roots=rendered.replace_roots,
+    )
+    return plan, project.root, config, rendered
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -481,10 +446,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.phase == 'prepare':
             _prepare(args, session, source_commit)
             return 0
-        try:
-            plan, target = _plan(args, session, source_commit)
-        except CheckDrift:
-            return 1
+        plan, target, config, rendered = _plan(args, session, source_commit)
+        result_context = {
+            'platforms': [item.value for item in config.platforms],
+            'external_skills': [item.name for item in config.external_skills],
+            'preserved_paths': [item.as_posix() for item in rendered.preserved_paths],
+        }
         if args.phase == 'check':
             changed_paths = [
                 change.path.as_posix()
@@ -495,6 +462,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 phase=args.phase,
                 source_commit=source_commit,
                 changed_paths=changed_paths,
+                **result_context,
                 drift=(
                     {
                         'kind': 'desired_state_diff',
@@ -514,11 +482,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 for change in plan.changes
                 if change.kind.value != 'unchanged'
             ],
+            **result_context,
             drift=None,
         )
         return 0
     except (
         ContractError,
+        DiscoveryError,
+        ExternalSkillError,
         InvalidFetchedSource,
         OSError,
         PlanningError,

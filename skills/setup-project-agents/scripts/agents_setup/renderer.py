@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .catalog import safe_field_key
+from .discovery import DiscoveryError, discover_project_rules, discover_project_skills
 from .models import Catalog, DesiredField, DesiredFile, ProjectConfig
 from .project import ProjectError, confined_target
 from .structured import (
@@ -24,6 +25,9 @@ class RenderError(ValueError):
 class RenderedState:
     files: tuple[DesiredFile, ...]
     fields: tuple[DesiredField, ...]
+    delete_paths: tuple[PurePosixPath, ...] = ()
+    replace_roots: tuple[PurePosixPath, ...] = ()
+    preserved_paths: tuple[PurePosixPath, ...] = ()
 
     @property
     def files_by_path(self) -> Mapping[str, bytes]:
@@ -41,6 +45,25 @@ def _deep_merge(current: object, overlay: object) -> object:
             merged[key] = _deep_merge(merged[key], value) if key in merged else value
         return merged
     return overlay
+
+
+def _remove_template_fields(current: object, template: object) -> object:
+    if not isinstance(current, dict) or not isinstance(template, dict):
+        return current
+    remaining = dict(current)
+    for key, template_value in template.items():
+        if key not in remaining:
+            continue
+        current_value = remaining[key]
+        if isinstance(current_value, dict) and isinstance(template_value, dict):
+            child = _remove_template_fields(current_value, template_value)
+            if child:
+                remaining[key] = child
+            else:
+                remaining.pop(key)
+        else:
+            remaining.pop(key)
+    return remaining
 
 
 def _safe_leaves(value: object, prefix: str = '') -> Iterable[tuple[str, object]]:
@@ -96,13 +119,22 @@ def _copy_asset(files: dict[PurePosixPath, bytes], source: Path, target: PurePos
     raise RenderError(f'catalog source is missing: {source}')
 
 
-def _rule_rows(catalog: Catalog, section: str) -> str:
+def _rule_rows(catalog: Catalog, config: ProjectConfig, section: str, project_rules) -> str:
     rows = []
     for asset in catalog.assets:
         metadata = asset.metadata
-        if asset.kind in {'rule', 'blueprint'} and metadata.get('section') == section:
+        if (
+            asset.kind in {'rule', 'blueprint'}
+            and metadata.get('section') == section
+            and (asset.kind != 'rule' or asset.id in config.selected_rules)
+        ):
             rows.append(
                 f'| {metadata.get("read_when", "")} | `{asset.target.as_posix() if asset.target else ""}` | {metadata.get("strength", "")} |'
+            )
+    for rule in project_rules:
+        if rule.section == section:
+            rows.append(
+                f'| {rule.read_when} | `{rule.path.as_posix()}` | {rule.strength} |'
             )
     return '\n'.join(rows)
 
@@ -141,6 +173,28 @@ def _agent_values(asset, models: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def _known_wrapper_targets(catalog: Catalog) -> set[PurePosixPath]:
+    targets: set[PurePosixPath] = set()
+    for wrapper in catalog.assets:
+        if wrapper.kind != 'wrapper' or wrapper.target is None:
+            continue
+        if 'agent' in wrapper.id:
+            candidates = (
+                asset.id for asset in catalog.assets if asset.kind == 'agent'
+            )
+            placeholder = '{agent-name}'
+        else:
+            candidates = (
+                asset.source.stem for asset in catalog.assets if asset.kind == 'rule'
+            )
+            placeholder = '{rule-name}'
+        for candidate in candidates:
+            targets.add(
+                PurePosixPath(wrapper.target.as_posix().replace(placeholder, candidate))
+            )
+    return targets
+
+
 def render_desired_state(
     source_root: Path,
     target_root: Path,
@@ -148,26 +202,67 @@ def render_desired_state(
     config: ProjectConfig,
     generated_root: Path,
     models: Mapping[str, object],
+    external_root: Path | None = None,
 ) -> RenderedState:
     """Render only catalog-owned project assets without mutating the target."""
     files: dict[PurePosixPath, bytes] = {}
     fields: list[DesiredField] = []
     native_documents: dict[PurePosixPath, dict[str, object]] = {}
     native_templates: dict[PurePosixPath, dict[str, object]] = {}
-    try:
-        confined_target(target_root, PurePosixPath('.agents/lock.json'))
-    except ProjectError as error:
-        raise RenderError(str(error)) from error
+    replace_roots: set[PurePosixPath] = set()
+    delete_paths: set[PurePosixPath] = set(catalog.retired_assets)
+    known_file_targets = _known_wrapper_targets(catalog)
     assets_by_id = {asset.id: asset for asset in catalog.assets}
+    for asset in catalog.assets:
+        if asset.control_plane or asset.target is None:
+            continue
+        source = source_root / asset.source
+        if asset.kind == 'skill' and source.is_dir():
+            replace_roots.add(asset.target)
+        elif (
+            asset.kind == 'blueprint'
+            and asset.target.parts[:2] == ('.agents', 'skills')
+        ):
+            replace_roots.add(asset.target.parent)
+        elif asset.kind in {'rule', 'agent'} or (
+            asset.kind == 'template' and _format_for(asset.target) is None
+        ):
+            known_file_targets.add(asset.target)
+    try:
+        project_rules = discover_project_rules(target_root, catalog)
+        project_skills = discover_project_skills(
+            target_root,
+            catalog,
+            external_names=frozenset(item.name for item in config.external_skills),
+        )
+    except DiscoveryError as error:
+        raise RenderError(str(error)) from error
 
     for asset in catalog.assets:
-        if asset.control_plane or asset.target is None or not set(asset.platforms).intersection(config.platforms):
+        if asset.control_plane or asset.target is None:
             continue
-        if asset.kind == 'rule' and asset.id not in config.selected_rules:
-            continue
-        if asset.kind == 'skill' and asset.id not in config.selected_skills:
-            continue
-        if asset.kind == 'agent' and asset.id not in config.selected_agents:
+        platform_selected = bool(set(asset.platforms).intersection(config.platforms))
+        asset_selected = (
+            (asset.kind != 'rule' or asset.id in config.selected_rules)
+            and (asset.kind != 'skill' or asset.id in config.selected_skills)
+            and (asset.kind != 'agent' or asset.id in config.selected_agents)
+        )
+        if not platform_selected or not asset_selected:
+            if asset.kind == 'template' and _format_for(asset.target):
+                format_name = _format_for(asset.target)
+                assert format_name is not None
+                template = _load_structured(source_root / asset.source, format_name)
+                try:
+                    target_path = confined_target(target_root, asset.target)
+                except ProjectError as error:
+                    raise RenderError(str(error)) from error
+                existing = _load_structured(target_path, format_name)
+                if existing:
+                    remaining = _remove_template_fields(existing, template)
+                    if remaining:
+                        native_documents[asset.target] = remaining
+                    else:
+                        delete_paths.add(asset.target)
             continue
         if asset.kind in {'rule', 'skill', 'agent'}:
             _copy_asset(files, source_root / asset.source, asset.target)
@@ -190,9 +285,9 @@ def render_desired_state(
             content = (source_root / asset.source).read_bytes()
             if asset.id == 'entry-agents':
                 content = _render_text(content.decode(), {
-                    'global_rule_rows': _rule_rows(catalog, 'global'),
-                    'base_rule_rows': _rule_rows(catalog, 'base'),
-                    'project_rule_rows': _rule_rows(catalog, 'project'),
+                    'global_rule_rows': _rule_rows(catalog, config, 'global', project_rules),
+                    'base_rule_rows': _rule_rows(catalog, config, 'base', project_rules),
+                    'project_rule_rows': _rule_rows(catalog, config, 'project', project_rules),
                 })
             _copy_file(files, asset.target, content)
             continue
@@ -243,12 +338,44 @@ def render_desired_state(
             raise RenderError(f'undeclared generated path: {relative.as_posix()}')
         files[relative] = path.read_bytes()
 
+    if config.external_skills:
+        if external_root is None or not external_root.is_dir() or external_root.is_symlink():
+            raise RenderError('external Skill snapshot directory is missing or unsafe')
+        expected_external = {item.name for item in config.external_skills}
+        actual_external = {
+            item.name for item in external_root.iterdir() if item.is_dir() and not item.is_symlink()
+        }
+        if actual_external != expected_external:
+            raise RenderError('external Skill snapshot does not match project config')
+        for skill in config.external_skills:
+            source = external_root / skill.name
+            if not (source / 'SKILL.md').is_file():
+                raise RenderError(f'external Skill is missing SKILL.md: {skill.name}')
+            _copy_asset(files, source, PurePosixPath('.agents/skills') / skill.name)
+            replace_roots.add(PurePosixPath('.agents/skills') / skill.name)
+
     for path, document in native_documents.items():
         format_name = _format_for(path)
         assert format_name is not None
         _copy_file(files, path, _dump_structured(document, format_name))
-        for key, value in _safe_leaves(native_templates[path]):
+        for key, value in _safe_leaves(native_templates.get(path, {})):
             fields.append(DesiredField(path, key, value, format_name))
+    delete_paths.update(known_file_targets.difference(files))
+    delete_paths.difference_update(files)
     desired_files = tuple(DesiredFile(path, content) for path, content in sorted(files.items(), key=lambda item: item[0].as_posix()))
     desired_fields = tuple(sorted(fields, key=lambda item: (item.path.as_posix(), item.key)))
-    return RenderedState(desired_files, desired_fields)
+    return RenderedState(
+        desired_files,
+        desired_fields,
+        tuple(sorted(delete_paths, key=lambda item: item.as_posix())),
+        tuple(sorted(replace_roots, key=lambda item: item.as_posix())),
+        tuple(
+            sorted(
+                (
+                    *(item.path for item in project_rules),
+                    *(item.path / 'SKILL.md' for item in project_skills),
+                ),
+                key=lambda item: item.as_posix(),
+            )
+        ),
+    )

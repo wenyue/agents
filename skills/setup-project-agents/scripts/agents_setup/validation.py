@@ -11,6 +11,7 @@ _REFERENCE = re.compile(r'(?:Apply @|Follow `)(\.agents/[^`\s]+)')
 def validate_rendered_state(rendered: RenderedState) -> None:
     """Validate staged native configs and wrapper references without touching the host."""
     files = rendered.files_by_path
+    preserved = {path.as_posix() for path in rendered.preserved_paths}
     for path, content in files.items():
         relative = PurePosixPath(path)
         format_name = format_for_path(relative)
@@ -18,5 +19,5 @@ def validate_rendered_state(rendered: RenderedState) -> None:
             parse_document(content, format_name)
         if path.endswith(('.md', '.mdc', '.toml')):
             for reference in _REFERENCE.findall(content.decode()):
-                if reference not in files:
+                if reference not in files and reference not in preserved:
                     raise RenderError(f'wrapper reference is not rendered: {reference}')

@@ -3,19 +3,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .catalog import load_lock, load_project_config
-from .models import Catalog, LockState, ProjectConfig
+from .catalog import load_project_config
+from .models import Catalog, ProjectConfig
 
 
 class ProjectError(ValueError):
     """Raised when a target project cannot be inspected safely."""
 
 
+def _is_link_like(path: Path) -> bool:
+    return path.is_symlink() or (
+        hasattr(path, 'is_junction') and path.is_junction()
+    )
+
+
 @dataclass(frozen=True)
 class ProjectState:
     root: Path
     config: ProjectConfig
-    lock: LockState
 
 
 def _confined_root(root: Path) -> Path:
@@ -23,7 +28,7 @@ def _confined_root(root: Path) -> Path:
     current = Path(candidate.anchor)
     for part in candidate.parts[1:]:
         current /= part
-        if current.is_symlink():
+        if _is_link_like(current):
             raise ProjectError(f'target path contains symlink: {current}')
     return candidate
 
@@ -40,7 +45,7 @@ def confined_target(root: Path, relative: PurePosixPath) -> Path:
     current = confined_root
     for part in relative.parts:
         current /= part
-        if current.is_symlink():
+        if _is_link_like(current):
             raise ProjectError(f'target path contains symlink: {current}')
     return target
 
@@ -49,9 +54,7 @@ def inspect_project(target_root: Path, *, catalog: Catalog) -> ProjectState:
     """Load target-owned setup state without changing the target project."""
     root = _confined_root(target_root)
     config_path = confined_target(root, PurePosixPath('.agents/config.json'))
-    lock_path = confined_target(root, PurePosixPath('.agents/lock.json'))
     return ProjectState(
         root=root,
         config=load_project_config(config_path, catalog=catalog),
-        lock=load_lock(lock_path),
     )
