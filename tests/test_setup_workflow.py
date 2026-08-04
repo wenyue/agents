@@ -94,6 +94,13 @@ class SetupWorkflowTest(unittest.TestCase):
             )
             local_rule_content = local_rule.read_bytes()
             local_skill_content = local_skill.read_bytes()
+            generated_resource = (
+                target
+                / '.agents/skills/change-set-verification/references/verification-matrix.md'
+            )
+            generated_resource.parent.mkdir(parents=True)
+            generated_resource.write_text('# local matrix\n', encoding='utf-8')
+            generated_resource_content = generated_resource.read_bytes()
             start_output = StringIO()
 
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
@@ -132,6 +139,7 @@ class SetupWorkflowTest(unittest.TestCase):
                 finish['preserved_paths'],
                 [
                     '.agents/rules/40-local-testing.md',
+                    '.agents/skills/change-set-verification/references/verification-matrix.md',
                     '.agents/skills/local-check/SKILL.md',
                 ],
             )
@@ -142,6 +150,9 @@ class SetupWorkflowTest(unittest.TestCase):
             self.assertTrue((target / 'AGENTS.md').is_file())
             self.assertEqual(local_rule.read_bytes(), local_rule_content)
             self.assertEqual(local_skill.read_bytes(), local_skill_content)
+            self.assertEqual(
+                generated_resource.read_bytes(), generated_resource_content
+            )
 
     def test_finish_failure_reports_error_cleans_session_and_does_not_write_target(self):
         with tempfile.TemporaryDirectory() as temp_dir:

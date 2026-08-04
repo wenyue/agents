@@ -134,3 +134,43 @@ def discover_project_skills(
             continue
         result.append(ProjectSkillSpec(path.name, relative))
     return tuple(result)
+
+
+def discover_generated_skill_resources(
+    target_root: Path,
+    catalog: Catalog,
+) -> tuple[PurePosixPath, ...]:
+    """Discover project-owned files beside generated Skill entrypoints."""
+    generated_entries = {
+        asset.target
+        for asset in catalog.assets
+        if asset.kind == 'blueprint'
+        and asset.target is not None
+        and asset.target.parts[:2] == ('.agents', 'skills')
+        and asset.target.name == 'SKILL.md'
+    }
+    result: set[PurePosixPath] = set()
+    for entry in sorted(generated_entries, key=lambda item: item.as_posix()):
+        root_relative = entry.parent
+        try:
+            root = confined_target(target_root, root_relative)
+        except ProjectError as error:
+            raise DiscoveryError(str(error)) from error
+        if not root.exists():
+            continue
+        if not root.is_dir():
+            raise DiscoveryError(
+                f'generated Skill root is not a directory: {root_relative.as_posix()}'
+            )
+        for path in root.rglob('*'):
+            if _is_link_like(path):
+                raise DiscoveryError(
+                    f'generated Skill resource is a symlink: '
+                    f'{(root_relative / path.relative_to(root).as_posix()).as_posix()}'
+                )
+            if not path.is_file():
+                continue
+            relative = root_relative / path.relative_to(root).as_posix()
+            if relative != entry:
+                result.add(relative)
+    return tuple(sorted(result, key=lambda item: item.as_posix()))

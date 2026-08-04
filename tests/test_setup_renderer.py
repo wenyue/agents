@@ -478,6 +478,17 @@ class SetupRendererTest(unittest.TestCase):
             generated = self.generated_tree(root)
             first = self.render(target, generated)
             self.materialize(target, first.files)
+            verification_matrix = (
+                target
+                / '.agents/skills/change-set-verification/references/verification-matrix.md'
+            )
+            verification_matrix.parent.mkdir(parents=True)
+            verification_matrix.write_text('# local matrix\n', encoding='utf-8')
+            setup_script = (
+                target / '.agents/skills/worktree-environment-setup/scripts/setup.ps1'
+            )
+            setup_script.parent.mkdir(parents=True)
+            setup_script.write_text('Write-Output ready\n', encoding='utf-8')
 
             second = self.render(target, generated)
 
@@ -488,6 +499,26 @@ class SetupRendererTest(unittest.TestCase):
             self.assertNotIn(
                 PurePosixPath('.agents/skills/worktree-environment-setup/SKILL.md'),
                 second.preserved_paths,
+            )
+            self.assertIn(
+                PurePosixPath(
+                    '.agents/skills/change-set-verification/references/verification-matrix.md'
+                ),
+                second.preserved_paths,
+            )
+            self.assertIn(
+                PurePosixPath(
+                    '.agents/skills/worktree-environment-setup/scripts/setup.ps1'
+                ),
+                second.preserved_paths,
+            )
+            self.assertNotIn(
+                PurePosixPath('.agents/skills/change-set-verification'),
+                second.replace_roots,
+            )
+            self.assertNotIn(
+                PurePosixPath('.agents/skills/worktree-environment-setup'),
+                second.replace_roots,
             )
 
     @staticmethod

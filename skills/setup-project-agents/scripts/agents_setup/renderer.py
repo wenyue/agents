@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .catalog import safe_field_key
-from .discovery import DiscoveryError, discover_project_rules, discover_project_skills
+from .discovery import (
+    DiscoveryError,
+    discover_generated_skill_resources,
+    discover_project_rules,
+    discover_project_skills,
+)
 from .models import Catalog, DesiredField, DesiredFile, ProjectConfig
 from .project import ProjectError, confined_target
 from .structured import (
@@ -219,11 +224,6 @@ def render_desired_state(
         source = source_root / asset.source
         if asset.kind == 'skill' and source.is_dir():
             replace_roots.add(asset.target)
-        elif (
-            asset.kind == 'blueprint'
-            and asset.target.parts[:2] == ('.agents', 'skills')
-        ):
-            replace_roots.add(asset.target.parent)
         elif asset.kind in {'rule', 'agent'} or (
             asset.kind == 'template' and _format_for(asset.target) is None
         ):
@@ -235,6 +235,7 @@ def render_desired_state(
             catalog,
             external_names=frozenset(item.name for item in config.external_skills),
         )
+        generated_skill_resources = discover_generated_skill_resources(target_root, catalog)
     except DiscoveryError as error:
         raise RenderError(str(error)) from error
 
@@ -374,6 +375,7 @@ def render_desired_state(
                 (
                     *(item.path for item in project_rules),
                     *(item.path / 'SKILL.md' for item in project_skills),
+                    *generated_skill_resources,
                 ),
                 key=lambda item: item.as_posix(),
             )
