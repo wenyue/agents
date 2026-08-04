@@ -572,35 +572,64 @@ def render_findings(findings: list[Finding] | tuple[Finding, ...]) -> str:
     )
 
 
+def _user_consent_request(findings: str) -> str:
+    return (
+        f'{findings}\n'
+        '[smartkit] Recommended tools require installation or upgrade. Reply with the '
+        'tool names whose requested actions you approve, or decline those actions, before '
+        'continuing.'
+    )
+
+
+def _agent_consent_request(findings: str, platform: str) -> str:
+    maintenance_runner = Path(__file__).resolve().with_name(
+        'maintain_recommended_tools.py'
+    )
+    return (
+        f'{findings}\n'
+        '[smartkit] Stop the current task now. Tell the user which tools need '
+        'installation or upgrade and ask whether they consent to those tool actions. Do '
+        'not show the underlying maintenance commands. Do not mutate tools or '
+        'configuration before the user consents. End this turn after requesting consent '
+        'and wait for the next user message. After a subsequent user message grants '
+        'consent, invoke the bundled internal maintenance runner at '
+        f'{maintenance_runner} with apply, --platform {platform}, --tool TOOL_ID, '
+        '--action install|upgrade, and --approved for only the named tool actions. This '
+        'runner is plugin Hook support, not an exposed Skill.'
+    )
+
+
 def render_hook_result(result: HookResult, platform: str) -> str:
+    findings = render_findings(result.findings)
+    if result.requires_user_prompt:
+        if platform == 'codex':
+            return json.dumps(
+                {
+                    'continue': False,
+                    'stopReason': 'Recommended-tool consent is required.',
+                    'systemMessage': _user_consent_request(findings),
+                }
+            )
+        if platform == 'cursor':
+            return json.dumps(
+                {
+                    'continue': False,
+                    'user_message': _user_consent_request(findings),
+                }
+            )
+        return json.dumps(
+            {'additionalContext': _agent_consent_request(findings, platform)}
+        )
     if result.internal_error:
         message = '[smartkit] Recommended-tool check could not complete; continuing.'
     else:
-        findings = render_findings(result.findings)
-        if result.requires_user_prompt:
-            maintenance_runner = Path(__file__).resolve().with_name(
-                'maintain_recommended_tools.py'
-            )
-            message = (
-                f'{findings}\n'
-                '[smartkit] Stop the current task now. Tell the user which tools need '
-                'installation or upgrade and ask whether they consent to those tool actions. Do '
-                'not show the underlying maintenance commands. Do not mutate tools or '
-                'configuration before the user consents. End this turn after requesting consent '
-                'and wait for the next user message. After a subsequent user message grants '
-                'consent, invoke the bundled internal maintenance runner at '
-                f'{maintenance_runner} with apply, --platform {platform}, --tool TOOL_ID, '
-                '--action install|upgrade, and --approved for only the named tool actions. This '
-                'runner is plugin Hook support, not an exposed Skill.'
-            )
-        else:
-            message = findings
+        message = findings
     if not message:
         return ''
     if platform == 'codex':
         return json.dumps({'continue': True, 'systemMessage': message})
     if platform == 'cursor':
-        return json.dumps({'additional_context': message})
+        return json.dumps({'continue': True})
     return json.dumps({'additionalContext': message})
 
 

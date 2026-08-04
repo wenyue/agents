@@ -54,15 +54,18 @@ target project's other files and user-owned `.agents/config.json` choices.
 Hooks belong to the plugin and are declared through each host's plugin format. A host discovers them
 when it installs or loads the plugin; `setup-project-agents` never writes project Hook definitions or
 Hook-enable fields. Host-level trust, workspace trust, and global Hook controls remain authoritative.
-The bundled SessionStart Hook runs the recommended-tool doctor for tools and required host
-capabilities, including multi-agent support. It never treats Hook execution as consent and never
-changes tools by itself.
+The bundled recommended-tool Hook runs the doctor for tools and required host capabilities,
+including multi-agent support. Codex stops the first affected turn from `SessionStart`; Cursor
+blocks the first affected prompt with `beforeSubmitPrompt`; Copilot injects a `sessionStart`
+instruction that tells the agent to ask and stop because Copilot does not expose a blocking
+session-start result. It never treats Hook execution as consent and never changes tools by itself.
 
-When tools need installation or upgrade, the Hook asks the agent to name the affected tools and
-request consent without showing the underlying commands. After consent, the plugin-private
-allowlisted runner applies each supported native action; unsupported actions return official manual
-guidance. This maintenance workflow remains plugin-private and is never copied into project
-snapshots.
+When tools need installation or upgrade, Codex and Cursor show the affected tools and end or block
+that first turn before model work continues. Copilot tells the agent to name the affected tools,
+request consent without showing the underlying commands, and end its turn. After consent, the
+plugin-private allowlisted runner applies each supported native action; unsupported actions return
+official manual guidance. This maintenance workflow remains plugin-private and is never copied into
+project snapshots.
 
 ## Repository layout
 

@@ -582,6 +582,9 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             self.assertEqual(set(rendered), {'continue', 'systemMessage'})
             self.assertIs(rendered['continue'], True)
 
+            cursor = json.loads(checker.render_hook_result(first, 'cursor'))
+            self.assertEqual(cursor, {'continue': True})
+
     def test_detector_error_finding_is_cached_for_the_day(self):
         checker = self.checker
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -631,11 +634,16 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         cursor = json.loads(checker.render_hook_result(result, 'cursor'))
         copilot = json.loads(checker.render_hook_result(result, 'copilot'))
 
-        self.assertEqual(set(codex), {'continue', 'systemMessage'})
-        self.assertIs(codex['continue'], True)
+        self.assertEqual(
+            set(codex),
+            {'continue', 'stopReason', 'systemMessage'},
+        )
+        self.assertIs(codex['continue'], False)
+        self.assertIsInstance(codex['stopReason'], str)
         self.assertIsInstance(codex['systemMessage'], str)
-        self.assertEqual(set(cursor), {'additional_context'})
-        self.assertIsInstance(cursor['additional_context'], str)
+        self.assertEqual(set(cursor), {'continue', 'user_message'})
+        self.assertIs(cursor['continue'], False)
+        self.assertIsInstance(cursor['user_message'], str)
         self.assertEqual(set(copilot), {'additionalContext'})
         self.assertIsInstance(copilot['additionalContext'], str)
         self.assertEqual(
@@ -643,7 +651,32 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             '',
         )
 
-    def test_hook_prompt_requests_tool_action_consent_without_showing_commands(self):
+    def test_blocking_hook_outputs_request_consent_without_showing_commands(self):
+        checker = self.checker
+        result = checker.HookResult(
+            True,
+            (
+                checker.Finding(
+                    'tool-missing',
+                    'Example Tool',
+                    'is missing',
+                    'Install it.',
+                ),
+            ),
+        )
+
+        messages = (
+            json.loads(checker.render_hook_result(result, 'codex'))['systemMessage'],
+            json.loads(checker.render_hook_result(result, 'cursor'))['user_message'],
+        )
+
+        for message in messages:
+            self.assertIn('Example Tool', message)
+            self.assertIn('Reply with the tool names', message)
+            self.assertNotIn('maintain_recommended_tools.py', message)
+            self.assertNotIn('--approved', message)
+
+    def test_copilot_hook_instructs_agent_to_request_consent_and_stop(self):
         checker = self.checker
         result = checker.HookResult(
             True,
@@ -658,18 +691,17 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         )
 
         message = json.loads(
-            checker.render_hook_result(result, 'codex')
-        )['systemMessage']
+            checker.render_hook_result(result, 'copilot')
+        )['additionalContext']
 
         self.assertIn(
             'Tell the user which tools need installation or upgrade and ask whether they consent',
             message,
         )
+        self.assertIn('End this turn after requesting consent', message)
         self.assertIn('Do not show the underlying maintenance commands', message)
         self.assertIn('maintain_recommended_tools.py', message)
         self.assertIn('plugin Hook support, not an exposed Skill', message)
-        self.assertNotIn('approve those exact commands', message)
-        self.assertNotIn('If that message requests the fixes, perform them', message)
 
     def test_live_lock_suppresses_duplicate_and_stale_lock_is_reclaimed(self):
         checker = self.checker

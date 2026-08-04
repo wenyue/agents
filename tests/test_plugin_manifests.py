@@ -221,6 +221,19 @@ class PluginManifestTest(unittest.TestCase):
                 self.assertNotIn(' install', content.lower())
                 self.assertNotIn(' upgrade', content.lower())
 
+        self.assertEqual(
+            set(load_json('hooks/hooks.json')['hooks']),
+            {'SessionStart'},
+        )
+        self.assertEqual(
+            set(load_json('hooks/cursor.json')['hooks']),
+            {'beforeSubmitPrompt'},
+        )
+        self.assertEqual(
+            set(load_json('hooks/copilot.json')['hooks']),
+            {'sessionStart'},
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
