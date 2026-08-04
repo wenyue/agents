@@ -121,7 +121,7 @@ def _load_manifest(path: Path, version: str, expected_roots: Mapping[str, str]) 
         raise InvalidFetchedSource(f'invalid native manifest: {path}') from error
     if not isinstance(document, Mapping):
         raise InvalidFetchedSource(f'invalid native manifest: {path}')
-    if document.get('name') != 'agents' or document.get('version') != version:
+    if document.get('name') != 'smartkit' or document.get('version') != version:
         raise InvalidFetchedSource(f'native manifest identity/version mismatch: {path}')
     for field, expected in expected_roots.items():
         if document.get(field) != expected:
@@ -166,7 +166,7 @@ def _validate_source(source_root: Path, *, fd_root: bool) -> Path:
     except ContractError as error:
         raise InvalidFetchedSource(f'invalid source catalog: {error}') from error
     if (
-        catalog.plugin_id != 'agents'
+        catalog.plugin_id != 'smartkit'
         or catalog.plugin_version != version
         or catalog.repository != CANONICAL_REPOSITORY
         or catalog.ref != 'main'

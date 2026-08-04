@@ -26,16 +26,6 @@
           "kind": "command-regex",
           "command": ["copilot", "plugin", "list"],
           "pattern": "superpowers@[^ ]+ \\(v([0-9]+(?:\\.[0-9]+)+)\\)"
-        },
-        {
-          "kind": "json-manifest-glob",
-          "glob": "{home}/.copilot/installed-plugins/*/superpowers/package.json",
-          "json_path": "version"
-        },
-        {
-          "kind": "json-manifest-glob",
-          "glob": "{home}/.cache/copilot/marketplaces/*/package.json",
-          "json_path": "version"
         }
       ],
       "install": "Install Superpowers from the configured Copilot plugin marketplace.",

@@ -51,14 +51,14 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
     (root / 'VERSION').write_text(f'{version}\n', encoding='utf-8')
     manifests = {
         '.codex-plugin/plugin.json': {
-            'name': 'agents', 'version': version, 'skills': './skills/',
+            'name': 'smartkit', 'version': version, 'skills': './skills/',
         },
         '.cursor-plugin/plugin.json': {
-            'name': 'agents', 'version': version, 'skills': './skills/',
+            'name': 'smartkit', 'version': version, 'skills': './skills/',
             'rules': './rules/', 'agents': './agents/',
         },
         'plugin.json': {
-            'name': 'agents', 'version': version, 'skills': './skills/',
+            'name': 'smartkit', 'version': version, 'skills': './skills/',
             'agents': './agents/',
         },
     }
@@ -68,7 +68,7 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
         json.dumps(
             {
                 'plugin': {
-                    'id': 'agents',
+                    'id': 'smartkit',
                     'version': version,
                     'repository': CANONICAL_REPOSITORY,
                     'ref': 'main',

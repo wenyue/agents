@@ -1,11 +1,11 @@
 {
-  "name": "wenyue-agents",
+  "name": "wenyue",
   "interface": {
-    "displayName": "wenyue/agents"
+    "displayName": "WenYue SmartKit"
   },
   "plugins": [
     {
-      "name": "agents",
+      "name": "smartkit",
       "source": {
         "source": "local",
         "path": "./"

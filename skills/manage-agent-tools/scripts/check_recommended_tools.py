@@ -88,6 +88,17 @@ def _expand(value: str) -> str:
     return value.format(home=str(Path.home()))
 
 
+def _parse_json_command_output(output: str) -> Any:
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r'(?m)^[ \t]*(?=[{\[])', output):
+        try:
+            value, _ = decoder.raw_decode(output, match.end())
+        except json.JSONDecodeError:
+            continue
+        return value
+    raise VersionUnreadable('JSON command output is invalid')
+
+
 def _run_command(command: list[str], timeout: float) -> str | None:
     expanded = [_expand(argument) for argument in command]
     resolved = shutil.which(expanded[0])
@@ -171,7 +182,7 @@ def run_detector(detector: dict[str, Any]) -> str | None:
         if unreadable:
             raise VersionUnreadable('manifest contains no usable version')
         return None
-    if kind in {'command-regex', 'json-command'}:
+    if kind in {'command-regex', 'json-command', 'json-command-item'}:
         command = detector.get('command')
         if (
             not isinstance(command, list)
@@ -185,17 +196,40 @@ def run_detector(detector: dict[str, Any]) -> str | None:
         output = _run_command(command, float(timeout))
         if output is None:
             return None
+        if kind in {'json-command', 'json-command-item'}:
+            parsed_output = _parse_json_command_output(output)
         if kind == 'json-command':
             json_path = detector.get('json_path')
             if not isinstance(json_path, str):
                 raise PolicyError('JSON command detector requires json_path')
-            try:
-                value = _json_path(json.loads(output), json_path)
-            except json.JSONDecodeError as error:
-                raise VersionUnreadable('JSON command output is invalid') from error
+            value = _json_path(parsed_output, json_path)
             if not isinstance(value, (str, int, float)):
                 raise VersionUnreadable('JSON command output contains no usable version')
             return str(value)
+        if kind == 'json-command-item':
+            fields = ('items_path', 'match_path', 'match_value', 'value_path')
+            if any(
+                not isinstance(detector.get(field), str) or not detector[field]
+                for field in fields
+            ):
+                raise PolicyError(
+                    'JSON command item detector requires items_path, match_path, '
+                    'match_value, and value_path'
+                )
+            items = _json_path(parsed_output, detector['items_path'])
+            if not isinstance(items, list):
+                raise VersionUnreadable('JSON command output contains no usable item list')
+            matched = False
+            for item in items:
+                if _json_path(item, detector['match_path']) != detector['match_value']:
+                    continue
+                matched = True
+                value = _json_path(item, detector['value_path'])
+                if isinstance(value, (str, int, float)):
+                    return str(value)
+            if matched:
+                raise VersionUnreadable('matching JSON command item contains no usable version')
+            return None
         pattern = detector.get('pattern', _DEFAULT_VERSION_PATTERN)
         if not isinstance(pattern, str):
             raise PolicyError('command detector pattern must be a string')

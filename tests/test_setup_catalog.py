@@ -210,7 +210,7 @@ class SetupCatalogTest(unittest.TestCase):
                 json.dumps(
                     {
                         'plugin': {
-                            'id': 'agents',
+                            'id': 'smartkit',
                             'version': '0.1.0',
                             'repository': 'https://github.com/wenyue/agents.git',
                             'ref': 'main',
@@ -249,7 +249,7 @@ class SetupCatalogTest(unittest.TestCase):
                         json.dumps(
                             {
                                 'plugin': {
-                                    'id': 'agents',
+                                    'id': 'smartkit',
                                     'version': version,
                                     'repository': 'https://example.invalid/agents.git',
                                     'ref': 'main',
@@ -275,7 +275,7 @@ class SetupCatalogTest(unittest.TestCase):
                         json.dumps(
                             {
                                 'plugin': {
-                                    'id': 'agents',
+                                    'id': 'smartkit',
                                     'version': version,
                                     'repository': 'https://example.invalid/agents.git',
                                     'ref': 'main',

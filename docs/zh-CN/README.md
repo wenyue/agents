@@ -1,16 +1,18 @@
-# agents 中文文档
+# WenYue SmartKit
 
-`agents` 是同时适配 Codex、Cursor 和 GitHub Copilot 的插件。它提供共享的 Rules、Skills、
-智能体提示、模板，以及可选的项目 Hook。插件安装到宿主后不会自动修改任何项目；每个项目都要
-明确运行一次 `setup-project-agents`。
+`WenYue SmartKit` 是同时适配 Codex、Cursor 和 GitHub Copilot 的跨平台插件。它维护共享的 Rules、Skills、
+Agent 提示、模板，以及可选的项目 Hooks。安装插件会让宿主能够使用这些能力；每个仓库仍需分别、
+明确地进行配置。
 
 ## 安装插件
+
+在使用的每个宿主中安装一次 `smartkit`。
 
 Codex：
 
 ```sh
 codex plugin marketplace add wenyue/agents
-codex plugin add agents@wenyue-agents
+codex plugin add smartkit@wenyue
 ```
 
 也可以在 Codex 中使用 `/plugins` 浏览已配置的市场。安装完成后请开启新会话。
@@ -23,21 +25,24 @@ GitHub Copilot CLI：
 
 ```sh
 copilot plugin marketplace add wenyue/agents
-copilot plugin install agents@wenyue-agents
+copilot plugin install smartkit@wenyue
 ```
 
 需要更新时，使用原生命令，例如先执行
-`copilot plugin marketplace update wenyue-agents`，再执行 `copilot plugin update agents`；
+`copilot plugin marketplace update wenyue`，再执行 `copilot plugin update smartkit`；
 市场名称不同则先通过 `copilot plugin list` 核对。
 
 ## 为每个项目执行设置
 
-在目标仓库中要求已安装的插件使用 `setup-project-agents`。选择要启用的平台，以及是否启用
-Hooks；默认选择 Codex、Cursor、Copilot，且 Hooks 为关闭状态。
+在每个目标仓库中，明确要求已安装的插件使用 `setup-project-agents`。选择目标宿主以及是否启用
+Hooks；默认选择 Codex、Cursor 和 Copilot，并关闭 Hooks。仅安装插件绝不会修改项目。
 
 每次设置都会拉取远程 `main`、验证内容，并在 prepare、apply、check 的整个会话中固定到同一
 提交。想让项目跟进新的 `main` 时，再次手动运行设置即可。设置控制面始终保留在插件内，不会
 复制到目标项目。
+
+生成的快照只拥有 lock 中记录的文件和配置字段。它会保留目标项目的其他文件，以及用户自行维护的
+`.agents/config.json` 选项。
 
 ## Hook、多智能体与工具维护
 

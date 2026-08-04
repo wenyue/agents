@@ -20,8 +20,9 @@ contracts for this repository.
 
 - Treat `docs/zh-CN/` as Simplified-Chinese documentation. It is not a runtime source, plugin
   entry point, setup input, or target-installation asset.
-- Write Chinese documentation naturally and preserve commands, identifiers, code blocks, and
-  behavioral meaning when documenting English runtime assets.
+- Keep every Chinese translation one-to-one with its corresponding English source. Preserve the
+  source order, Markdown structure, commands, identifiers, code blocks, and behavioral meaning;
+  do not add translation-only explanations or omit source content.
 - Treat `.agents/rules/` as the source of truth for this repository's development rules. Keep
   `.agents/` limited to `plugins/` and `rules/`; it is not a generated project snapshot.
 

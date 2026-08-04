@@ -1,5 +1,5 @@
 {
-  "name": "agents",
+  "name": "smartkit",
   "version": "0.1.0",
   "description": "Install and maintain shared project-agent workflows across repositories.",
   "author": {

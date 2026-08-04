@@ -1,5 +1,5 @@
 {
-  "name": "agents",
+  "name": "smartkit",
   "version": "0.1.0",
   "description": "Install and maintain shared project-agent workflows across repositories.",
   "author": {
@@ -11,7 +11,7 @@
   "keywords": ["coding-agents", "project-setup", "skills"],
   "skills": "./skills/",
   "interface": {
-    "displayName": "wenyue/agents",
+    "displayName": "WenYue SmartKit",
     "shortDescription": "Set up and maintain project agent tooling",
     "longDescription": "Install versioned workflows for project rules, skills, agents, hooks, and recommended-tool diagnostics.",
     "developerName": "wenyue",

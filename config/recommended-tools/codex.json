@@ -38,13 +38,16 @@
       "comparison": ">",
       "detectors": [
         {
-          "kind": "json-manifest-glob",
-          "glob": "{home}/.codex/superpowers/package.json",
-          "json_path": "version"
+          "kind": "json-command-item",
+          "command": ["codex", "plugin", "list", "--marketplace", "openai-curated", "--json"],
+          "items_path": "installed",
+          "match_path": "pluginId",
+          "match_value": "superpowers@openai-curated",
+          "value_path": "version"
         }
       ],
-      "install": "Install Superpowers for Codex from obra/superpowers.",
-      "upgrade": "Update the Codex Superpowers checkout or plugin installation."
+      "install": "Install Superpowers from the Codex plugin marketplace.",
+      "upgrade": "Update the Superpowers plugin with Codex plugin management."
     },
     {
       "id": "codegraph",

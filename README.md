@@ -1,18 +1,18 @@
-# wenyue/agents
+# WenYue SmartKit
 
-`agents` is a cross-platform plugin for Codex, Cursor, and GitHub Copilot. It maintains shared
+`WenYue SmartKit` is a cross-platform plugin for Codex, Cursor, and GitHub Copilot. It maintains shared
 Rules, Skills, agent prompts, templates, and optional project Hooks. Installing the plugin makes
 those capabilities available to a host; every repository is configured separately and explicitly.
 
 ## Install the plugin
 
-Install `agents` once in each host you use.
+Install `smartkit` once in each host you use.
 
 Codex:
 
 ```sh
 codex plugin marketplace add wenyue/agents
-codex plugin add agents@wenyue-agents
+codex plugin add smartkit@wenyue
 ```
 
 You can also use `/plugins` in Codex to browse the configured marketplace. Start a new Codex
@@ -27,11 +27,11 @@ GitHub Copilot CLI:
 
 ```sh
 copilot plugin marketplace add wenyue/agents
-copilot plugin install agents@wenyue-agents
+copilot plugin install smartkit@wenyue
 ```
 
 To refresh a Copilot marketplace and plugin, use its native update flow, for example
-`copilot plugin marketplace update wenyue-agents` followed by `copilot plugin update agents`.
+`copilot plugin marketplace update wenyue` followed by `copilot plugin update smartkit`.
 Confirm names with `copilot plugin list` when your marketplace differs.
 
 ## Set up each project

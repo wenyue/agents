@@ -24,7 +24,7 @@
       "detectors": [
         {
           "kind": "json-manifest-glob",
-          "glob": "{home}/.cursor/plugins/cache/*/superpowers/*/package.json",
+          "glob": "{home}/.cursor/plugins/cache/*/superpowers/*/.cursor-plugin/plugin.json",
           "json_path": "version"
         }
       ],

@@ -1,5 +1,5 @@
 {
-  "name": "wenyue-agents",
+  "name": "wenyue",
   "owner": {
     "name": "wenyue"
   },
@@ -9,7 +9,7 @@
   },
   "plugins": [
     {
-      "name": "agents",
+      "name": "smartkit",
       "source": "./",
       "version": "0.1.0",
       "description": "Install and maintain shared project-agent workflows across repositories."

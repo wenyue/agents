@@ -152,7 +152,60 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         )
         self.assertEqual(codex_policy['required_values'][0]['expected'], 'true')
 
-    def test_command_and_manifest_detectors_are_data_driven(self):
+    def test_superpowers_policies_use_platform_plugin_installation_state_only(self):
+        expected_detectors = {
+            'codex': [
+                {
+                    'kind': 'json-command-item',
+                    'command': [
+                        'codex',
+                        'plugin',
+                        'list',
+                        '--marketplace',
+                        'openai-curated',
+                        '--json',
+                    ],
+                    'items_path': 'installed',
+                    'match_path': 'pluginId',
+                    'match_value': 'superpowers@openai-curated',
+                    'value_path': 'version',
+                }
+            ],
+            'cursor': [
+                {
+                    'kind': 'json-manifest-glob',
+                    'glob': (
+                        '{home}/.cursor/plugins/cache/*/superpowers/*/'
+                        '.cursor-plugin/plugin.json'
+                    ),
+                    'json_path': 'version',
+                }
+            ],
+            'copilot': [
+                {
+                    'kind': 'command-regex',
+                    'command': ['copilot', 'plugin', 'list'],
+                    'pattern': 'superpowers@[^ ]+ \\(v([0-9]+(?:\\.[0-9]+)+)\\)',
+                }
+            ],
+        }
+
+        actual_detectors = {}
+        for platform, expected in expected_detectors.items():
+            with self.subTest(platform=platform):
+                policy = json.loads(
+                    (POLICY_ROOT / f'{platform}.json').read_text(encoding='utf-8')
+                )
+                superpowers = next(tool for tool in policy['tools'] if tool['id'] == 'superpowers')
+                actual_detectors[platform] = superpowers['detectors']
+                self.assertEqual(superpowers['detectors'], expected)
+
+        serialized = json.dumps(actual_detectors)
+        self.assertNotIn('.codex/superpowers', serialized)
+        self.assertNotIn('.cache/copilot/marketplaces', serialized)
+        self.assertNotIn('.copilot/installed-plugins', serialized)
+
+    def test_command_manifest_and_json_item_detectors_are_data_driven(self):
         checker = self.checker
         command_detector = {
             'kind': 'command-regex',
@@ -177,6 +230,39 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 'json_path': 'metadata.version',
             }
             self.assertEqual(checker.run_detector(detector), '6.1.1')
+
+        installed_plugins = {
+            'installed': [
+                {
+                    'pluginId': 'superpowers@openai-curated',
+                    'version': '6.2.0',
+                    'installed': True,
+                }
+            ]
+        }
+        json_process = mock.Mock()
+        json_process.stdout = io.BytesIO(
+            b'WARNING: unable to create PATH aliases\n'
+            + json.dumps(installed_plugins).encode('utf-8')
+        )
+        json_process.wait.return_value = 0
+        detector = {
+            'kind': 'json-command-item',
+            'command': ['codex', 'plugin', 'list', '--json'],
+            'items_path': 'installed',
+            'match_path': 'pluginId',
+            'match_value': 'superpowers@openai-curated',
+            'value_path': 'version',
+        }
+        with mock.patch.object(checker.subprocess, 'Popen', return_value=json_process):
+            self.assertEqual(checker.run_detector(detector), '6.2.0')
+
+        installed_plugins['installed'][0]['pluginId'] = 'github@openai-curated'
+        missing_process = mock.Mock()
+        missing_process.stdout = io.BytesIO(json.dumps(installed_plugins).encode('utf-8'))
+        missing_process.wait.return_value = 0
+        with mock.patch.object(checker.subprocess, 'Popen', return_value=missing_process):
+            self.assertIsNone(checker.run_detector(detector))
 
     def test_command_detector_resolves_path_entry_before_python_subprocess(self):
         checker = self.checker

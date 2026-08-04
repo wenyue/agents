@@ -5,10 +5,8 @@ description: 初始化或更新仓库的 Agents Rule、Skill、Agent 与显式�
 
 # 设置项目 Agent
 
-从当前规范 `main` 为一个目标仓库创建或更新受管 Agent 快照。本文件是英文
-`skills/setup-project-agents/SKILL.md` 的中文阅读镜像，不参与 runtime、生成或发布；Task 10
-会将此镜像整体迁入文档目录。该共享操作型 Skill 负责 setup 会话和项目协调，但绝不把自身安装到
-目标项目，也不修改宿主信任记录、插件缓存或升级外部工具。
+从当前规范 `main` 为一个目标仓库创建或更新受管 Agent 快照。该共享操作型 Skill 负责 setup 会话和
+项目协调工作流；它绝不把自身安装到目标项目，不修改宿主信任记录或插件缓存，也不升级外部工具。
 
 ## 前提条件
 
@@ -96,9 +94,8 @@ description: 初始化或更新仓库的 Agents Rule、Skill、Agent 与显式�
 
 ## 停止条件
 
-会话非私有、`request.json` 与本次调用不匹配、`models.json` 不是 `SESSION/models.json`、模型字段
-缺失或无效、生成输出不完整或含额外路径、固定来源无效，或所有权 Planner 发现未受管漂移时，必须
-停止且不写入项目。
+会话非私有、`request.json` 与本次调用不匹配、`models.json` 不是 `SESSION/models.json`、生成输出
+不完整或含额外路径、固定来源无效，或所有权 Planner 发现未受管漂移时，必须停止且不写入项目。
 
 不得使用 archive 回退、项目本地 setup 副本、宿主信任数据库或插件缓存作为替代路径。只有在单独
 获得批准的外部工具诊断或升级时才使用 `manage-agent-tools`。
