@@ -117,6 +117,9 @@ class PluginManifestTest(unittest.TestCase):
             'Tokscale',
             'explicit consent',
             'upgrade',
+            '/hooks',
+            'does not automatically trust',
+            'SessionStart',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, readme)

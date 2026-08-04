@@ -14,7 +14,12 @@ codex plugin marketplace add wenyue/agents
 codex plugin add smartkit@wenyue
 ```
 
-也可以在 Codex 中使用 `/plugins` 完成安装。安装后请开启新会话。
+也可以在 Codex 中使用 `/plugins` 完成安装。
+
+> **必须完成的 Codex Hook 审查：** 安装或启用 SmartKit 不会自动信任其内置 Hook。安装后，
+> 请打开 Codex CLI 会话，运行 `/hooks`，审查并信任 SmartKit 的 `SessionStart` Hook，然后开启
+> 新的 Codex 会话或运行 `/clear`。完成信任前，Codex 会跳过 SmartKit 的推荐工具检查。只有更新
+> 改变了 Hook 定义且 Codex 将其重新标记为待审查时，才需要再次审查。
 
 Cursor：通过 Plugin Marketplace 或 `/add-plugin` 安装；私有版本请通过团队市场或本地插件方式
 导入。
@@ -52,7 +57,8 @@ SmartKit 只管理自己生成的内容，并尽量保留项目原有文件和�
 ## 典型使用流程
 
 ```text
-安装 SmartKit → 在项目中运行 setup-project-agents → 审阅生成内容 → 开始使用
+安装 SmartKit → 完成宿主 Hook 审查（Codex：/hooks）→ 在项目中运行 setup-project-agents →
+审阅生成内容 → 开始使用
 ```
 
 如果检查提示需要安装或升级工具，请先确认工具名称和操作，再决定是否授权。

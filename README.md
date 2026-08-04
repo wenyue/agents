@@ -15,7 +15,13 @@ codex plugin marketplace add wenyue/agents
 codex plugin add smartkit@wenyue
 ```
 
-You can also use `/plugins` in Codex to install it. Start a new session after installation.
+You can also use `/plugins` in Codex to install it.
+
+> **Required Codex Hook review:** Installing or enabling SmartKit does not automatically trust its
+> bundled Hook. After installation, open a Codex CLI session, run `/hooks`, review and trust the
+> SmartKit `SessionStart` Hook, then start a new Codex session or run `/clear`. Until it is trusted,
+> Codex skips SmartKit's recommended-tool check. Review it again only when an update changes the
+> Hook definition and Codex marks it for review.
 
 Cursor: install it through the Plugin Marketplace or `/add-plugin`; import private versions through
 a team marketplace or as a local plugin.
@@ -55,7 +61,8 @@ ask-and-stop requirement as session context in headless `--print` sessions.
 ## Typical workflow
 
 ```text
-Install SmartKit → run setup-project-agents in the project → review generated content → start working
+Install SmartKit → complete host Hook review (Codex: /hooks) → run setup-project-agents in the
+project → review generated content → start working
 ```
 
 If a check reports that tools need to be installed or upgraded, confirm the tool names and actions
