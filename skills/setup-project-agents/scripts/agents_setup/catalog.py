@@ -37,7 +37,9 @@ _WINDOWS_RESERVED_NAMES = frozenset(
 _ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode', 'control_plane', 'metadata'})
 _CATALOG_FIELDS = frozenset({'plugin', 'assets'})
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
-_PROJECT_CONFIG_FIELDS = frozenset({'version', 'platforms', 'hooks_enabled', 'selected_rules', 'selected_skills', 'selected_agents'})
+_PROJECT_CONFIG_FIELDS = frozenset(
+    {'version', 'platforms', 'selected_rules', 'selected_skills', 'selected_agents'}
+)
 _LOCK_FIELDS = frozenset({'version', 'source_commit', 'managed_files', 'managed_fields'})
 _MANAGED_FILE_FIELDS = frozenset({'path', 'sha256'})
 _MANAGED_FIELD_FIELDS = frozenset({'path', 'key', 'sha256'})
@@ -229,7 +231,7 @@ def load_catalog(source_root: Path) -> Catalog:
         raise ContractError(f'cannot read VERSION: {root / "VERSION"}') from error
     if not _SEMVER.fullmatch(version):
         raise ContractError('VERSION must be semantic version')
-    document = _load_json(root / 'catalog' / 'project-assets.json', 'catalog')
+    document = _load_json(root / 'setup-assets' / 'catalog' / 'assets.json', 'catalog')
     _fields(document, _CATALOG_FIELDS, 'catalog')
     plugin = _object(_required(document, 'plugin', 'catalog'), 'catalog plugin')
     _fields(plugin, _PLUGIN_FIELDS, 'catalog plugin')
@@ -290,11 +292,8 @@ def load_project_config(path: Path | None, *, catalog: Catalog) -> ProjectConfig
     if type(version) is not int or version != 1:
         raise ContractError('project config version must be 1')
     platforms = _platforms(document.get('platforms'), 'project config platforms', tuple(Platform))
-    hooks_enabled = document.get('hooks_enabled', False)
-    if type(hooks_enabled) is not bool:
-        raise ContractError('project config hooks_enabled must be a boolean')
     return ProjectConfig(
-        version, platforms, hooks_enabled,
+        version, platforms,
         _selected(document.get('selected_rules'), 'selected_rules', catalog, 'rule'),
         _selected(document.get('selected_skills'), 'selected_skills', catalog, 'skill'),
         _selected(document.get('selected_agents'), 'selected_agents', catalog, 'agent'),

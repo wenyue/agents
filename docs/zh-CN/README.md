@@ -1,8 +1,8 @@
 # WenYue SmartKit
 
-`WenYue SmartKit` 是同时适配 Codex、Cursor 和 GitHub Copilot 的跨平台插件。它维护共享的 Rules、Skills、
-Agent 提示、模板，以及可选的项目 Hooks。安装插件会让宿主能够使用这些能力；每个仓库仍需分别、
-明确地进行配置。
+`WenYue SmartKit` 是同时适配 Codex、Cursor 和 GitHub Copilot 的跨平台插件。安装后只会暴露
+`setup-project-agents` 控制面和插件自有的依赖检查 Hooks。共享 Rules、Skills 与 Agent 提示只有在
+setup 将受管理快照安装到目标仓库后才可用。
 
 ## 安装插件
 
@@ -34,8 +34,8 @@ copilot plugin install smartkit@wenyue
 
 ## 为每个项目执行设置
 
-在每个目标仓库中，明确要求已安装的插件使用 `setup-project-agents`。选择目标宿主以及是否启用
-Hooks；默认选择 Codex、Cursor 和 Copilot，并关闭 Hooks。仅安装插件绝不会修改项目。
+在每个目标仓库中，明确要求已安装的插件使用 `setup-project-agents`。选择目标宿主；默认选择
+Codex、Cursor 和 Copilot。仅安装插件绝不会修改项目中的受版本控制文件。
 
 每次设置都会拉取远程 `main`、验证内容，并在 prepare、apply、check 的整个会话中固定到同一
 提交。想让项目跟进新的 `main` 时，再次手动运行设置即可。设置控制面始终保留在插件内，不会
@@ -46,28 +46,33 @@ Hooks；默认选择 Codex、Cursor 和 Copilot，并关闭 Hooks。仅安装插
 
 ## Hook、多智能体与工具维护
 
-Hook 需要显式启用。设置只写入项目 Hook 定义，不会修改宿主信任存储、工作区信任、插件缓存或
-编辑器界面状态。请在相应宿主的 UI 中审查并信任 Hook；Hook 仅做诊断，绝不会安装或升级工具。
+Hook 属于插件，并通过各宿主的插件格式声明。宿主安装或加载插件时会发现这些 Hook；
+`setup-project-agents` 不再写入项目 Hook 定义或 Hook 启用字段。宿主级信任、工作区信任和全局
+Hook 开关仍是最终约束。插件自带的 SessionStart Hook 会运行推荐工具 doctor，检查工具和所需宿主
+能力，包括多智能体支持；它不会把 Hook 执行视为同意，也不会自行变更工具。
 
-多智能体能力检查有效宿主状态或宿主的默认能力，不会写入覆盖默认值的项目配置：Codex 读取有效
-`multi_agent` 状态，Cursor 与 GitHub Copilot 根据版本报告默认能力是否可用。
-
-工具维护由 `manage-agent-tools` 单独负责。`doctor` 只读；`upgrade` 会逐条提出原生命令，只有
-用户批准准确命令后才执行，并在完成后再次运行 doctor。
+工具需要安装或升级时，Hook 会要求智能体列出受影响工具并征求同意，但不展示底层命令。用户
+同意后，插件私有的白名单执行器会逐项执行受支持的原生动作；不支持自动化的动作会返回官方
+手动指引。该维护流程始终为插件私有能力，不会复制到项目快照。
 
 ## 目录说明
 
 ```text
-rules/                 共享运行时 Rules
-skills/                共享操作 Skills（包括 setup-project-agents）
-agents/                共享智能体提示
-blueprints/            生成项目自有 Rules 与 Skills 的契约
-catalog/               资产与锁定状态契约
-templates/project/     宿主配置与包装模板
-config/                推荐工具策略
-docs/zh-CN/             中文文档
-.agents/rules/         本仓库开发规则
-.agents/plugins/       本仓库本地插件市场配置
+skills/                         插件可见控制面；仅包含 setup-project-agents
+hooks/                          插件自有的生命周期 Hook 定义
+runtime/recommended-tools/      Hook 私有执行程序；不会成为可发现的 Skill
+policies/recommended-tools/     共享的推荐工具策略
+setup-assets/catalog/           资产、配置与锁定状态契约
+setup-assets/rules/             安装到目标仓库的 Rules
+setup-assets/skills/            安装到目标仓库的 Skill 文档
+setup-assets/agents/            安装到目标仓库的 Agent 提示
+setup-assets/blueprints/        生成项目自有 Rules 与 Skills 的契约
+setup-assets/templates/         宿主配置与包装模板
+docs/zh-CN/                     中文文档
+.agents/rules/                  本仓库开发规则
+.agents/skills/                 write-rule 与 write-skill 的本地薄包装
+.agents/plugins/                本仓库本地插件市场配置
 ```
 
-根目录的英文运行时内容是插件的事实源。 `docs/zh-CN/` 仅供阅读，不会被加载、安装或同步到目标项目。
+插件清单只暴露 `skills/` 和各宿主的 Hook 入口，不暴露 `runtime/`、`policies/` 或
+`setup-assets/`。`docs/zh-CN/` 仅供阅读，不会被加载或安装。

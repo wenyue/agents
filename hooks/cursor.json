@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "name": "smartkit recommended-tool check",
+        "command": "python \"${CURSOR_PLUGIN_ROOT}/runtime/recommended-tools/check_recommended_tools.py\" hook --platform cursor"
+      }
+    ]
+  }
+}

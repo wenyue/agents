@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "sh \"${PLUGIN_ROOT}/runtime/recommended-tools/check_recommended_tools.sh\" hook --platform copilot",
+        "powershell": "& \"${PLUGIN_ROOT}\\runtime\\recommended-tools\\check_recommended_tools.ps1\" hook --platform copilot",
+        "timeoutSec": 30
+      }
+    ]
+  }
+}

@@ -22,20 +22,23 @@ Resolve conflicts in this order:
 
 ## Sources Of Truth
 
-Keep one source of truth for each asset. Platform-specific files are thin wrappers that reference
-the source.
+Keep one source of truth for each asset. Discovery and platform-specific files are thin wrappers
+that reference the source.
 
 | Asset | Source of truth |
 | --- | --- |
 | Repository development rules | `.agents/rules/<nn>-<name>.md` |
-| Shared plugin Rules | `rules/<nn>-<name>.md` |
-| Shared plugin Skills | `skills/<skill>/SKILL.md` |
-| Shared plugin agent prompts | `agents/<name>.md` |
+| Repository-local Skill discovery wrappers | `.agents/skills/<skill>/SKILL.md` |
+| Plugin setup Skill | `skills/setup-project-agents/SKILL.md` |
+| Setup-managed shared Rules | `setup-assets/rules/<nn>-<name>.md` |
+| Setup-managed shared Skills | `setup-assets/skills/<skill>/SKILL.md` |
+| Setup-managed shared agent prompts | `setup-assets/agents/<name>.md` |
 | Simplified-Chinese documentation | `docs/zh-CN/` |
 
 - Use repository-root-relative paths in tracked configuration.
 - When content appears in more than one wrapper, move it to its owning source and reduce the wrappers.
-- A thin wrapper contains only platform metadata or runtime fields plus one source reference.
+- A thin wrapper contains only discovery or platform metadata, required runtime fields, and one
+  source reference.
 
 ## Wrapper Maintenance
 
@@ -58,7 +61,7 @@ When adding a target-owned rule:
 
 When adding a shared agent prompt:
 
-1. Author the source in `agents/<name>.md`.
+1. Author the source in `setup-assets/agents/<name>.md`.
 2. Add thin Cursor, Codex, and Copilot wrappers for platforms that expose it.
 3. Keep repository-wide Copilot guidance in `.github/instructions/*.instructions.md` and reference
    it from subagent prompts when needed.

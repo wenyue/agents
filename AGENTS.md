@@ -20,7 +20,7 @@ Then read the project-local rules that apply:
 | Read when | Rule | Strength |
 | --- | --- | --- |
 | Project tooling, MCP, runtime, or verification | `.agents/rules/20-project-tools.md` | `Mandatory` |
-| Plugin assets, documentation, generated files, or ownership boundaries | `.agents/rules/21-project-rules.md` | `Default` |
+| Plugin assets, documentation, generated files, ownership, or contract evolution | `.agents/rules/21-project-rules.md` | `Mandatory` |
 | Making structure, module, or dependency-boundary decisions | `.agents/rules/22-project-structure.md` | `Advisory` |
 
 The meaning of `Mandatory`, `Default`, and `Advisory` is defined in

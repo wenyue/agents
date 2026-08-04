@@ -10,5 +10,5 @@
   "repository": "https://github.com/wenyue/agents",
   "keywords": ["coding-agents", "project-setup", "skills"],
   "skills": "./skills/",
-  "agents": "./agents/"
+  "hooks": "./hooks/copilot.json"
 }

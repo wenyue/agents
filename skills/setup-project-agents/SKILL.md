@@ -1,6 +1,6 @@
 ---
 name: setup-project-agents
-description: Use when initializing or updating a repository with the Agents Rules, Skills, Agents, and explicitly enabled Hooks snapshot.
+description: Use when initializing or updating a repository with the Agents Rules, Skills, and Agents snapshot.
 ---
 
 # Setup Project Agents
@@ -13,13 +13,11 @@ installs itself into the target, edits host trust or plugin caches, or upgrades 
 
 - Start at the target repository root and identify the loaded Skill directory as
   `SETUP_PROJECT_AGENTS_ROOT`.
-- Ask once which platforms to enable and whether to enable Hooks. When
-  `.agents/config.json` is absent, default to Codex, Cursor, and Copilot with Hooks disabled.
-  When it exists, use its selected platforms, asset selections, and Hook choice unless the user
-  changes them.
-- Keep the selected platforms and Hook decision unchanged for this one session. Hooks require an
-  explicit enabled choice; multi-agent capability is checked from effective host state and is not
-  written as a replacement default.
+- Ask once which platforms to enable. When `.agents/config.json` is absent, default to Codex,
+  Cursor, and Copilot. When it exists, use its selected platforms and asset selections unless the
+  user changes them.
+- Keep the selected platforms unchanged for this one session. Plugin-bundled Hooks, host
+  capabilities, and external-tool maintenance are outside the project transaction.
 
 ## Workflow
 
@@ -32,7 +30,7 @@ installs itself into the target, edits host trust or plugin caches, or upgrades 
    ```
 
 2. Invoke the platform wrapper in `SETUP_PROJECT_AGENTS_ROOT/scripts/` with `prepare`, `--target`,
-   `--session`, each selected `--platform`, and `--hooks enabled|disabled`. The wrapper only starts
+   `--session`, and each selected `--platform`. The wrapper only starts
    `bootstrap.py`. Bootstrap fetches canonical `main`, pins one commit under `SESSION/source`, and
    hands control to that pinned source. If the remote is unavailable it reports the installed-source
    fallback; if fetched content is invalid, stop before any target write. For example on POSIX:
@@ -40,13 +38,13 @@ installs itself into the target, edits host trust or plugin caches, or upgrades 
    ```sh
    sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" prepare \
      --target "$PWD" --session "$SESSION" \
-     --platform codex --platform cursor --platform copilot --hooks disabled
+     --platform codex --platform cursor --platform copilot
    ```
 
    On Windows, invoke `setup_project_agents.ps1` with the same arguments.
 
 3. Read `SESSION/request.json`. It is the authority for this session's normalized target, source
-   root and commit, platform and Hook choices, selected assets, model requests, and five generated
+   root and commit, platform choices, selected assets, model requests, and five generated
    outputs. Write one JSON-object `SESSION/models.json` that satisfies every listed agent/platform
    request at its requested `model_key`: Codex and Cursor use `codex` and `cursor`, while Copilot
    uses `github`. Each platform object needs a non-empty `model`; Codex optional
@@ -66,9 +64,13 @@ installs itself into the target, edits host trust or plugin caches, or upgrades 
    }
    ```
 
-4. Generate every request output in `SESSION/generated`, not in the target project. Use `write-rule`
-   for the three requested Rule Blueprints and `write-skill` for the two requested Skill Blueprints.
-   Produce exactly these paths and no extra files:
+4. Resolve the `source_root` recorded in `request.json` as `SOURCE_ROOT`, then read the complete
+   authoring contracts from
+   `SOURCE_ROOT/setup-assets/skills/write-rule/SKILL.md` and
+   `SOURCE_ROOT/setup-assets/skills/write-skill/SKILL.md`. Apply the first contract to the three
+   requested Rule Blueprints and the second contract to the two requested Skill Blueprints. Generate
+   every request output in `SESSION/generated`, not in the target project, and produce exactly these
+   paths with no extra files:
 
    - `.agents/rules/20-project-tools.md`
    - `.agents/rules/21-project-rules.md`
@@ -91,17 +93,11 @@ installs itself into the target, edits host trust or plugin caches, or upgrades 
 
 6. Run the same pinned entry point with `check` and the identical arguments, replacing only `apply`
    with `check`. Apply and check each write exactly one JSON result to stdout with the phase, pinned
-   source commit, sorted changed paths, per-platform capability state, candidate refresh commands,
-   `needs_restart`, and `drift`. A zero check status has `drift: null`; status one reports a stable
-   drift kind, message, and safely parsed path (and field when applicable) without writing. Read this
-   result before reporting the pinned source commit and managed paths.
+   source commit, sorted changed paths, and `drift`. A zero check status has `drift: null`; status
+   one reports a stable drift kind, message, and safely parsed path (and field when applicable)
+   without writing. Read this result before reporting the pinned source commit and managed paths.
 
-7. Present candidate refresh commands or an official UI action from the JSON result. Do not execute
-   a candidate command during setup; execute it only after the user separately approves it. Report a
-   host `needs_restart` or Cursor Hook-trust requirement separately; neither is part of the
-   project-file transaction.
-
-8. Delete `SESSION` only after apply and check have completed or after reporting a failure.
+7. Delete `SESSION` only after apply and check have completed or after reporting a failure.
 
 ## Stop Conditions
 
@@ -110,15 +106,13 @@ invocation, `models.json` is not `SESSION/models.json`, generated outputs are in
 an extra path, the pinned source is invalid, or the ownership planner finds unmanaged drift.
 
 Do not use an archive fallback, a project-local setup copy, a host trust database, or a plugin cache
-as an alternative path. Use `manage-agent-tools` only for a separately approved external-tool
-diagnosis or upgrade.
+as an alternative path. Plugin Hooks own host capability and external-tool maintenance follow-up.
 
 ## Validation and Result
 
-- [ ] Confirm `check` used the same `SESSION`, source root, source commit, models file, renderer, and planner as `apply`; confirm exit status is zero.
+- [ ] Confirm generation, `apply`, and `check` used the same `SESSION`, source root, source commit, models file, renderer, and planner; confirm check exit status is zero.
 - [ ] Confirm `.agents/lock.json` records the pinned source commit and only lock-owned paths or fields changed.
-- [ ] Confirm setup-project-agents is absent from the target snapshot; confirm Hooks are present only when explicitly enabled.
+- [ ] Confirm setup-project-agents and host Hook definitions are absent from the target snapshot.
 
-Report the pinned source commit, selected platforms, Hook choice, changed managed paths, capability
-or trust follow-up, and any unresolved failure. Do not report successful setup when validation was
-not run.
+Report the pinned source commit, selected platforms, changed managed paths, and any unresolved
+failure. Do not report successful setup when validation was not run.

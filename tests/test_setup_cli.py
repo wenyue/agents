@@ -95,9 +95,22 @@ class SetupCliTest(unittest.TestCase):
         return setup_project_agents.main(
             [
                 'prepare', '--target', str(target), '--session', str(session),
-                '--platform', 'cursor', '--hooks', 'enabled', *extra, *self.source_args(),
+                '--platform', 'cursor', *extra, *self.source_args(),
             ]
         )
+
+    def test_prepare_rejects_removed_hooks_option(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            session = self.private_session(root)
+
+            with redirect_stderr(StringIO()):
+                result = self.prepare(target, session, '--hooks', 'enabled')
+
+            self.assertEqual(result, 2)
+            self.assertEqual(self.snapshot_tree(target), {})
 
     def test_prepare_records_pinned_choices_and_five_generation_requests_without_target_writes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -114,7 +127,7 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(request['source_root'], str(REPO_ROOT.absolute()))
             self.assertEqual(request['source_commit'], self.source_commit)
             self.assertEqual(request['platforms'], ['cursor'])
-            self.assertTrue(request['hooks_enabled'])
+            self.assertNotIn('hooks_enabled', request)
             self.assertEqual(
                 request['model_requests'],
                 [
@@ -304,7 +317,7 @@ class SetupCliTest(unittest.TestCase):
     def test_apply_rejects_tampered_selections_or_model_requests_without_writing(self):
         tamper = (
             ('selected_rules', ['unknown-rule']),
-            ('selected_skills', ['manage-agent-tools', 'manage-agent-tools']),
+            ('selected_skills', ['refactor-code', 'refactor-code']),
             ('selected_agents', ['unknown-agent']),
             ('model_requests', []),
         )
@@ -353,7 +366,7 @@ class SetupCliTest(unittest.TestCase):
                 )
                 self.assertEqual(self.snapshot_tree(target), {})
 
-    def test_apply_and_check_emit_one_structured_result_without_running_refresh(self):
+    def test_apply_and_check_emit_one_project_scoped_structured_result(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -378,9 +391,10 @@ class SetupCliTest(unittest.TestCase):
             self.assertIsNone(apply_result['drift'])
             self.assertEqual(apply_result['changed_paths'], sorted(apply_result['changed_paths']))
             self.assertIn('.agents/rules/00-global-rule-config.md', apply_result['changed_paths'])
-            self.assertIn('cursor', apply_result['capabilities'])
-            self.assertEqual(apply_result['refresh_actions'][0]['platform'], 'cursor')
-            self.assertEqual(apply_result['refresh_actions'][0]['command'], ['cursor', '--version'])
+            self.assertEqual(
+                set(apply_result),
+                {'version', 'phase', 'source_commit', 'changed_paths', 'drift'},
+            )
 
             check_output = StringIO()
             with redirect_stdout(check_output):
@@ -399,7 +413,7 @@ class SetupCliTest(unittest.TestCase):
             prepare_args = [
                 'prepare', '--target', str(target), '--session', str(session),
                 '--platform', 'codex', '--platform', 'cursor', '--platform', 'copilot',
-                '--hooks', 'disabled', *self.source_args(),
+                *self.source_args(),
             ]
             self.assertEqual(setup_project_agents.main(prepare_args), 0)
             request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
@@ -518,13 +532,12 @@ class SetupEndToEndTest(unittest.TestCase):
         )
         return path
 
-    def bootstrap_prepare(self, origin: Path, target: Path, session: Path, *, hooks: str = 'enabled') -> None:
+    def bootstrap_prepare(self, origin: Path, target: Path, session: Path) -> None:
         with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
             self.assertEqual(
                 bootstrap.main([
                     'prepare', '--target', str(target), '--session', str(session),
                     '--platform', 'codex', '--platform', 'cursor', '--platform', 'copilot',
-                    '--hooks', hooks,
                 ]),
                 0,
             )
@@ -572,44 +585,23 @@ class SetupEndToEndTest(unittest.TestCase):
             self.assertEqual(first_result, 0)
             first_lock = json.loads((target / '.agents/lock.json').read_text(encoding='utf-8'))
             self.assertEqual(first_lock['source_commit'], run_git(work, 'rev-parse', 'main'))
-            self.assertTrue((target / '.codex/hooks.json').is_file())
-            self.assertTrue((target / '.cursor/hooks.json').is_file())
-            self.assertTrue((target / '.github/hooks/project-agent-tool-check.json').is_file())
-            self.assertTrue(tomllib.loads((target / '.codex/config.toml').read_text())['features']['hooks'])
-            self.assertFalse(json.loads((target / '.github/copilot/settings.json').read_text())['disableAllHooks'])
+            self.assertFalse((target / '.codex/hooks.json').exists())
+            self.assertFalse((target / '.cursor/hooks.json').exists())
+            self.assertFalse((target / '.github/hooks/project-agent-tool-check.json').exists())
+            self.assertNotIn(
+                'hooks', tomllib.loads((target / '.codex/config.toml').read_text()).get('features', {})
+            )
+            self.assertNotIn(
+                'disableAllHooks',
+                json.loads((target / '.github/copilot/settings.json').read_text()),
+            )
             self.assertFalse((target / '.agents/skills/setup-project-agents').exists())
             (target / 'unmanaged.txt').write_text('keep\n', encoding='utf-8')
             before_upgrade = self.snapshot_tree(target)
 
-            hooks_off_target = root / 'hooks-off-target'
-            hooks_off_target.mkdir()
-            hooks_off_session = self.private_session(root, 'hooks-off-session')
-            self.bootstrap_prepare(origin, hooks_off_target, hooks_off_session, hooks='disabled')
-            self.write_generated_outputs(hooks_off_session)
-            self.assertEqual(self.apply_pinned(hooks_off_target, hooks_off_session)[0], 0)
-            for relative in (
-                '.codex/hooks.json',
-                '.cursor/hooks.json',
-                '.github/hooks/project-agent-tool-check.json',
-            ):
-                self.assertFalse((hooks_off_target / relative).exists())
-            codex_config = tomllib.loads((hooks_off_target / '.codex/config.toml').read_text())
-            self.assertNotIn('features', codex_config)
-            copilot_settings = json.loads((hooks_off_target / '.github/copilot/settings.json').read_text())
-            self.assertNotIn('disableAllHooks', copilot_settings)
-            for relative in (
-                '.codex/config.toml', '.cursor/cli.json', '.github/copilot/settings.json',
-                '.codex/agents/change-set-verifier.toml',
-                '.cursor/agents/change-set-verifier.md',
-                '.github/agents/change-set-verifier.agent.md',
-                '.cursor/rules/00-global-rule-config.mdc',
-                '.github/instructions/00-global-rule-config.instructions.md',
-            ):
-                self.assertTrue((hooks_off_target / relative).is_file())
-
-            rule = work / 'rules/00-global-rule-config.md'
+            rule = work / 'setup-assets/rules/00-global-rule-config.md'
             rule.write_text(rule.read_text(encoding='utf-8') + '\nRemote main update.\n', encoding='utf-8')
-            run_git(work, 'add', 'rules/00-global-rule-config.md')
+            run_git(work, 'add', 'setup-assets/rules/00-global-rule-config.md')
             run_git(work, 'commit', '--quiet', '-m', 'update managed rule')
             run_git(work, 'push', '--quiet', 'origin', 'main')
 
@@ -648,11 +640,11 @@ class SetupEndToEndTest(unittest.TestCase):
             target = root / 'target'
             target.mkdir()
 
-            invalid_catalog = work / 'catalog/project-assets.json'
+            invalid_catalog = work / 'setup-assets/catalog/assets.json'
             document = json.loads(invalid_catalog.read_text(encoding='utf-8'))
             document['plugin']['ref'] = 'not-main'
             invalid_catalog.write_text(json.dumps(document), encoding='utf-8')
-            run_git(work, 'add', 'catalog/project-assets.json')
+            run_git(work, 'add', 'setup-assets/catalog/assets.json')
             run_git(work, 'commit', '--quiet', '-m', 'invalid fetched source')
             run_git(work, 'push', '--quiet', 'origin', 'main')
             before_invalid = self.snapshot_tree(target)
@@ -672,7 +664,6 @@ class SetupEndToEndTest(unittest.TestCase):
                 self.assertEqual(
                     bootstrap.main([
                         'prepare', '--target', str(offline_target), '--session', str(offline_session),
-                        '--hooks', 'disabled',
                     ]),
                     0,
                 )
@@ -683,7 +674,7 @@ class SetupEndToEndTest(unittest.TestCase):
             baseline_session = self.private_session(root, 'baseline-session')
             self.assertEqual(setup_project_agents.main([
                 'prepare', '--target', str(target), '--session', str(baseline_session),
-                '--platform', 'cursor', '--hooks', 'disabled', '--source-root', str(source),
+                '--platform', 'cursor', '--source-root', str(source),
                 '--source-commit', 'a' * 40, '--no-bootstrap',
             ]), 0)
             self.write_generated_outputs(baseline_session)
@@ -698,19 +689,19 @@ class SetupEndToEndTest(unittest.TestCase):
             collision_session = self.private_session(root, 'collision-session')
             self.assertEqual(setup_project_agents.main([
                 'prepare', '--target', str(collision_target), '--session', str(collision_session),
-                '--platform', 'cursor', '--hooks', 'disabled', '--source-root', str(source),
+                '--platform', 'cursor', '--source-root', str(source),
                 '--source-commit', 'a' * 40, '--no-bootstrap',
             ]), 0)
             self.write_generated_outputs(collision_session)
             self.assertEqual(self.apply_pinned(collision_target, collision_session)[0], 2)
             self.assertEqual(self.snapshot_tree(collision_target), collision_before)
 
-            source_rule = source / 'rules/00-global-rule-config.md'
+            source_rule = source / 'setup-assets/rules/00-global-rule-config.md'
             source_rule.write_text(source_rule.read_text(encoding='utf-8') + '\nchanged once\n', encoding='utf-8')
             rollback_session = self.private_session(root, 'rollback-session')
             self.assertEqual(setup_project_agents.main([
                 'prepare', '--target', str(target), '--session', str(rollback_session),
-                '--platform', 'cursor', '--hooks', 'disabled', '--source-root', str(source),
+                '--platform', 'cursor', '--source-root', str(source),
                 '--source-commit', 'b' * 40, '--no-bootstrap',
             ]), 0)
             self.write_generated_outputs(rollback_session)

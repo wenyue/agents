@@ -16,8 +16,15 @@ from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CHECKER_PATH = REPO_ROOT / 'skills' / 'manage-agent-tools' / 'scripts' / 'check_recommended_tools.py'
-POLICY_ROOT = REPO_ROOT / 'config' / 'recommended-tools'
+CHECKER_PATH = (
+    REPO_ROOT / 'runtime' / 'recommended-tools'
+    / 'check_recommended_tools.py'
+)
+MAINTAINER_PATH = (
+    REPO_ROOT / 'runtime' / 'recommended-tools'
+    / 'maintain_recommended_tools.py'
+)
+POLICY_ROOT = REPO_ROOT / 'policies' / 'recommended-tools'
 RECOMMENDED_TOOL_POLICIES = POLICY_ROOT
 
 
@@ -33,6 +40,16 @@ def load_checker():
 
 def load_recommended_tool_checker_module():
     return load_checker()
+
+
+def load_maintainer():
+    spec = importlib.util.spec_from_file_location('task8_maintain_recommended_tools', MAINTAINER_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f'Unable to load maintainer: {MAINTAINER_PATH}')
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 class RecommendedToolPolicyTest(unittest.TestCase):
@@ -57,27 +74,11 @@ class RecommendedToolPolicyTest(unittest.TestCase):
                     ['multi_agent'] if platform == 'codex' else [],
                 )
 
-    def test_default_policy_path_falls_back_to_plugin_root_policy(self):
+    def test_default_policy_path_resolves_plugin_root_policy(self):
         self.assertEqual(
             self.checker.default_policy_path('codex'),
             POLICY_ROOT / 'codex.json',
         )
-
-    def test_project_snapshot_policy_takes_precedence_over_plugin_policy(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            skill_root = Path(temp_dir) / 'skills' / 'manage-agent-tools'
-            project_policy = skill_root / 'references' / 'recommended-tools' / 'codex.json'
-            project_policy.parent.mkdir(parents=True)
-            project_policy.write_text('{"platform": "codex", "tools": []}\n', encoding='utf-8')
-            checker_path = skill_root / 'scripts' / 'check_recommended_tools.py'
-            checker_path.parent.mkdir()
-            checker_path.write_text(CHECKER_PATH.read_text(encoding='utf-8'), encoding='utf-8')
-            spec = importlib.util.spec_from_file_location('task8_project_checker', checker_path)
-            assert spec is not None and spec.loader is not None
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[spec.name] = module
-            spec.loader.exec_module(module)
-            self.assertEqual(module.default_policy_path('codex'), project_policy)
 
     def test_hook_mode_does_not_call_maintenance_runner(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -204,6 +205,28 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         self.assertNotIn('.codex/superpowers', serialized)
         self.assertNotIn('.cache/copilot/marketplaces', serialized)
         self.assertNotIn('.copilot/installed-plugins', serialized)
+
+    def test_policy_guidance_describes_actions_without_exposing_commands(self):
+        forbidden = (
+            'npm install',
+            'codex plugin add',
+            'copilot plugin install',
+            'copilot plugin update',
+            'copilot update',
+            'agent update',
+            'codegraph upgrade',
+        )
+        for policy_path in sorted(POLICY_ROOT.glob('*.json')):
+            policy = json.loads(policy_path.read_text(encoding='utf-8'))
+            for tool in policy['tools']:
+                guidance = f'{tool["install"]}\n{tool["upgrade"]}'.lower()
+                for command in forbidden:
+                    with self.subTest(
+                        platform=policy['platform'],
+                        tool=tool['id'],
+                        command=command,
+                    ):
+                        self.assertNotIn(command, guidance)
 
     def test_command_manifest_and_json_item_detectors_are_data_driven(self):
         checker = self.checker
@@ -620,7 +643,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             '',
         )
 
-    def test_hook_prompt_requires_exact_command_approval_before_tool_mutation(self):
+    def test_hook_prompt_requests_tool_action_consent_without_showing_commands(self):
         checker = self.checker
         result = checker.HookResult(
             True,
@@ -638,12 +661,14 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             checker.render_hook_result(result, 'codex')
         )['systemMessage']
 
-        self.assertIn('use the installed manage-agent-tools Skill', message)
         self.assertIn(
-            'Do not mutate tools or configuration until the exact commands and affected tools '
-            'have been shown and the user has approved those exact commands.',
+            'Tell the user which tools need installation or upgrade and ask whether they consent',
             message,
         )
+        self.assertIn('Do not show the underlying maintenance commands', message)
+        self.assertIn('maintain_recommended_tools.py', message)
+        self.assertIn('plugin Hook support, not an exposed Skill', message)
+        self.assertNotIn('approve those exact commands', message)
         self.assertNotIn('If that message requests the fixes, perform them', message)
 
     def test_live_lock_suppresses_duplicate_and_stale_lock_is_reclaimed(self):
@@ -699,6 +724,83 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             self.assertTrue(uncached.ran)
             self.assertFalse(uncached.internal_error)
             self.assertEqual(len(calls), 2)
+
+
+class RecommendedToolMaintainerTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.maintainer = load_maintainer()
+
+    def test_every_recommended_tool_has_install_and_upgrade_handling(self):
+        for policy_path in sorted(POLICY_ROOT.glob('*.json')):
+            policy = json.loads(policy_path.read_text(encoding='utf-8'))
+            platform = policy['platform']
+            for tool in policy['tools']:
+                for action in ('install', 'upgrade'):
+                    with self.subTest(platform=platform, tool=tool['id'], action=action):
+                        recipe = self.maintainer.resolve_recipe(platform, tool['id'], action)
+                        self.assertTrue(recipe.command or recipe.manual_guidance)
+                        self.assertFalse(recipe.command and recipe.manual_guidance)
+
+    def test_shared_maintenance_workflow_has_paired_entry_points(self):
+        scripts = MAINTAINER_PATH.parent
+        self.assertTrue((scripts / 'maintain_recommended_tools.sh').is_file())
+        self.assertTrue((scripts / 'maintain_recommended_tools.ps1').is_file())
+
+    def test_maintenance_requires_consent_before_execution(self):
+        executor = mock.Mock()
+
+        with self.assertRaises(self.maintainer.ApprovalRequired):
+            self.maintainer.apply_maintenance(
+                'codex',
+                'superpowers',
+                'install',
+                approved=False,
+                executor=executor,
+            )
+
+        executor.assert_not_called()
+
+    def test_approved_maintenance_executes_allowlisted_recipe_and_hides_command(self):
+        executor = mock.Mock(return_value=mock.Mock(returncode=0))
+        with mock.patch.object(
+            self.maintainer,
+            'required_action',
+            side_effect=('install', None),
+        ):
+            result = self.maintainer.apply_maintenance(
+                'codex',
+                'superpowers',
+                'install',
+                approved=True,
+                executor=executor,
+            )
+
+        self.assertEqual(result.status, 'completed')
+        executor.assert_called_once_with(
+            ['codex', 'plugin', 'add', 'superpowers@openai-curated'],
+            check=False,
+        )
+        rendered = self.maintainer.render_result(result)
+        self.assertIn('Superpowers', rendered)
+        self.assertIn('installation completed', rendered)
+        self.assertNotIn('codex plugin add', rendered)
+        self.assertNotIn('superpowers@openai-curated', rendered)
+
+    def test_manual_recipe_returns_manual_action_without_execution(self):
+        executor = mock.Mock()
+        with mock.patch.object(self.maintainer, 'required_action', return_value='install'):
+            result = self.maintainer.apply_maintenance(
+                'cursor',
+                'superpowers',
+                'install',
+                approved=True,
+                executor=executor,
+            )
+
+        self.assertEqual(result.status, 'manual-action-required')
+        self.assertIn('Cursor Marketplace', result.detail)
+        executor.assert_not_called()
 
 
 if __name__ == '__main__':

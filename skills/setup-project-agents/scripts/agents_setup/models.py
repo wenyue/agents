@@ -32,7 +32,6 @@ class AssetSpec:
 class ProjectConfig:
     version: int
     platforms: tuple[Platform, ...]
-    hooks_enabled: bool
     selected_rules: tuple[str, ...]
     selected_skills: tuple[str, ...]
     selected_agents: tuple[str, ...]

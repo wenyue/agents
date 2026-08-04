@@ -5,16 +5,12 @@ import json
 import os
 import re
 import stat
-import subprocess
 import sys
 import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from agents_setup.catalog import ContractError, load_catalog, safe_field_key, safe_relative
-from agents_setup.host_adapters import CodexAdapter, CopilotAdapter, CursorAdapter
-from agents_setup.host_adapters.base import CapabilityResult, CapabilityStatus
 from agents_setup.models import Catalog, Platform, ProjectConfig
 from agents_setup.planner import PlanningError, build_plan
 from agents_setup.project import ProjectError, inspect_project
@@ -47,30 +43,6 @@ class SetupError(ValueError):
 
 class CheckDrift(PlanningError):
     """Raised after check has emitted its machine-readable drift result."""
-
-
-@dataclass(frozen=True)
-class _OutputState:
-    capabilities: Mapping[str, Mapping[str, Mapping[str, str]]]
-    refresh_actions: tuple[Mapping[str, object], ...]
-    needs_restart: bool
-
-
-class _HostRunner:
-    """Run only host-adapter fixed argv commands without letting failures abort setup."""
-
-    def run(self, argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
-        try:
-            return subprocess.run(
-                tuple(argv),
-                check=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                timeout=5,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return subprocess.CompletedProcess(tuple(argv), 1, '', '')
 
 
 def normalize_source_commit(source_commit: str) -> str | None:
@@ -171,7 +143,6 @@ def _request(
         'source_root': str(source_root),
         'source_commit': source_commit,
         'platforms': [item.value for item in config.platforms],
-        'hooks_enabled': config.hooks_enabled,
         'selected_rules': list(config.selected_rules),
         'selected_skills': list(config.selected_skills),
         'selected_agents': list(config.selected_agents),
@@ -222,7 +193,7 @@ def _request_config(
     catalog: Catalog,
 ) -> ProjectConfig:
     required = {
-        'version', 'target', 'source_root', 'source_commit', 'platforms', 'hooks_enabled', 'selected_rules',
+        'version', 'target', 'source_root', 'source_commit', 'platforms', 'selected_rules',
         'selected_skills', 'selected_agents', 'model_requests', 'generation_requests',
     }
     if set(request) != required or request.get('version') != 1:
@@ -236,9 +207,6 @@ def _request_config(
     try:
         platforms = tuple(Platform(item) for item in request['platforms'])
         if not platforms or len(set(platforms)) != len(platforms):
-            raise ValueError
-        hooks_enabled = request['hooks_enabled']
-        if type(hooks_enabled) is not bool:
             raise ValueError
         selections = (
             _selected_request_ids(request['selected_rules'], catalog=catalog, kind='rule'),
@@ -268,7 +236,7 @@ def _request_config(
             )
         ):
             raise ValueError
-        config = ProjectConfig(1, platforms, hooks_enabled, *selections)
+        config = ProjectConfig(1, platforms, *selections)
         if request['model_requests'] != _model_requests(config):
             raise ValueError
     except (KeyError, TypeError, ValueError, SetupError) as error:
@@ -311,14 +279,6 @@ def _generated_root(session: Path) -> Path:
     return root
 
 
-def _adapters() -> dict[Platform, object]:
-    return {
-        Platform.CODEX: CodexAdapter(),
-        Platform.CURSOR: CursorAdapter(),
-        Platform.COPILOT: CopilotAdapter(),
-    }
-
-
 def _models_for_rendering(
     models: Mapping[str, object],
     config: ProjectConfig,
@@ -347,33 +307,7 @@ def _models_for_rendering(
             'readonly' in platform and type(platform['readonly']) is not bool
         ):
             raise SetupError(f'models readonly must be a boolean: {agent_name}:{model_key}')
-    return {key: value for key, value in models.items() if key != 'runner'}
-
-
-def _result_value(result: CapabilityResult) -> dict[str, str]:
-    return {'status': result.status.value, 'detail': result.detail}
-
-
-def _output_state(
-    config: ProjectConfig,
-    adapters: Mapping[Platform, object],
-) -> _OutputState:
-    runner = _HostRunner()
-    capabilities: dict[str, dict[str, dict[str, str]]] = {}
-    actions: list[Mapping[str, object]] = []
-    needs_restart = False
-    for platform in config.platforms:
-        adapter = adapters[platform]
-        result = adapter.check_multi_agent(runner)
-        values = {'multi_agent': _result_value(result)}
-        needs_restart = needs_restart or result.status is CapabilityStatus.NEEDS_RESTART
-        if platform is Platform.CURSOR and config.hooks_enabled:
-            trust = adapter.hook_trust_status()
-            values['hook_trust'] = _result_value(trust)
-            needs_restart = needs_restart or trust.status is CapabilityStatus.NEEDS_RESTART
-        capabilities[platform.value] = values
-        actions.append({'platform': platform.value, 'command': list(adapter.plugin_refresh_command())})
-    return _OutputState(capabilities, tuple(actions), needs_restart)
+    return dict(models)
 
 
 def _emit_result(
@@ -381,7 +315,6 @@ def _emit_result(
     phase: str,
     source_commit: str | None,
     changed_paths: Sequence[str],
-    output: _OutputState,
     drift: Mapping[str, object] | None = None,
 ) -> None:
     print(json.dumps({
@@ -390,9 +323,6 @@ def _emit_result(
         'source_commit': source_commit,
         'changed_paths': sorted(changed_paths),
         'drift': drift,
-        'capabilities': output.capabilities,
-        'refresh_actions': output.refresh_actions,
-        'needs_restart': output.needs_restart,
     }, sort_keys=True))
 
 
@@ -446,7 +376,6 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument(
                 '--platform', choices=tuple(item.value for item in Platform), action='append'
             )
-            command.add_argument('--hooks', choices=('enabled', 'disabled'), required=True)
         else:
             command.add_argument('--models', type=Path, required=True)
         command.add_argument('--source-root', type=Path, required=True)
@@ -468,7 +397,6 @@ def _prepare(args: argparse.Namespace, session: Path, source_commit: str | None)
     config = ProjectConfig(
         1,
         platforms,
-        args.hooks == 'enabled',
         project.config.selected_rules,
         project.config.selected_skills,
         project.config.selected_agents,
@@ -509,8 +437,6 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
     if models_path != session / 'models.json':
         raise SetupError('models path must be SESSION/models.json')
     models = _models_for_rendering(_read_json(models_path, 'models'), config)
-    adapters = _adapters()
-    output = _output_state(config, adapters)
     rendered = render_desired_state(
         args.source_root,
         project.root,
@@ -518,7 +444,6 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
         config,
         generated,
         models,
-        adapters,
     )
     validate_rendered_state(rendered)
     try:
@@ -536,12 +461,11 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
                 phase=args.phase,
                 source_commit=source_commit,
                 changed_paths=(drift['path'],) if 'path' in drift else (),
-                output=output,
                 drift=drift,
             )
             raise CheckDrift() from error
         raise
-    return plan, project.root, output
+    return plan, project.root
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -558,7 +482,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             _prepare(args, session, source_commit)
             return 0
         try:
-            plan, target, output = _plan(args, session, source_commit)
+            plan, target = _plan(args, session, source_commit)
         except CheckDrift:
             return 1
         if args.phase == 'check':
@@ -571,7 +495,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 phase=args.phase,
                 source_commit=source_commit,
                 changed_paths=changed_paths,
-                output=output,
                 drift=(
                     {
                         'kind': 'desired_state_diff',
@@ -591,7 +514,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 for change in plan.changes
                 if change.kind.value != 'unchanged'
             ],
-            output=output,
             drift=None,
         )
         return 0

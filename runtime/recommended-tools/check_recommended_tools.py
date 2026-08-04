@@ -392,24 +392,24 @@ def load_policy(path: Path, platform: str | None = None) -> dict[str, Any]:
 
 
 def default_policy_path(platform: str) -> Path:
-    skill_root = Path(__file__).resolve().parents[1]
-    project_copy = skill_root / 'references' / 'recommended-tools' / f'{platform}.json'
-    if project_copy.is_file():
-        return project_copy
-    plugin_root = skill_root.parents[1]
-    return plugin_root / 'config' / 'recommended-tools' / f'{platform}.json'
+    runtime_root = Path(__file__).resolve().parents[1]
+    for ancestor in runtime_root.parents:
+        plugin_policy = ancestor / 'policies' / 'recommended-tools' / f'{platform}.json'
+        if plugin_policy.is_file():
+            return plugin_policy
+    raise PolicyError('recommended-tool policy is unavailable')
 
 
 def default_cache_root() -> Path:
     local_app_data = os.environ.get('LOCALAPPDATA')
     if os.name == 'nt' and local_app_data:
-        return Path(local_app_data) / 'setup-project-agents'
+        return Path(local_app_data) / 'smartkit'
     xdg_cache = os.environ.get('XDG_CACHE_HOME')
     if xdg_cache:
-        return Path(xdg_cache) / 'setup-project-agents'
+        return Path(xdg_cache) / 'smartkit'
     if sys.platform == 'darwin':
-        return Path.home() / 'Library' / 'Caches' / 'setup-project-agents'
-    return Path.home() / '.cache' / 'setup-project-agents'
+        return Path.home() / 'Library' / 'Caches' / 'smartkit'
+    return Path.home() / '.cache' / 'smartkit'
 
 
 def _fingerprint(policy_path: Path, checker_path: Path) -> str:
@@ -567,26 +567,31 @@ def run_hook(
 
 def render_findings(findings: list[Finding] | tuple[Finding, ...]) -> str:
     return '\n'.join(
-        f'[setup-project-agents] {finding.tool}: {finding.message}. {finding.guidance}'
+        f'[smartkit] {finding.tool}: {finding.message}. {finding.guidance}'
         for finding in findings
     )
 
 
 def render_hook_result(result: HookResult, platform: str) -> str:
     if result.internal_error:
-        message = '[setup-project-agents] Recommended-tool check could not complete; continuing.'
+        message = '[smartkit] Recommended-tool check could not complete; continuing.'
     else:
         findings = render_findings(result.findings)
         if result.requires_user_prompt:
+            maintenance_runner = Path(__file__).resolve().with_name(
+                'maintain_recommended_tools.py'
+            )
             message = (
                 f'{findings}\n'
-                '[setup-project-agents] Stop the current task now and use the installed '
-                'manage-agent-tools Skill to handle these findings. Follow its workflow to '
-                'inspect installation provenance, determine the exact commands, show those '
-                'commands and affected tools, and ask the user to approve those exact commands. '
-                'Do not mutate tools or configuration until the exact commands and affected '
-                'tools have been shown and the user has approved those exact commands. End this '
-                'turn after requesting approval and wait for the next user message.'
+                '[smartkit] Stop the current task now. Tell the user which tools need '
+                'installation or upgrade and ask whether they consent to those tool actions. Do '
+                'not show the underlying maintenance commands. Do not mutate tools or '
+                'configuration before the user consents. End this turn after requesting consent '
+                'and wait for the next user message. After a subsequent user message grants '
+                'consent, invoke the bundled internal maintenance runner at '
+                f'{maintenance_runner} with apply, --platform {platform}, --tool TOOL_ID, '
+                '--action install|upgrade, and --approved for only the named tool actions. This '
+                'runner is plugin Hook support, not an exposed Skill.'
             )
         else:
             message = findings
@@ -623,7 +628,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         findings = check_policy(load_policy(policy_path, args.platform))
     except Exception:
-        print('[setup-project-agents] Recommended-tool check could not complete.', file=sys.stderr)
+        print('[smartkit] Recommended-tool check could not complete.', file=sys.stderr)
         return 2
     output = render_findings(findings)
     if output:

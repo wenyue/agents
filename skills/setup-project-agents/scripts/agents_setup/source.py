@@ -31,11 +31,8 @@ _ENTRYPOINT = PurePosixPath(
 )
 _MANIFESTS = (
     (PurePosixPath('.codex-plugin/plugin.json'), {'skills': './skills/'}),
-    (
-        PurePosixPath('.cursor-plugin/plugin.json'),
-        {'skills': './skills/', 'rules': './rules/', 'agents': './agents/'},
-    ),
-    (PurePosixPath('plugin.json'), {'skills': './skills/', 'agents': './agents/'}),
+    (PurePosixPath('.cursor-plugin/plugin.json'), {'skills': './skills/'}),
+    (PurePosixPath('plugin.json'), {'skills': './skills/'}),
 )
 _ROOT_FIELDS = frozenset({'skills', 'rules', 'agents'})
 _INCOMPLETE_MARKER = '.agents-setup-incomplete-v1'

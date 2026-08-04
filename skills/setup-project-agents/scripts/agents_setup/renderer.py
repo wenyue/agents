@@ -5,9 +5,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .catalog import load_lock, safe_field_key
-from .host_adapters.base import CapabilityResult, HostAdapter
-from .models import Catalog, DesiredField, DesiredFile, Platform, ProjectConfig
+from .catalog import safe_field_key
+from .models import Catalog, DesiredField, DesiredFile, ProjectConfig
 from .project import ProjectError, confined_target
 from .structured import (
     StructuredConfigError,
@@ -25,7 +24,6 @@ class RenderError(ValueError):
 class RenderedState:
     files: tuple[DesiredFile, ...]
     fields: tuple[DesiredField, ...]
-    capabilities: Mapping[Platform, CapabilityResult]
 
     @property
     def files_by_path(self) -> Mapping[str, bytes]:
@@ -43,33 +41,6 @@ def _deep_merge(current: object, overlay: object) -> object:
             merged[key] = _deep_merge(merged[key], value) if key in merged else value
         return merged
     return overlay
-
-
-def _set_dotted(document: dict[str, object], key: str, value: object) -> None:
-    current = document
-    parts = key.split('.')
-    for part in parts[:-1]:
-        child = current.get(part)
-        if not isinstance(child, dict):
-            child = {}
-            current[part] = child
-        current = child
-    current[parts[-1]] = value
-
-
-def _remove_dotted(document: dict[str, object], key: str) -> None:
-    current: dict[str, object] = document
-    parents: list[tuple[dict[str, object], str]] = []
-    for part in key.split('.')[:-1]:
-        child = current.get(part)
-        if not isinstance(child, dict):
-            return
-        parents.append((current, part))
-        current = child
-    current.pop(key.split('.')[-1], None)
-    for parent, part in reversed(parents):
-        if isinstance(parent.get(part), dict) and not parent[part]:
-            del parent[part]
 
 
 def _safe_leaves(value: object, prefix: str = '') -> Iterable[tuple[str, object]]:
@@ -177,7 +148,6 @@ def render_desired_state(
     config: ProjectConfig,
     generated_root: Path,
     models: Mapping[str, object],
-    adapters: Mapping[Platform, HostAdapter],
 ) -> RenderedState:
     """Render only catalog-owned project assets without mutating the target."""
     files: dict[PurePosixPath, bytes] = {}
@@ -185,11 +155,9 @@ def render_desired_state(
     native_documents: dict[PurePosixPath, dict[str, object]] = {}
     native_templates: dict[PurePosixPath, dict[str, object]] = {}
     try:
-        lock_path = confined_target(target_root, PurePosixPath('.agents/lock.json'))
+        confined_target(target_root, PurePosixPath('.agents/lock.json'))
     except ProjectError as error:
         raise RenderError(str(error)) from error
-    lock = load_lock(lock_path)
-    old_fields = {(item.path, item.key) for item in lock.managed_fields}
     assets_by_id = {asset.id: asset for asset in catalog.assets}
 
     for asset in catalog.assets:
@@ -201,18 +169,8 @@ def render_desired_state(
             continue
         if asset.kind == 'agent' and asset.id not in config.selected_agents:
             continue
-        if asset.kind == 'tool-policy' and 'manage-agent-tools' not in config.selected_skills:
-            continue
-        if asset.id.startswith('hook-') and not config.hooks_enabled:
-            continue
         if asset.kind in {'rule', 'skill', 'agent'}:
             _copy_asset(files, source_root / asset.source, asset.target)
-            continue
-        if asset.kind == 'tool-policy':
-            _copy_asset(files, source_root / asset.source, asset.target)
-            continue
-        if asset.id.startswith('hook-'):
-            _copy_file(files, asset.target, (source_root / asset.source).read_bytes())
             continue
         if asset.kind == 'template' and asset.target and _format_for(asset.target):
             format_name = _format_for(asset.target)
@@ -285,42 +243,12 @@ def render_desired_state(
             raise RenderError(f'undeclared generated path: {relative.as_posix()}')
         files[relative] = path.read_bytes()
 
-    for platform in config.platforms:
-        adapter = adapters.get(platform)
-        if adapter is None:
-            raise RenderError(f'missing adapter for {platform.value}')
-        hook_values = adapter.hook_fields(config.hooks_enabled)
-        field_path = {
-            Platform.CODEX: PurePosixPath('.codex/config.toml'),
-            Platform.COPILOT: PurePosixPath('.github/copilot/settings.json'),
-        }.get(platform)
-        if field_path is not None and field_path in native_documents:
-            if config.hooks_enabled:
-                for key, value in hook_values.items():
-                    _set_dotted(native_documents[field_path], key, value)
-            else:
-                for key in ('features.hooks', 'disableAllHooks'):
-                    if (field_path, key) in old_fields:
-                        _remove_dotted(native_documents[field_path], key)
-
     for path, document in native_documents.items():
         format_name = _format_for(path)
         assert format_name is not None
         _copy_file(files, path, _dump_structured(document, format_name))
         for key, value in _safe_leaves(native_templates[path]):
             fields.append(DesiredField(path, key, value, format_name))
-        for platform in config.platforms:
-            adapter = adapters[platform]
-            for key, value in adapter.hook_fields(config.hooks_enabled).items():
-                owned_path = {
-                    Platform.CODEX: PurePosixPath('.codex/config.toml'),
-                    Platform.COPILOT: PurePosixPath('.github/copilot/settings.json'),
-                }.get(platform)
-                if owned_path == path:
-                    fields.append(DesiredField(path, key, value, format_name))
-
-    runner = models.get('runner')
-    capabilities = {platform: adapters[platform].check_multi_agent(runner) for platform in config.platforms}
     desired_files = tuple(DesiredFile(path, content) for path, content in sorted(files.items(), key=lambda item: item[0].as_posix()))
     desired_fields = tuple(sorted(fields, key=lambda item: (item.path.as_posix(), item.key)))
-    return RenderedState(desired_files, desired_fields, capabilities)
+    return RenderedState(desired_files, desired_fields)

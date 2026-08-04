@@ -16,14 +16,15 @@
 - 仓库根目录直接作为插件包，不再保留嵌套的 `agents/` 插件根。
 - 同时支持 Codex、Cursor 和 GitHub Copilot，并尽量保持三端行为一致。
 - 英文运行资产只有一份；中文内容移入 `docs/zh-CN/`，只作为文档维护。
-- 插件安装只暴露宿主原生支持的能力，不自动修改当前项目。
-- 每个项目显式运行 `setup-project-agents` 后，得到完整的 Rules、Skills、Agents 快照，并按显式
-  选择安装 Hooks。
+- 插件安装暴露宿主原生支持的能力和插件自有 Hook，不自动修改当前项目文件。
+- 每个项目显式运行 `setup-project-agents` 后，得到完整的 Rules、Skills、Agents 快照；项目同步
+  不管理 Hook。
 - `setup-project-agents` 是插件控制面，永远不复制进目标项目。
 - setup 默认直接拉取远端 `main`，不使用 GitHub Release，也不读取旧项目 updater。
 - 不保留旧脚本、旧目录或旧项目安装方式的兼容逻辑。
-- Hook 显式启用；多代理只检查宿主的有效默认状态。
-- Superpowers、CodeGraph、Tokscale 等外部工具通过独立工作流诊断和升级，不内嵌上游源码。
+- Hook 随插件声明并受宿主信任与总开关约束；多代理只检查宿主的有效默认状态。
+- Superpowers、CodeGraph、Tokscale 等外部工具由插件 Hook 诊断，并在用户批准后通过插件私有
+  执行器升级，不内嵌上游源码。
 
 ## 目标与非目标
 
@@ -60,32 +61,32 @@ repo/
 ├── .agents/
 │   ├── plugins/
 │   │   └── marketplace.json      # 仅用于本地开发
-│   └── rules/                    # 仅维护本仓库所需的最小规则
+│   ├── rules/                    # 仅维护本仓库所需的最小规则
+│   └── skills/                   # write-rule 与 write-skill 的本地薄包装
 ├── plugin.json                   # Copilot 插件清单
 ├── VERSION
 ├── skills/
-│   ├── setup-project-agents/     # 插件控制面，不复制到项目
-│   ├── manage-agent-tools/
-│   └── ...
-├── rules/                        # 英文运行时 Rule 事实源
-├── agents/                       # 英文 Agent 提示词事实源
-├── blueprints/                   # 项目拥有内容的生成契约
-├── catalog/
-│   └── project-assets.json       # 项目资产、所有权与渲染声明
-├── config/
+│   └── setup-project-agents/     # 插件控制面，不复制到项目
+├── hooks/                        # 插件自有的三端 Hook 定义
+├── runtime/
+│   └── recommended-tools/        # Hook 私有检查与维护运行时，不含 SKILL.md
+├── policies/
 │   └── recommended-tools/
 │       ├── codex.json
 │       ├── cursor.json
 │       └── copilot.json
-├── templates/
-│   └── project/
-│       ├── entry-files/
-│       ├── platform-config/
-│       ├── hooks/
-│       └── wrappers/
+├── setup-assets/                 # 只供 setup 创建项目快照的资产源
+│   ├── catalog/
+│   │   ├── assets.json
+│   │   ├── project-config.schema.json
+│   │   └── project-lock.schema.json
+│   ├── rules/                    # 英文运行时 Rule 事实源
+│   ├── skills/                   # 项目运行 Skill 文档事实源
+│   ├── agents/                   # 英文 Agent 提示词事实源
+│   ├── blueprints/               # 项目拥有内容的生成契约
+│   └── templates/                # 宿主配置与包装模板
 ├── docs/
 │   └── zh-CN/                    # 中文阅读文档，不参与运行或发布
-├── scripts/                      # 仓库维护脚本
 ├── tests/
 ├── AGENTS.md
 ├── README.md
@@ -95,8 +96,9 @@ repo/
 根目录内容就是最终插件包，不引入 `src/` 到 `dist/` 的构建步骤。正式发布通过各平台官方或
 独立 Marketplace 完成；仓库内三份 Marketplace 只服务本地开发和验证。
 
-本仓库不对自身运行 `setup-project-agents`。`.agents/` 仅保存维护这个插件所需的项目规则，
-避免把待发布内容和本仓库开发配置重新耦合起来。
+本仓库不对自身运行 `setup-project-agents`。`.agents/` 仅保存维护这个插件所需的项目规则、
+本地 Skill 发现包装和 Marketplace 配置；Skill 包装直接引用 `setup-assets/skills/` 的事实源，
+不会复制工作流正文，也不会把待发布内容和本仓库开发配置重新耦合起来。
 
 ## 插件能力与项目快照
 
@@ -104,18 +106,21 @@ repo/
 
 | 宿主 | 插件直接暴露 |
 | --- | --- |
-| Codex | Skills |
-| Cursor | Skills、Rules、Agents |
-| GitHub Copilot | Skills、Agents |
+| Codex | setup 控制面 Skill、Hooks |
+| Cursor | setup 控制面 Skill、Hooks |
+| GitHub Copilot | setup 控制面 Skill、Hooks |
 
-插件安装不自动启用项目 Hook，也不把公共资产复制到当前仓库。用户显式运行
-`setup-project-agents` 后，setup 根据 `catalog/project-assets.json` 创建项目快照：
+插件安装或加载时，宿主从插件清单或约定路径发现插件 Hook，但不会把公共资产复制到当前仓库。
+用户显式运行
+`setup-project-agents` 后，setup 根据 `setup-assets/catalog/assets.json` 创建项目快照：
 
 - `.agents/rules/`：项目使用的完整 Rule。
 - `.agents/skills/`：项目使用的 Skills，但排除 `setup-project-agents`。
 - `.agents/agents/`：项目使用的 Agent 提示词。
 - `AGENTS.md` 和平台目录：只保存入口、平台配置和薄包装。
-- 项目 Hook：仅在用户明确启用时安装。
+
+项目快照不包含 Hook 定义，也不写入宿主 Hook 启用字段。Hook 生命周期与插件一致，不属于
+Catalog、Planner 或项目 lock 的所有权范围。
 
 Catalog 是项目安装内容的唯一机器可读声明。每项资产至少声明来源、目标、类型、适用平台、
 渲染方式和控制面标记。Planner 只处理 Catalog 声明的内容，不通过目录遍历隐式扩大安装范围。
@@ -165,7 +170,7 @@ setup 不直接修改任何宿主的插件缓存、内部数据库或信任存�
     -> 扫描项目与有效宿主状态
     -> 生成统一变更计划
     -> 在临时目录渲染完整结果
-    -> 校验路径、配置、Hook 和清单
+    -> 校验路径、配置和清单
     -> 备份受影响文件
     -> 原子应用
     -> 写入 lock
@@ -179,23 +184,26 @@ setup 不直接修改任何宿主的插件缓存、内部数据库或信任存�
 - `bootstrap.py`：抓取 `main`、固定 commit、创建临时检出并交接新版入口。
 - `setup_project_agents.py`：CLI 参数、步骤编排和最终结果展示。
 - `source.py`：Git 来源、commit 元数据和离线回退。
-- `catalog.py`：加载和校验 `catalog/project-assets.json`。
+- `catalog.py`：加载和校验 `setup-assets/catalog/assets.json`。
 - `project.py`：识别项目结构、启用平台及现有配置。
 - `planner.py`：产生新增、更新、保留、删除和冲突的统一计划。
 - `renderer.py`：复制公共资产，应用 Blueprint，生成平台薄包装。
-- `validation.py`：验证输出目录、配置合并、Hook 和平台 manifest。
+- `validation.py`：验证输出目录、配置合并和平台 manifest。
 - `transaction.py`：暂存、备份、原子应用和失败回滚。
-- `host_adapters/`：封装 Codex、Cursor、Copilot 的检测、配置和更新差异。
-- `manage-agent-tools`：诊断和升级外部工具，不参与项目文件事务。
 
-各模块通过结构化数据通信，不通过打印文本解析彼此结果。三端适配器统一返回 `ready`、
-`needs_approval`、`needs_restart`、`unsupported` 等状态，由 setup 统一决定下一步。
+插件 Hook 直接调用 `runtime/recommended-tools/`，并从 `policies/recommended-tools/` 读取策略。
+这些文件始终为插件私有能力，setup 不会将其复制到目标项目。
+
+setup 从本次固定的 `SOURCE_ROOT/setup-assets/skills/` 直接读取 `write-rule` 与 `write-skill`
+authoring contract，因此首次 setup 不依赖目标项目已经安装这些 Skill。
+
+各模块通过结构化数据通信，不通过打印文本解析彼此结果。
 
 ## 配置、Lock 与所有权
 
 目标项目将用户输入和生成状态分开保存：
 
-- `.agents/config.json`：用户拥有，记录启用平台、资产选择和 Hook 是否启用。
+- `.agents/config.json`：用户拥有，记录启用平台和资产选择。
 - `.agents/lock.json`：setup 生成，记录 `source_commit`、受管路径、内容摘要和安装结果。
 
 所有权规则如下：
@@ -212,40 +220,44 @@ setup 不直接修改任何宿主的插件缓存、内部数据库或信任存�
 | --- | --- | --- | --- |
 | 项目 Rule 入口 | `AGENTS.md` | `.cursor/rules/` | `.github/instructions/` |
 | 项目 Agent 包装 | `.codex/agents/` | `.cursor/agents/` | `.github/agents/` |
-| Hook 配置 | `.codex/hooks.json` | `.cursor/hooks.json` | `.github/hooks/` |
+| 插件 Hook | `hooks/hooks.json` | `hooks/cursor.json` | `hooks/copilot.json` |
 | 宿主配置 | `.codex/config.toml` | `.cursor/cli.json` | `.github/copilot/settings.json` |
 
 `.agents/` 保存共享正文，平台目录只保存宿主必须的元数据和薄包装。
 
 ### Hook
 
-Hook 是显式选择加入能力：
+Hook 是插件能力，不是项目快照选项：
 
-- Codex 在用户启用 Hook 时写入 `features.hooks = true` 并安装 `.codex/hooks.json`。
-- Cursor 安装 `.cursor/hooks.json`；需要宿主信任时，只触发或提示官方确认流程。
-- Copilot 安装 `.github/hooks/`，并在用户确认后结构化合并 `disableAllHooks = false`。
-- 用户关闭 Hook 时，只移除 lock 管理的 Hook 文件和配置字段。
-- 三端 Hook 调用同一个项目本地推荐工具检查器，只报告状态，不执行安装或升级。
+- Codex 按插件根的默认 `hooks/hooks.json` 发现 Hook。
+- Cursor 和 Copilot 由各自 manifest 指向插件根下的平台 Hook 文件。
+- 三端 Hook 通过各自的插件根变量调用插件内同一套推荐工具检查器，不依赖 `.agents/` 快照。
+- setup 不接受 Hook 开关、不写项目 Hook 文件，也不修改宿主配置中的 Hook 字段。
+- 旧 `--hooks` 参数和 `.agents/config.json` 中的 `hooks_enabled` 字段直接视为无效输入，不提供
+  兼容解析或迁移。
+- 宿主级信任、工作区信任和全局 Hook 开关仍具有最终决定权，插件不绕过这些约束。
+- Hook 只报告状态，不执行安装或升级。
 
 ### 多代理
 
-- Codex 读取 `codex features list` 并检查 `multi_agent` 的有效值，不重复写入默认配置。
-- Cursor 和 Copilot 检查 CLI 版本或公开能力是否已包含默认多代理支持，不创建额外开关。
-- 检查失败只产生诊断和升级建议；实际升级交给 `manage-agent-tools`。
+- Hook 读取 Codex 的有效 `multi_agent` 值，并通过 Cursor 和 Copilot 的工具版本判断默认多代理
+  支持，不创建项目级开关。
+- 检查失败只产生诊断和升级建议；用户批准后，插件私有执行器处理受支持的升级动作。
 
-整体策略固定为：**Hook 显式启用，多代理检查默认有效状态。**
+整体策略固定为：**Hook 归插件所有，多代理检查默认有效状态。**
 
 ## 外部工具维护
 
 插件维护 Codex、Cursor、Copilot、Superpowers、CodeGraph 和 Tokscale 的版本策略、检测器、安装
-说明和升级适配器。`manage-agent-tools` 提供两个清晰动作：
+说明和升级适配器。插件私有运行时提供两个清晰动作：
 
 - `doctor`：只读检测有效版本、安装来源和能力状态。
-- `upgrade`：展示将执行的宿主原生命令或包管理器命令，获得批准后执行。
+- 维护：只说明需要安装或升级的工具并征求同意，不展示底层命令；获得同意后由内置白名单
+  执行器处理指定工具动作。
 
-无法可靠识别安装来源时，只给出指引，不猜测包管理器。项目 SessionStart Hook 只调用
-`doctor` 的轻量检查路径，不能静默升级工具。工具升级失败不回滚已经成功的项目同步，因为
-两者属于独立事务。
+不支持自动维护时，只给出官方手动指引。插件 SessionStart Hook 只调用 `doctor` 的轻量检查
+路径并征求同意；Hook 本身不能静默升级工具，后续已批准轮次才可调用包内执行器。工具升级
+失败不回滚已经成功的项目同步，因为两者属于独立事务。
 
 ## 失败处理与安全边界
 
@@ -254,8 +266,7 @@ Hook 是显式选择加入能力：
 - Catalog、规划或渲染校验失败：目标项目零变更。
 - 未受管路径冲突：停止并列出冲突，不覆盖用户文件。
 - 应用中途失败：使用备份恢复，并保留诊断信息。
-- Hook 文件或宿主配置不能完整应用：回滚整个项目同步事务。
-- 宿主插件没有刷新：不阻塞项目同步，但返回 `needs_restart` 或明确操作提示。
+- 插件 Hook 加载或信任失败：报告宿主状态，不影响项目同步事务。
 - 路径必须保持在目标仓库内；拒绝 `..` 逃逸、绝对目标路径和符号链接越界。
 - Git 命令使用固定参数数组，不拼接执行远端或项目提供的 Shell 文本。
 
@@ -263,7 +274,8 @@ Hook 是显式选择加入能力：
 
 本次重构不建立迁移桥：
 
-- 将 `agents/` 的运行内容提升到根目录对应区域，然后删除旧嵌套目录。
+- 将项目运行内容收敛到 `setup-assets/`，将 Hook 私有执行程序和共享策略分别收敛到
+  `runtime/` 与 `policies/`，然后删除旧嵌套目录。
 - 将 `agents-zh/` 的中文 Markdown 移入 `docs/zh-CN/`，不迁移机器文件。
 - 删除旧同步脚本、旧 `public_assets.json`、旧 archive 回退和项目内 updater 逻辑。
 - 删除被新目录替代的旧模板、manifest 和包装。
@@ -279,15 +291,15 @@ Hook 是显式选择加入能力：
 - Catalog schema、路径安全和控制面排除。
 - `main` 抓取、commit 固定、交接和离线回退。
 - Planner 的新增、更新、保留、删除和冲突结果。
-- 三个平台适配器、结构化配置合并和有效状态检测。
+- 三个平台的结构化配置合并。
+- 三端插件 Hook 清单、插件根路径和只读检查命令。
 - Lock 所有权、摘要和受管字段删除。
 
 ### 输出快照测试
 
 覆盖 Codex、Cursor、Copilot 和三端同时启用，并分别验证：
 
-- Hook 开启与关闭。
-- 多代理有效、无效和无法检测。
+- 项目输出中不存在 Hook 文件或 Hook 启用字段。
 - 全新项目与已有配置项目。
 - 平台薄包装引用共享正文。
 - `setup-project-agents` 未被复制。
@@ -313,9 +325,9 @@ CI 至少覆盖 Linux、macOS 和 Windows，验证 POSIX Shell、PowerShell、�
 
 1. 仓库根目录可以直接作为 Codex、Cursor 和 Copilot 插件安装。
 2. setup 默认检查远端 `main`，单次执行固定并记录准确 commit。
-3. 项目得到完整 Rules、Skills、Agents 快照，并按显式选择包含 Hooks，但不包含 setup 控制面。
-4. Hook 只有用户明确启用时才落盘并修改宿主配置。
-5. 多代理只检查有效状态，不重复写默认配置。
+3. 项目得到完整 Rules、Skills、Agents 快照，不包含 Hook 或 setup 控制面。
+4. 三端从插件包发现各自 Hook；setup 不接受 Hook 选项，也不写项目 Hook 或宿主 Hook 字段。
+5. 多代理和外部工具检查只由插件 Hook 执行，不写项目配置。
 6. setup 只能覆盖或删除 lock 拥有的内容。
 7. `--check` 与应用模式共享同一 Planner，重复执行保持幂等。
 8. 所有跟踪配置和文档使用仓库相对路径，不包含机器绝对路径。

@@ -44,7 +44,7 @@ def run_git(directory: Path, *args: str) -> str:
 def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
     (root / '.codex-plugin').mkdir(parents=True)
     (root / '.cursor-plugin').mkdir()
-    (root / 'catalog').mkdir()
+    (root / 'setup-assets' / 'catalog').mkdir(parents=True)
     entrypoint = root / 'skills' / 'setup-project-agents' / 'scripts' / 'setup_project_agents.py'
     entrypoint.parent.mkdir(parents=True)
     entrypoint.write_text('raise SystemExit(0)\n', encoding='utf-8')
@@ -55,16 +55,14 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
         },
         '.cursor-plugin/plugin.json': {
             'name': 'smartkit', 'version': version, 'skills': './skills/',
-            'rules': './rules/', 'agents': './agents/',
         },
         'plugin.json': {
             'name': 'smartkit', 'version': version, 'skills': './skills/',
-            'agents': './agents/',
         },
     }
     for relative, document in manifests.items():
         (root / relative).write_text(json.dumps(document), encoding='utf-8')
-    (root / 'catalog' / 'project-assets.json').write_text(
+    (root / 'setup-assets' / 'catalog' / 'assets.json').write_text(
         json.dumps(
             {
                 'plugin': {
@@ -156,11 +154,11 @@ class SetupSourceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             origin, origin_work = self.make_origin(temporary)
-            catalog_path = origin_work / 'catalog' / 'project-assets.json'
+            catalog_path = origin_work / 'setup-assets' / 'catalog' / 'assets.json'
             catalog = json.loads(catalog_path.read_text(encoding='utf-8'))
             catalog['plugin']['ref'] = 'release'
             catalog_path.write_text(json.dumps(catalog), encoding='utf-8')
-            run_git(origin_work, 'add', 'catalog/project-assets.json')
+            run_git(origin_work, 'add', 'setup-assets/catalog/assets.json')
             run_git(origin_work, 'commit', '--quiet', '-m', 'invalid catalog')
             run_git(origin_work, 'push', '--quiet', 'origin', 'main')
 
@@ -738,7 +736,7 @@ class SetupSourceTest(unittest.TestCase):
             result = setup_project_agents.main(
                 [
                     'prepare', '--target', temp_dir, '--session', str(session),
-                    '--hooks', 'disabled', '--source-root', str(REPO_ROOT),
+                    '--source-root', str(REPO_ROOT),
                     '--source-commit', 'offline', '--no-bootstrap',
                 ]
             )

@@ -1,35 +1,35 @@
 {
-  "platform": "copilot",
+  "platform": "cursor",
   "tools": [
     {
-      "id": "copilot",
-      "name": "GitHub Copilot CLI",
-      "target_version": "1.0.58",
+      "id": "cursor-agent",
+      "name": "Cursor Agent CLI",
+      "target_version": "2026.01.27",
       "comparison": ">",
       "detectors": [
         {
           "kind": "command-regex",
-          "command": ["copilot", "--version"],
-          "pattern": "([0-9]+(?:\\.[0-9]+)+)"
+          "command": ["agent", "--version"],
+          "pattern": "([0-9]+(?:\\.[0-9]+)+(?:-[0-9A-Za-z.-]+)?)"
         }
       ],
-      "install": "Install a GitHub Copilot CLI release with default subagent support from the official GitHub distribution.",
-      "upgrade": "Run copilot update or use the package manager used to install Copilot CLI so the required default subagent capability is available."
+      "install": "Install a Cursor Agent CLI release with default subagent support from the official Cursor distribution.",
+      "upgrade": "Upgrade Cursor Agent CLI with the official Cursor updater so the required default subagent capability is available."
     },
     {
       "id": "superpowers",
-      "name": "Superpowers for GitHub Copilot",
+      "name": "Superpowers for Cursor",
       "target_version": "6.1.1",
       "comparison": ">",
       "detectors": [
         {
-          "kind": "command-regex",
-          "command": ["copilot", "plugin", "list"],
-          "pattern": "superpowers@[^ ]+ \\(v([0-9]+(?:\\.[0-9]+)+)\\)"
+          "kind": "json-manifest-glob",
+          "glob": "{home}/.cursor/plugins/cache/*/superpowers/*/.cursor-plugin/plugin.json",
+          "json_path": "version"
         }
       ],
-      "install": "Install Superpowers from the configured Copilot plugin marketplace.",
-      "upgrade": "Update the Superpowers plugin with GitHub Copilot CLI."
+      "install": "Install the Superpowers plugin from the Cursor marketplace.",
+      "upgrade": "Update the Superpowers plugin in Cursor."
     },
     {
       "id": "codegraph",
@@ -43,7 +43,7 @@
           "pattern": "([0-9]+(?:\\.[0-9]+)+)"
         }
       ],
-      "install": "Install CodeGraph and expose the codegraph command to Copilot CLI.",
+      "install": "Install CodeGraph and expose the codegraph command to Cursor.",
       "upgrade": "Upgrade CodeGraph with its installation package manager."
     },
     {
@@ -58,7 +58,7 @@
           "pattern": "([0-9]+(?:\\.[0-9]+)+)"
         }
       ],
-      "install": "Install Tokscale globally with npm install --global tokscale@latest and expose the tokscale command on PATH.",
+      "install": "Install the latest Tokscale release globally and expose the tokscale command on PATH.",
       "upgrade": "Upgrade Tokscale to the latest release with the package manager used to install it."
     }
   ]

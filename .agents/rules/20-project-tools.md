@@ -28,12 +28,12 @@ Run both commands for every completed change set; together they form the require
 ## Project Setup Tooling
 
 - `skills/setup-project-agents/scripts/setup_project_agents.py` is the public setup control plane.
-- The setup command reads `catalog/project-assets.json`, fetches canonical `main` for an online
+- The setup command reads `setup-assets/catalog/assets.json`, fetches canonical `main` for an online
   session, and applies only the lock-owned target snapshot.
 - `check` reports target drift without writes. Neither command is a formatter, fixer, or
   replacement for this repository's test command.
 - Keep this repository's local `.agents/` directory limited to its `plugins/` marketplace
-  configuration and `rules/` development instructions.
+  configuration, `rules/` development instructions, and thin Skill discovery wrappers.
 
 ## Boundaries
 

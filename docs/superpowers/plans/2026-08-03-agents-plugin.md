@@ -1,5 +1,8 @@
 # Agents Cross-Platform Plugin Redesign Implementation Plan
 
+Status: Historical implementation record. Do not execute this plan as the current contract; use
+the repository source, project rules, and finalized design specification instead.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn the repository root into the single Codex, Cursor, and GitHub Copilot plugin, with a `main`-tracking project setup control plane, transactional project snapshots, explicit Hooks, effective multi-agent checks, and user-approved external-tool maintenance.

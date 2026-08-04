@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/runtime/recommended-tools/check_recommended_tools.sh\" hook --platform codex",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}\\runtime\\recommended-tools\\check_recommended_tools.ps1\" hook --platform codex",
+            "timeout": 30,
+            "statusMessage": "Checking recommended tools"
+          }
+        ]
+      }
+    ]
+  }
+}

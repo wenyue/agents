@@ -1,8 +1,9 @@
 # WenYue SmartKit
 
-`WenYue SmartKit` is a cross-platform plugin for Codex, Cursor, and GitHub Copilot. It maintains shared
-Rules, Skills, agent prompts, templates, and optional project Hooks. Installing the plugin makes
-those capabilities available to a host; every repository is configured separately and explicitly.
+`WenYue SmartKit` is a cross-platform plugin for Codex, Cursor, and GitHub Copilot. Installing it
+exposes only the `setup-project-agents` control plane and plugin-owned dependency-check Hooks. Shared
+Rules, Skills, and agent prompts become available only after setup installs a managed snapshot into
+the target repository.
 
 ## Install the plugin
 
@@ -37,8 +38,8 @@ Confirm names with `copilot plugin list` when your marketplace differs.
 ## Set up each project
 
 In every target repository, explicitly ask the installed plugin to use `setup-project-agents`.
-Choose the target hosts and whether to enable Hooks; the default is Codex, Cursor, and Copilot with
-Hooks disabled. Plugin installation alone never changes a project.
+Choose the target hosts; the default is Codex, Cursor, and Copilot. Plugin installation alone never
+changes a project's tracked files.
 
 Each setup session fetches the plugin's remote `main`, validates it, and pins one fetched commit for
 the complete prepare, apply, and check sequence. Run setup again when you want a project to adopt
@@ -50,33 +51,38 @@ target project's other files and user-owned `.agents/config.json` choices.
 
 ## Hooks, multi-agent, and tool maintenance
 
-Hooks are an explicit opt-in. When enabled, setup writes the host Hook definitions but never edits
-host trust storage, workspace trust, plugin caches, or editor UI state. Review and trust each Hook
-in the relevant host UI before allowing it to run. A Hook only performs project-health diagnosis;
-it does not install or upgrade tools.
+Hooks belong to the plugin and are declared through each host's plugin format. A host discovers them
+when it installs or loads the plugin; `setup-project-agents` never writes project Hook definitions or
+Hook-enable fields. Host-level trust, workspace trust, and global Hook controls remain authoritative.
+The bundled SessionStart Hook runs the recommended-tool doctor for tools and required host
+capabilities, including multi-agent support. It never treats Hook execution as consent and never
+changes tools by itself.
 
-Multi-agent capability is checked from effective host state or the host's documented default. Setup
-does not write a replacement multi-agent setting: Codex reads the effective `multi_agent` status,
-while Cursor and GitHub Copilot report whether the host version supports its default capability.
-
-Use `manage-agent-tools` separately for tool maintenance. Its `doctor` operation is read-only. An
-`upgrade` is proposed one native command at a time and runs only after the user approves that exact
-command; doctor runs again afterwards.
+When tools need installation or upgrade, the Hook asks the agent to name the affected tools and
+request consent without showing the underlying commands. After consent, the plugin-private
+allowlisted runner applies each supported native action; unsupported actions return official manual
+guidance. This maintenance workflow remains plugin-private and is never copied into project
+snapshots.
 
 ## Repository layout
 
 ```text
-rules/                 Shared runtime Rules
-skills/                Shared operational Skills, including setup-project-agents
-agents/                Shared agent prompts
-blueprints/            Contracts for target-owned Rules and Skills
-catalog/               Asset and lock contracts
-templates/project/     Host configuration and wrapper templates
-config/                Recommended-tool policies
-docs/zh-CN/             Simplified-Chinese documentation
-.agents/rules/         This repository's own development rules
-.agents/plugins/       This repository's local plugin marketplace configuration
+skills/                         Plugin-visible control plane; only setup-project-agents
+hooks/                          Plugin-owned lifecycle Hook definitions
+runtime/recommended-tools/      Private Hook executables; never a discoverable Skill
+policies/recommended-tools/     Shared recommended-tool policies
+setup-assets/catalog/           Asset, configuration, and lock contracts
+setup-assets/rules/             Rules installed into target repositories
+setup-assets/skills/            Skill documents installed into target repositories
+setup-assets/agents/            Agent prompts installed into target repositories
+setup-assets/blueprints/        Contracts for target-owned Rules and Skills
+setup-assets/templates/         Host configuration and wrapper templates
+docs/zh-CN/                     Simplified-Chinese documentation
+.agents/rules/                  This repository's own development rules
+.agents/skills/                 Thin local wrappers for write-rule and write-skill
+.agents/plugins/                This repository's local plugin marketplace configuration
 ```
 
-The root runtime directories are the English plugin source of truth. `docs/zh-CN/` is documentation
-only and is never loaded, installed, or synchronized into a project.
+Plugin manifests expose only `skills/` and the host Hook entry points. They do not expose
+`runtime/`, `policies/`, or `setup-assets/`. `docs/zh-CN/` is documentation only and is never loaded
+or installed.

@@ -49,13 +49,40 @@ class PluginManifestTest(unittest.TestCase):
 
         self.assertEqual(
             {path.name for path in (REPO_ROOT / '.agents').iterdir()},
-            {'plugins', 'rules'},
+            {'plugins', 'rules', 'skills'},
         )
+
+        for name in ('write-rule', 'write-skill'):
+            with self.subTest(skill=name):
+                wrapper = (
+                    REPO_ROOT / '.agents' / 'skills' / name / 'SKILL.md'
+                ).read_text(encoding='utf-8')
+                self.assertIn(f'name: {name}', wrapper)
+                self.assertEqual(wrapper.count('Apply @'), 1)
+                self.assertIn(
+                    f'Apply @setup-assets/skills/{name}/SKILL.md', wrapper
+                )
+
+    def test_repository_declares_current_contract_only(self):
+        rule_path = '.agents/rules/21-project-rules.md'
+        rule = (REPO_ROOT / rule_path).read_text(encoding='utf-8')
+        entry = (REPO_ROOT / 'AGENTS.md').read_text(encoding='utf-8')
+
+        self.assertIn('Strength: `Mandatory`', rule)
+        self.assertIn('current contract', rule)
+        self.assertIn('Do not add compatibility aliases', rule)
+        self.assertIn(f'`{rule_path}` | `Mandatory`', entry)
 
     def test_chinese_documentation_has_one_to_one_english_mirrors(self):
         chinese_root = REPO_ROOT / 'docs' / 'zh-CN'
         source_paths = {Path('README.md')}
-        for root_name in ('agents', 'blueprints', 'rules', 'skills'):
+        for root_name in (
+            'setup-assets/rules',
+            'setup-assets/skills',
+            'setup-assets/agents',
+            'setup-assets/blueprints',
+            'skills',
+        ):
             source_paths.update(
                 path.relative_to(REPO_ROOT)
                 for path in (REPO_ROOT / root_name).rglob('*.md')
@@ -92,8 +119,20 @@ class PluginManifestTest(unittest.TestCase):
             with self.subTest(expected=expected):
                 self.assertIn(expected, readme)
 
+        self.assertIn('.agents/skills/', readme)
+
+    def test_setup_loads_authoring_contracts_from_its_pinned_source(self):
+        setup = (
+            REPO_ROOT / 'skills' / 'setup-project-agents' / 'SKILL.md'
+        ).read_text(encoding='utf-8')
+
+        for name in ('write-rule', 'write-skill'):
+            self.assertIn(
+                f'SOURCE_ROOT/setup-assets/skills/{name}/SKILL.md', setup
+            )
+
     def test_project_catalog_matches_native_plugin_version(self):
-        catalog = load_json('catalog/project-assets.json')
+        catalog = load_json('setup-assets/catalog/assets.json')
         self.assertEqual(catalog['plugin']['id'], 'smartkit')
         self.assertEqual(catalog['plugin']['version'], '0.1.0')
 
@@ -136,16 +175,51 @@ class PluginManifestTest(unittest.TestCase):
         self.assertEqual(codex['plugins'][0]['name'], 'smartkit')
         self.assertEqual(codex['plugins'][0]['source']['path'], './')
 
-    def test_root_manifests_keep_skills_as_their_only_runtime_entry_point(self):
-        for relative in (
-            '.codex-plugin/plugin.json',
-            '.cursor-plugin/plugin.json',
-            'plugin.json',
-        ):
-            with self.subTest(path=relative):
-                manifest = load_json(relative)
-                self.assertNotIn('hooks', manifest)
-                self.assertTrue((REPO_ROOT / manifest['skills']).is_dir())
+    def test_root_manifests_expose_plugin_owned_hooks(self):
+        codex = load_json('.codex-plugin/plugin.json')
+        cursor = load_json('.cursor-plugin/plugin.json')
+        copilot = load_json('plugin.json')
+
+        self.assertNotIn('hooks', codex)
+        self.assertEqual(cursor['hooks'], './hooks/cursor.json')
+        self.assertEqual(copilot['hooks'], './hooks/copilot.json')
+        for manifest in (codex, cursor, copilot):
+            self.assertTrue((REPO_ROOT / manifest['skills']).is_dir())
+            self.assertNotIn('agents', manifest)
+            self.assertNotIn('rules', manifest)
+
+        plugin_skills = {
+            path.name
+            for path in (REPO_ROOT / 'skills').iterdir()
+            if path.is_dir()
+        }
+        self.assertEqual(plugin_skills, {'setup-project-agents'})
+        self.assertFalse((REPO_ROOT / 'agents').exists())
+        self.assertFalse((REPO_ROOT / 'rules').exists())
+        self.assertFalse(any((REPO_ROOT / 'runtime').rglob('SKILL.md')))
+        self.assertEqual(
+            {path.name for path in (REPO_ROOT / 'setup-assets').iterdir() if path.is_dir()},
+            {'agents', 'blueprints', 'catalog', 'rules', 'skills', 'templates'},
+        )
+        for retired_root in ('project', 'blueprints', 'catalog', 'config', 'templates'):
+            self.assertFalse((REPO_ROOT / retired_root).exists())
+
+        hook_paths = {
+            'codex': REPO_ROOT / 'hooks/hooks.json',
+            'cursor': REPO_ROOT / cursor['hooks'],
+            'copilot': REPO_ROOT / copilot['hooks'],
+        }
+        for platform, path in hook_paths.items():
+            with self.subTest(platform=platform):
+                self.assertTrue(path.is_file())
+                content = path.read_text(encoding='utf-8')
+                self.assertIn('check_recommended_tools', content)
+                self.assertIn('runtime/recommended-tools', content.replace('\\', '/'))
+                self.assertIn(f'--platform {platform}', content)
+                self.assertNotIn('.agents/', content)
+                self.assertNotIn('.agents\\', content)
+                self.assertNotIn(' install', content.lower())
+                self.assertNotIn(' upgrade', content.lower())
 
 
 if __name__ == '__main__':

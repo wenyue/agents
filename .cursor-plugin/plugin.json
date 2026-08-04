@@ -11,6 +11,5 @@
   "keywords": ["coding-agents", "project-setup", "skills"],
   "category": "developer-tools",
   "skills": "./skills/",
-  "rules": "./rules/",
-  "agents": "./agents/"
+  "hooks": "./hooks/cursor.json"
 }

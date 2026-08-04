@@ -30,15 +30,19 @@ class SetupCatalogTest(unittest.TestCase):
         }
 
         self.assertNotIn('.agents/skills/setup-project-agents', targets)
-        self.assertIn('.agents/skills/manage-agent-tools', targets)
+        for asset in catalog.assets:
+            with self.subTest(asset=asset.id):
+                if asset.id == 'setup-project-agents':
+                    self.assertEqual(asset.source.as_posix(), 'skills/setup-project-agents')
+                elif asset.kind in {'rule', 'skill', 'agent', 'blueprint', 'template', 'wrapper'}:
+                    self.assertTrue(asset.source.as_posix().startswith('setup-assets/'))
 
-    def test_project_config_defaults_to_all_hosts_and_hooks_off(self):
+    def test_project_config_defaults_to_all_hosts(self):
         config = load_project_config(None, catalog=load_catalog(REPO_ROOT))
 
         self.assertEqual(config.platforms, tuple(Platform))
-        self.assertFalse(config.hooks_enabled)
         self.assertIn('00-global-rule-config', config.selected_rules)
-        self.assertIn('manage-agent-tools', config.selected_skills)
+        self.assertIn('refactor-code', config.selected_skills)
         self.assertNotIn('setup-project-agents', config.selected_skills)
         self.assertEqual(config.selected_agents, ('change-set-verifier',))
 
@@ -205,8 +209,8 @@ class SetupCatalogTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / 'VERSION').write_text('0.1.0\n', encoding='utf-8')
-            (root / 'catalog').mkdir()
-            (root / 'catalog' / 'project-assets.json').write_text(
+            (root / 'setup-assets' / 'catalog').mkdir(parents=True)
+            (root / 'setup-assets' / 'catalog' / 'assets.json').write_text(
                 json.dumps(
                     {
                         'plugin': {
@@ -232,11 +236,17 @@ class SetupCatalogTest(unittest.TestCase):
             with self.assertRaisesRegex(ContractError, 'unknown project config fields'):
                 load_project_config(config_path, catalog=catalog)
 
+            config_path.write_text(
+                json.dumps({'version': 1, 'hooks_enabled': True}), encoding='utf-8'
+            )
+            with self.assertRaisesRegex(ContractError, 'unknown project config fields'):
+                load_project_config(config_path, catalog=catalog)
+
     def test_catalog_uses_semver_2_for_version_and_plugin_version(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / 'catalog').mkdir()
-            catalog_path = root / 'catalog' / 'project-assets.json'
+            (root / 'setup-assets' / 'catalog').mkdir(parents=True)
+            catalog_path = root / 'setup-assets' / 'catalog' / 'assets.json'
 
             for version in (
                 '1.0.0',
