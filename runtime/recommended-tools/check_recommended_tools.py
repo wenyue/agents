@@ -605,9 +605,14 @@ def render_hook_result(result: HookResult, platform: str) -> str:
         if platform == 'codex':
             return json.dumps(
                 {
-                    'continue': False,
-                    'stopReason': 'Recommended-tool consent is required.',
+                    'continue': True,
                     'systemMessage': _user_consent_request(findings),
+                    'hookSpecificOutput': {
+                        'hookEventName': 'SessionStart',
+                        'additionalContext': _agent_consent_request(
+                            findings, platform
+                        ),
+                    },
                 }
             )
         if platform == 'cursor':

@@ -103,23 +103,23 @@ class PluginManifestTest(unittest.TestCase):
                     markdown_structure(source),
                 )
 
-    def test_readme_documents_plugin_setup_and_safety_boundaries(self):
+    def test_readme_documents_plugin_setup_and_consent_flow(self):
         readme = (REPO_ROOT / 'README.md').read_text(encoding='utf-8')
         for expected in (
             'Codex',
             'Cursor',
             'GitHub Copilot',
             'setup-project-agents',
-            'remote `main`',
             'Hooks',
             'multi-agent',
-            'doctor',
+            'Superpowers',
+            'CodeGraph',
+            'Tokscale',
+            'explicit consent',
             'upgrade',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, readme)
-
-        self.assertIn('.agents/skills/', readme)
 
     def test_setup_loads_authoring_contracts_from_its_pinned_source(self):
         setup = (

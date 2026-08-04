@@ -1,9 +1,8 @@
 # WenYue SmartKit
 
-`WenYue SmartKit` is a cross-platform plugin for Codex, Cursor, and GitHub Copilot. Installing it
-exposes only the `setup-project-agents` control plane and plugin-owned dependency-check Hooks. Shared
-Rules, Skills, and agent prompts become available only after setup installs a managed snapshot into
-the target repository.
+`WenYue SmartKit` is a cross-platform plugin for Codex, Cursor, and GitHub Copilot. It helps projects
+standardize Agent rules, commonly used skills, and collaboration workflows, and checks whether
+recommended tools are available when a session starts.
 
 ## Install the plugin
 
@@ -16,13 +15,10 @@ codex plugin marketplace add wenyue/agents
 codex plugin add smartkit@wenyue
 ```
 
-You can also use `/plugins` in Codex to browse the configured marketplace. Start a new Codex
-session after installation.
+You can also use `/plugins` in Codex to install it. Start a new session after installation.
 
-Cursor: use Cursor's Plugin Marketplace or `/add-plugin` flow. For an unpublished plugin, import
-this repository through your team or private marketplace UI, or clone it locally for development
-installation. Cursor's UI changes independently, so follow the current in-product flow rather than
-an unsupported repository CLI command.
+Cursor: install it through the Plugin Marketplace or `/add-plugin`; import private versions through
+a team marketplace or as a local plugin.
 
 GitHub Copilot CLI:
 
@@ -31,61 +27,35 @@ copilot plugin marketplace add wenyue/agents
 copilot plugin install smartkit@wenyue
 ```
 
-To refresh a Copilot marketplace and plugin, use its native update flow, for example
-`copilot plugin marketplace update wenyue` followed by `copilot plugin update smartkit`.
-Confirm names with `copilot plugin list` when your marketplace differs.
+To update the Copilot plugin, run `copilot plugin marketplace update wenyue`, followed by
+`copilot plugin update smartkit`.
 
 ## Set up each project
 
-In every target repository, explicitly ask the installed plugin to use `setup-project-agents`.
-Choose the target hosts; the default is Codex, Cursor, and Copilot. Plugin installation alone never
-changes a project's tracked files.
+In the target repository, ask the Agent to use `setup-project-agents` to initialize the project and
+choose the platforms to support; Codex, Cursor, and Copilot are configured by default.
 
-Each setup session fetches the plugin's remote `main`, validates it, and pins one fetched commit for
-the complete prepare, apply, and check sequence. Run setup again when you want a project to adopt
-the current `main`. The setup control plane itself stays in the plugin and is never copied into a
-target project.
+Setup writes the rules, skills, and Agent configuration required by the project into the repository.
+Run `setup-project-agents` again when you want to adopt a new version of SmartKit.
 
-The resulting snapshot owns only its lock-recorded files and configuration fields. It preserves a
-target project's other files and user-owned `.agents/config.json` choices.
+SmartKit manages only the content it generates and preserves the project's existing files and user
+configuration whenever possible. All changes can be viewed and reviewed through version control.
 
 ## Hooks, multi-agent, and tool maintenance
 
-Hooks belong to the plugin and are declared through each host's plugin format. A host discovers them
-when it installs or loads the plugin; `setup-project-agents` never writes project Hook definitions or
-Hook-enable fields. Host-level trust, workspace trust, and global Hook controls remain authoritative.
-The bundled recommended-tool Hook runs the doctor for tools and required host capabilities,
-including multi-agent support. Codex stops the first affected turn from `SessionStart`; Cursor
-blocks the first affected prompt with `beforeSubmitPrompt`; Copilot injects a `sessionStart`
-instruction that tells the agent to ask and stop because Copilot does not expose a blocking
-session-start result. It never treats Hook execution as consent and never changes tools by itself.
+The plugin automatically checks recommended tools and required capabilities, such as Superpowers,
+CodeGraph, Tokscale, and multi-agent support. These checks only detect issues; they never install
+tools or change related configuration by themselves.
 
-When tools need installation or upgrade, Codex and Cursor show the affected tools and end or block
-that first turn before model work continues. Copilot tells the agent to name the affected tools,
-request consent without showing the underlying commands, and end its turn. After consent, the
-plugin-private allowlisted runner applies each supported native action; unsupported actions return
-official manual guidance. This maintenance workflow remains plugin-private and is never copied into
-project snapshots.
+When missing or outdated tools are detected, SmartKit first lists the affected items and asks the
+user. It continues only after explicit consent; items that cannot be handled automatically include
+manual instructions.
 
-## Repository layout
+## Typical workflow
 
 ```text
-skills/                         Plugin-visible control plane; only setup-project-agents
-hooks/                          Plugin-owned lifecycle Hook definitions
-runtime/recommended-tools/      Private Hook executables; never a discoverable Skill
-policies/recommended-tools/     Shared recommended-tool policies
-setup-assets/catalog/           Asset, configuration, and lock contracts
-setup-assets/rules/             Rules installed into target repositories
-setup-assets/skills/            Skill documents installed into target repositories
-setup-assets/agents/            Agent prompts installed into target repositories
-setup-assets/blueprints/        Contracts for target-owned Rules and Skills
-setup-assets/templates/         Host configuration and wrapper templates
-docs/zh-CN/                     Simplified-Chinese documentation
-.agents/rules/                  This repository's own development rules
-.agents/skills/                 Thin local wrappers for write-rule and write-skill
-.agents/plugins/                This repository's local plugin marketplace configuration
+Install SmartKit → run setup-project-agents in the project → review generated content → start working
 ```
 
-Plugin manifests expose only `skills/` and the host Hook entry points. They do not expose
-`runtime/`, `policies/`, or `setup-assets/`. `docs/zh-CN/` is documentation only and is never loaded
-or installed.
+If a check reports that tools need to be installed or upgraded, confirm the tool names and actions
+before deciding whether to grant permission.
