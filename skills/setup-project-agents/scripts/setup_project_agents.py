@@ -36,6 +36,11 @@ _MODEL_KEYS = {
     Platform.CURSOR: 'cursor',
     Platform.COPILOT: 'github',
 }
+_MODEL_WRAPPER_IDS = {
+    Platform.CODEX: 'wrapper-agent-codex',
+    Platform.CURSOR: 'wrapper-agent-cursor',
+    Platform.COPILOT: 'wrapper-agent-copilot',
+}
 
 
 class SetupError(ValueError):
@@ -112,7 +117,7 @@ def _request(
     target: Path,
     source_root: Path,
 ) -> dict[str, object]:
-    model_requests = _model_requests(config)
+    model_requests = _model_requests(config, catalog)
     blueprint_assets = {
         asset.target: asset
         for asset in catalog.assets
@@ -151,17 +156,31 @@ def _request(
     }
 
 
-def _model_requests(config: ProjectConfig) -> list[dict[str, object]]:
-    return [
-        {
-            'agent': agent,
-            'platform': platform.value,
-            'model_key': _MODEL_KEYS[platform],
-            'required_fields': ['model'],
-        }
-        for agent in sorted(config.selected_agents)
-        for platform in sorted(config.platforms, key=lambda item: item.value)
-    ]
+def _model_requests(
+    config: ProjectConfig,
+    catalog: Catalog,
+) -> list[dict[str, object]]:
+    assets = {asset.id: asset for asset in catalog.assets}
+    requests: list[dict[str, object]] = []
+    for agent in sorted(config.selected_agents):
+        for platform in sorted(config.platforms, key=lambda item: item.value):
+            wrapper = assets.get(_MODEL_WRAPPER_IDS[platform])
+            if (
+                wrapper is None
+                or wrapper.target is None
+                or '{agent-name}' not in wrapper.target.as_posix()
+            ):
+                raise SetupError(
+                    f'catalog does not declare the {platform.value} agent wrapper target'
+                )
+            requests.append({
+                'agent': agent,
+                'platform': platform.value,
+                'model_key': _MODEL_KEYS[platform],
+                'config_path': wrapper.target.as_posix().replace('{agent-name}', agent),
+                'required_fields': ['model'],
+            })
+    return requests
 
 
 def _selected_request_ids(
@@ -241,7 +260,7 @@ def _request_config(
             {'external': request['external_skills']}, catalog
         )
         config = ProjectConfig(1, platforms, *selections, external_skills)
-        if request['model_requests'] != _model_requests(config):
+        if request['model_requests'] != _model_requests(config, catalog):
             raise ValueError
     except (KeyError, TypeError, ValueError, SetupError) as error:
         raise SetupError('session request has invalid setup choices') from error
@@ -286,11 +305,13 @@ def _generated_root(session: Path) -> Path:
 def _models_for_rendering(
     models: Mapping[str, object],
     config: ProjectConfig,
+    *,
+    catalog: Catalog,
 ) -> Mapping[str, object]:
     agents = models.get('agents')
     if not isinstance(agents, Mapping):
         raise SetupError('models must contain an agents object')
-    for request in _model_requests(config):
+    for request in _model_requests(config, catalog):
         agent_name = request['agent']
         platform_name = request['platform']
         model_key = request['model_key']
@@ -412,7 +433,11 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
     models_path = Path(args.models).absolute()
     if models_path != session / 'models.json':
         raise SetupError('models path must be SESSION/models.json')
-    models = _models_for_rendering(_read_json(models_path, 'models'), config)
+    models = _models_for_rendering(
+        _read_json(models_path, 'models'),
+        config,
+        catalog=catalog,
+    )
     rendered = render_desired_state(
         args.source_root,
         project.root,

@@ -5,9 +5,10 @@ description: Use when initializing or updating a repository with the Agents Rule
 
 # Setup Project Agents
 
-Run the script-backed setup workflow for one target repository. The agent chooses platforms and
-models, authors the requested project-specific content, reviews it, and consumes the structured
-result; the scripts own every deterministic setup operation.
+Run the script-backed setup workflow for one target repository. The agent chooses platforms and any
+models that the target does not already define, authors the requested project-specific content,
+reviews it, and consumes the structured result; the scripts own every deterministic setup
+operation.
 
 ## Ownership
 
@@ -20,7 +21,8 @@ this workflow.
 
 The agent may edit only these workflow inputs:
 
-- the empty requested model values in the reported `models.json`;
+- any requested model values the user explicitly changes and empty values that remain in the
+  reported `models.json`;
 - the three Rule and two Skill targets listed by `generation_requests` under the reported
   `generated` directory.
 
@@ -46,9 +48,11 @@ Do not edit `request.json` or create another models or generated root.
    From the single JSON result, record `session` as `SESSION` and use its reported request, models,
    generated, and source paths.
 
-2. Read `SESSION/request.json`. Fill each empty required `model` in the reported `models.json` at
-   the requested agent and `model_key`. Codex optional `model_reasoning_effort` and `sandbox_mode`
-   values are strings; Cursor optional `readonly` is Boolean.
+2. Read `SESSION/request.json` and the reported `models.json`. Start preserves model settings from
+   existing platform Agent configurations. Keep every prefilled value unless the user explicitly
+   changes it, and fill each remaining empty required `model` at the requested agent and
+   `model_key`. Codex optional `model_reasoning_effort` and `sandbox_mode` values are strings;
+   Cursor optional `readonly` is Boolean.
 
 3. Resolve the reported `source_root` as `SOURCE_ROOT`. Read the complete authoring contracts at
    `SOURCE_ROOT/setup-assets/skills/write-rule/SKILL.md` and

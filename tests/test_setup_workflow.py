@@ -154,6 +154,61 @@ class SetupWorkflowTest(unittest.TestCase):
                 generated_resource.read_bytes(), generated_resource_content
             )
 
+    def test_start_prefills_existing_platform_models_and_optional_values(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            origin = self.make_origin(root)
+            target = root / 'target'
+            codex = target / '.codex/agents/change-set-verifier.toml'
+            cursor = target / '.cursor/agents/change-set-verifier.md'
+            copilot = target / '.github/agents/change-set-verifier.agent.md'
+            for path in (codex, cursor, copilot):
+                path.parent.mkdir(parents=True, exist_ok=True)
+            codex.write_text(
+                'model = "gpt-5.6-terra"\n'
+                'model_reasoning_effort = "medium"\n'
+                'sandbox_mode = "workspace-write"\n',
+                encoding='utf-8',
+            )
+            cursor.write_text(
+                '---\nmodel: cursor-existing\nreadonly: true\n---\n',
+                encoding='utf-8',
+            )
+            copilot.write_text(
+                '---\nmodel: copilot-existing\n---\n',
+                encoding='utf-8',
+            )
+            output = StringIO()
+
+            with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        workflow.main([
+                            'start', '--target', str(target),
+                            '--platform', 'codex', '--platform', 'cursor',
+                            '--platform', 'copilot',
+                        ]),
+                        0,
+                    )
+
+            session = Path(json.loads(output.getvalue())['session'])
+            models = json.loads((session / 'models.json').read_text(encoding='utf-8'))
+            self.assertEqual(models, {'agents': {'change-set-verifier': {
+                'codex': {
+                    'model': 'gpt-5.6-terra',
+                    'model_reasoning_effort': 'medium',
+                    'sandbox_mode': 'workspace-write',
+                },
+                'cursor': {'model': 'cursor-existing', 'readonly': True},
+                'github': {'model': 'copilot-existing'},
+            }}})
+            with redirect_stdout(StringIO()):
+                self.assertEqual(
+                    workflow.main(['cancel', '--session', str(session)]),
+                    0,
+                )
+            self.assertFalse(session.exists())
+
     def test_finish_failure_reports_error_cleans_session_and_does_not_write_target(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

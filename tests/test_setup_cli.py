@@ -136,6 +136,7 @@ class SetupCliTest(unittest.TestCase):
                         'agent': 'change-set-verifier',
                         'platform': 'cursor',
                         'model_key': 'cursor',
+                        'config_path': '.cursor/agents/change-set-verifier.md',
                         'required_fields': ['model'],
                     }
                 ],

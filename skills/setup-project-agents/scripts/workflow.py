@@ -11,9 +11,11 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import bootstrap
+from agents_setup.project import ProjectError, confined_target
+from agents_setup.structured import StructuredConfigError, parse_document
 
 
 _SESSION_PREFIX = 'setup-project-agents-'
@@ -125,11 +127,84 @@ def _read_json(path: Path, label: str) -> Mapping[str, object]:
     return document
 
 
+def _frontmatter(content: str) -> dict[str, object]:
+    lines = content.splitlines()
+    if not lines or lines[0].strip() != '---':
+        return {}
+    result: dict[str, object] = {}
+    for line in lines[1:]:
+        if line.strip() == '---':
+            return result
+        key, separator, raw_value = line.partition(':')
+        if not separator:
+            continue
+        key = key.strip()
+        value = raw_value.strip()
+        if key == 'readonly' and value.lower() in {'true', 'false'}:
+            result[key] = value.lower() == 'true'
+        elif key == 'model':
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+                value = value[1:-1]
+            result[key] = value
+    return {}
+
+
+def _existing_model_values(
+    target: Path,
+    item: Mapping[str, object],
+) -> dict[str, object]:
+    platform = item.get('platform')
+    config_path = item.get('config_path')
+    if (
+        platform not in {'codex', 'cursor', 'copilot'}
+        or not isinstance(config_path, str)
+        or not config_path
+    ):
+        raise WorkflowError('session request contains an invalid model config path')
+    try:
+        path = confined_target(target, PurePosixPath(config_path))
+    except ProjectError as error:
+        raise WorkflowError(str(error)) from error
+    if not path.exists():
+        return {}
+    if not path.is_file():
+        raise WorkflowError(f'existing model config is not a regular file: {config_path}')
+    try:
+        content = path.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError) as error:
+        raise WorkflowError(f'cannot read existing model config: {config_path}') from error
+    if platform == 'codex':
+        try:
+            document = parse_document(content, 'toml')
+        except StructuredConfigError:
+            return {}
+        values = {
+            key: document[key]
+            for key in ('model', 'model_reasoning_effort', 'sandbox_mode')
+            if isinstance(document.get(key), str)
+        }
+    else:
+        document = _frontmatter(content)
+        values = {
+            key: document[key]
+            for key in (('model', 'readonly') if platform == 'cursor' else ('model',))
+            if key in document
+        }
+    model = values.get('model')
+    if not isinstance(model, str) or not model.strip():
+        values.pop('model', None)
+    return values
+
+
 def _models_template(request: Mapping[str, object]) -> dict[str, object]:
     requests = request.get('model_requests')
     if not isinstance(requests, list):
         raise WorkflowError('session request model_requests must be an array')
-    agents: dict[str, dict[str, dict[str, str]]] = {}
+    target_value = request.get('target')
+    if not isinstance(target_value, str) or not target_value:
+        raise WorkflowError('session request target is invalid')
+    target = Path(target_value).absolute()
+    agents: dict[str, dict[str, dict[str, object]]] = {}
     seen: set[tuple[str, str]] = set()
     for item in requests:
         if not isinstance(item, Mapping):
@@ -142,7 +217,9 @@ def _models_template(request: Mapping[str, object]) -> dict[str, object]:
         if identity in seen:
             raise WorkflowError('session request contains duplicate model requests')
         seen.add(identity)
-        agents.setdefault(agent, {})[model_key] = {'model': ''}
+        values = {'model': ''}
+        values.update(_existing_model_values(target, item))
+        agents.setdefault(agent, {})[model_key] = values
     return {'agents': agents}
 
 

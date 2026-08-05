@@ -5,8 +5,8 @@ description: Use when initializing or updating a repository with the Agents Rule
 
 # Setup Project Agents
 
-为一个目标仓库运行由脚本支持的 setup 工作流。Agent 选择平台和模型、创作请求的项目专属内容、
-审查内容并消费结构化结果；脚本负责所有确定性 setup 操作。
+为一个目标仓库运行由脚本支持的 setup 工作流。Agent 选择平台和目标尚未定义的模型、创作请求的
+项目专属内容、审查内容并消费结构化结果；脚本负责所有确定性 setup 操作。
 
 ## 所有权
 
@@ -17,7 +17,7 @@ description: Use when initializing or updating a repository with the Agents Rule
 
 Agent 只能编辑这些工作流输入：
 
-- 返回的 `models.json` 中请求的空模型值；
+- 用户明确修改的模型值，以及返回的 `models.json` 中仍为空的请求模型值；
 - 返回的 `generated` 目录下 `generation_requests` 列出的三个 Rule 和两个 Skill 目标。
 
 不要编辑 `request.json`，也不要创建另一个 models 或 generated 根目录。
@@ -40,9 +40,10 @@ Agent 只能编辑这些工作流输入：
    Windows 使用相同参数调用 `setup_project_agents.ps1`。结果非零时停止。从单个 JSON 结果中把
    `session` 记录为 `SESSION`，并使用其中返回的 request、models、generated 和 source 路径。
 
-2. 读取 `SESSION/request.json`。根据请求的 agent 和 `model_key`，填写返回的 `models.json` 中
-   每个空的必填 `model`。Codex 可选的 `model_reasoning_effort` 和 `sandbox_mode` 是字符串；
-   Cursor 可选的 `readonly` 是布尔值。
+2. 读取 `SESSION/request.json` 和返回的 `models.json`。start 会保留现有平台 Agent 配置中的
+   模型设置。除非用户明确修改，否则保留每个预填值；根据请求的 agent 和 `model_key` 填写仍为空的
+   必填 `model`。Codex 可选的 `model_reasoning_effort` 和 `sandbox_mode` 是字符串；Cursor
+   可选的 `readonly` 是布尔值。
 
 3. 把返回的 `source_root` 解析为 `SOURCE_ROOT`。读取
    `SOURCE_ROOT/setup-assets/skills/write-rule/SKILL.md` 和
