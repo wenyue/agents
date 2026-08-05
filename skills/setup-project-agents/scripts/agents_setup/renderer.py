@@ -270,8 +270,6 @@ def render_desired_state(
         if asset.kind == 'template' and asset.target and _format_for(asset.target):
             format_name = _format_for(asset.target)
             assert format_name is not None
-            if asset.id == 'config-codex-dart-mcp' and not any(target_root.rglob('pubspec.yaml')):
-                continue
             template = _load_structured(source_root / asset.source, format_name)
             try:
                 target_path = confined_target(target_root, asset.target)

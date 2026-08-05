@@ -139,11 +139,11 @@ class PluginManifestTest(unittest.TestCase):
     def test_project_catalog_matches_native_plugin_version(self):
         catalog = load_json('setup-assets/catalog/assets.json')
         self.assertEqual(catalog['plugin']['id'], 'smartkit')
-        self.assertEqual(catalog['plugin']['version'], '0.1.1')
+        self.assertEqual(catalog['plugin']['version'], '0.1.2')
 
     def test_repository_root_is_the_only_plugin_root(self):
         version = (REPO_ROOT / 'VERSION').read_text(encoding='utf-8').strip()
-        self.assertEqual(version, '0.1.1')
+        self.assertEqual(version, '0.1.2')
         manifests = (
             REPO_ROOT / '.codex-plugin' / 'plugin.json',
             REPO_ROOT / '.cursor-plugin' / 'plugin.json',
@@ -166,14 +166,17 @@ class PluginManifestTest(unittest.TestCase):
         self.assertFalse((REPO_ROOT / 'agents' / 'skills').exists())
 
     def test_local_marketplaces_point_at_the_repository_root(self):
+        version = (REPO_ROOT / 'VERSION').read_text(encoding='utf-8').strip()
         for relative in (
             '.cursor-plugin/marketplace.json',
             '.github/plugin/marketplace.json',
         ):
             marketplace = load_json(relative)
             self.assertEqual(marketplace['name'], 'wenyue')
+            self.assertEqual(marketplace['metadata']['version'], version)
             self.assertEqual(marketplace['plugins'][0]['name'], 'smartkit')
             self.assertEqual(marketplace['plugins'][0]['source'], './')
+            self.assertEqual(marketplace['plugins'][0]['version'], version)
         codex = load_json('.agents/plugins/marketplace.json')
         self.assertEqual(codex['name'], 'wenyue')
         self.assertEqual(codex['interface']['displayName'], 'WenYue SmartKit')
@@ -198,7 +201,15 @@ class PluginManifestTest(unittest.TestCase):
             for path in (REPO_ROOT / 'skills').iterdir()
             if path.is_dir()
         }
-        self.assertEqual(plugin_skills, {'setup-project-agents'})
+        self.assertEqual(plugin_skills, {'debug-mode', 'setup-project-agents'})
+        self.assertTrue((REPO_ROOT / 'skills/debug-mode/SKILL.md').is_file())
+        self.assertTrue((REPO_ROOT / 'skills/debug-mode/LICENSE').is_file())
+        self.assertTrue(
+            (
+                REPO_ROOT
+                / 'skills/setup-project-agents/scripts/_vendor/tomli/__init__.py'
+            ).is_file()
+        )
         self.assertFalse((REPO_ROOT / 'agents').exists())
         self.assertFalse((REPO_ROOT / 'rules').exists())
         self.assertFalse(any((REPO_ROOT / 'runtime').rglob('SKILL.md')))

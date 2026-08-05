@@ -7,9 +7,10 @@ evolution, and test contracts for this repository.
 
 ## Plugin Ownership
 
-- Treat `skills/setup-project-agents/` as the plugin-visible control plane and keep it as the only
-  Skill under root `skills/`. Treat `setup-assets/rules/`, `setup-assets/skills/`, and
-  `setup-assets/agents/` as the English sources installed into target repositories by setup.
+- Treat root `skills/` as plugin-visible capability. `skills/setup-project-agents/` owns the setup
+  control plane, while other root Skills such as `debug-mode` are used directly from the plugin and
+  are not installed into target repositories. Treat `setup-assets/rules/`, `setup-assets/skills/`,
+  and `setup-assets/agents/` as the English sources installed into target repositories by setup.
 - Keep recommended-tool Hook executables in `runtime/recommended-tools/` without a `SKILL.md`, and
   keep their authoritative declarations in `policies/recommended-tools/`. They remain plugin-private
   and setup must not copy them into target repositories.

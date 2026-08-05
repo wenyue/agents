@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Cross-platform project agent workflows",
-    "version": "0.1.1"
+    "version": "0.1.2"
   },
   "plugins": [
     {
       "name": "smartkit",
       "source": "./",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "Install and maintain shared project-agent workflows across repositories."
     }
   ]

@@ -103,7 +103,7 @@ class SetupRendererTest(unittest.TestCase):
             self.assertIn('.agents/rules/00-global-rule-config.md', copilot_wrapper.decode())
             validate_rendered_state(rendered)
 
-    def test_rendered_project_config_round_trips_and_owns_only_version(self):
+    def test_rendered_project_config_includes_schema_and_round_trips(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -114,18 +114,26 @@ class SetupRendererTest(unittest.TestCase):
             loaded = load_project_config(target / '.agents/config.json', catalog=self.catalog)
 
             self.assertEqual(loaded.version, 1)
+            rendered_config = json.loads(
+                rendered.files_by_path['.agents/config.json'].decode()
+            )
+            self.assertEqual(
+                rendered_config['$schema'],
+                'https://raw.githubusercontent.com/wenyue/agents/main/'
+                'setup-assets/catalog/project-config.schema.json',
+            )
             self.assertEqual(
                 {
                     key
                     for path, key in rendered.fields_by_key
                     if path == '.agents/config.json'
                 },
-                {'version'},
+                {'$schema', 'version'},
             )
 
     def test_unsafe_structured_template_field_is_rejected(self):
         with self.assertRaisesRegex(RenderError, 'unsafe template field'):
-            tuple(_safe_leaves({'$schema': 'control-plane/path'}))
+            tuple(_safe_leaves({'unsafe/key': 'control-plane/path'}))
 
     def test_existing_toml_inline_tables_are_preserved(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -171,6 +179,19 @@ class SetupRendererTest(unittest.TestCase):
                 'npx',
             )
             self.assertEqual(tomllib.loads(content)['intentionally_empty'], {})
+
+    def test_dart_project_does_not_receive_project_specific_mcp_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            (target / 'pubspec.yaml').write_text('name: example\n', encoding='utf-8')
+
+            rendered = self.render(target, self.generated_tree(root))
+            parsed = tomllib.loads(rendered.files_by_path['.codex/config.toml'].decode())
+
+            self.assertNotIn('mcp_servers', parsed)
+            self.assertNotIn('.codex/config.dart-mcp.toml', rendered.files_by_path)
 
     def test_existing_jsonc_trailing_commas_do_not_change_string_values(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -356,7 +377,7 @@ class SetupRendererTest(unittest.TestCase):
                     for path, key in rendered.fields_by_key
                     if path == '.agents/config.json'
                 },
-                {'version'},
+                {'$schema', 'version'},
             )
 
     def test_force_convergence_overwrites_conflicting_owned_config_field(self):

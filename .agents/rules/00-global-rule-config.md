@@ -29,7 +29,7 @@ that reference the source.
 | --- | --- |
 | Repository development rules | `.agents/rules/<nn>-<name>.md` |
 | Repository-local Skill discovery wrappers | `.agents/skills/<skill>/SKILL.md` |
-| Plugin setup Skill | `skills/setup-project-agents/SKILL.md` |
+| Plugin-visible Skills | `skills/<skill>/SKILL.md` |
 | Setup-managed shared Rules | `setup-assets/rules/<nn>-<name>.md` |
 | Setup-managed shared Skills | `setup-assets/skills/<skill>/SKILL.md` |
 | Setup-managed shared agent prompts | `setup-assets/agents/<name>.md` |

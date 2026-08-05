@@ -1,11 +1,16 @@
 {
   "plugin": {
     "id": "smartkit",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "repository": "https://github.com/wenyue/agents.git",
     "ref": "main"
   },
-  "retired_assets": [".agents/lock.json"],
+  "retired_assets": [
+    ".agents/lock.json",
+    ".agents/skills/setup-project-agents",
+    ".codex/config.dart-mcp.toml",
+    ".github/hooks/project-agent-tool-check.json"
+  ],
   "assets": [
     {"id": "00-global-rule-config", "kind": "rule", "source": "setup-assets/rules/00-global-rule-config.md", "target": ".agents/rules/00-global-rule-config.md", "metadata": {"section": "global", "read_when": "Starting any repository task", "strength": "Mandatory", "cursor": {"description": "[mandatory] Rule strength, conflict precedence, and shared config policy", "alwaysApply": true}, "github": {"applyTo": "**"}}},
     {"id": "01-global-personality", "kind": "rule", "source": "setup-assets/rules/01-global-personality.md", "target": ".agents/rules/01-global-personality.md", "metadata": {"section": "global", "read_when": "Starting any repository task", "strength": "Default", "cursor": {"description": "[default] Agent reasoning, judgment, collaboration, and temperament", "alwaysApply": true}, "github": {"applyTo": "**"}}},
@@ -34,7 +39,6 @@
     {"id": "entry-agents", "kind": "template", "source": "setup-assets/templates/entry-files/AGENTS.md", "target": "AGENTS.md", "mode": "render"},
     {"id": "config-agents", "kind": "template", "source": "setup-assets/templates/platform-config/agents.config.json", "target": ".agents/config.json", "mode": "render"},
     {"id": "config-codex", "kind": "template", "source": "setup-assets/templates/platform-config/codex.config.toml", "target": ".codex/config.toml", "platforms": ["codex"], "mode": "render"},
-    {"id": "config-codex-dart-mcp", "kind": "template", "source": "setup-assets/templates/platform-config/codex.dart-mcp.toml", "target": ".codex/config.dart-mcp.toml", "platforms": ["codex"], "mode": "render"},
     {"id": "config-codex-rules", "kind": "template", "source": "setup-assets/templates/platform-config/codex.rules", "target": ".codex/rules/setup-project-agents.rules", "platforms": ["codex"], "mode": "render"},
     {"id": "config-cursor-cli", "kind": "template", "source": "setup-assets/templates/platform-config/cursor.cli.json", "target": ".cursor/cli.json", "platforms": ["cursor"], "mode": "render"},
     {"id": "config-copilot-settings", "kind": "template", "source": "setup-assets/templates/platform-config/copilot.settings.json", "target": ".github/copilot/settings.json", "platforms": ["copilot"], "mode": "render"},

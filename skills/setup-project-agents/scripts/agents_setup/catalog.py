@@ -73,6 +73,8 @@ def _name(value: object, label: str) -> str:
 def safe_field_key(value: object, label: str) -> str:
     if not isinstance(value, str):
         raise ContractError(f'{label} must be a dotted safe name')
+    if value == '$schema':
+        return value
     for segment in value.split('.'):
         if not _FIELD_NAME.fullmatch(segment):
             raise ContractError(f'{label} must be a dotted safe name')

@@ -9,7 +9,7 @@ from pathlib import PurePosixPath
 
 try:
     import tomllib
-except ModuleNotFoundError:  # Python 3.11+ uses the standard library module.
+except ModuleNotFoundError:  # Python 3.11+ provides the standard library module.
     from _vendor import tomli as tomllib
 
 

@@ -7,9 +7,9 @@ tooling boundaries.
 
 ## Runtime
 
-- Run repository-owned scripts from the repository root with Python 3.11 or newer.
-- The Python scripts use the standard library, including `tomllib`; the repository declares no
-  dependency installation or environment preparation step.
+- Run repository-owned scripts from the repository root with Python 3.10 or newer.
+- The Python scripts use the standard library and a vendored `tomli` fallback for Python 3.10; the
+  repository declares no dependency installation or environment preparation step.
 - Treat package managers, formatters, automatic fixers, analyzers, linters, build and packaging
   commands, runtime services, ports, credentials, and health checks as unavailable until repository
   evidence declares them.

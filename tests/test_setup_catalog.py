@@ -339,7 +339,7 @@ class SetupCatalogTest(unittest.TestCase):
             '.cursor/rules/{rule-name}.mdc',
         )
 
-    def test_external_skills_and_retired_assets_are_current_contracts(self):
+    def test_project_external_skills_are_current_contracts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / 'config.json'
             path.write_text(
@@ -366,10 +366,6 @@ class SetupCatalogTest(unittest.TestCase):
             self.assertEqual(
                 config.external_skills[0].path.as_posix(),
                 'plugins/sentry/skills/sentry-debug-issue',
-            )
-            self.assertIn(
-                '.agents/lock.json',
-                {item.as_posix() for item in load_catalog(REPO_ROOT).retired_assets},
             )
             path.write_text(
                 json.dumps(
