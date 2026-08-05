@@ -170,6 +170,11 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                     'match_path': 'pluginId',
                     'match_value': 'superpowers@openai-curated',
                     'value_path': 'version',
+                    'fallback_manifest_glob': (
+                        '{home}/.codex/plugins/cache/openai-curated-remote/'
+                        'superpowers/*/.codex-plugin/plugin.json'
+                    ),
+                    'fallback_manifest_json_path': 'version',
                 }
             ],
             'cursor': [
@@ -286,6 +291,36 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         missing_process.wait.return_value = 0
         with mock.patch.object(checker.subprocess, 'Popen', return_value=missing_process):
             self.assertIsNone(checker.run_detector(detector))
+
+    def test_json_item_detector_uses_manifest_version_for_opaque_marketplace_revision(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manifest = Path(temp_dir) / 'plugin.json'
+            manifest.write_text('{"version":"6.2.0"}\n', encoding='utf-8')
+            installed_plugins = {
+                'installed': [{
+                    'pluginId': 'superpowers@openai-curated',
+                    'version': 'bd2122cb',
+                    'installed': True,
+                    'enabled': True,
+                }]
+            }
+            process = mock.Mock()
+            process.stdout = io.BytesIO(json.dumps(installed_plugins).encode('utf-8'))
+            process.wait.return_value = 0
+            detector = {
+                'kind': 'json-command-item',
+                'command': ['codex', 'plugin', 'list', '--json'],
+                'items_path': 'installed',
+                'match_path': 'pluginId',
+                'match_value': 'superpowers@openai-curated',
+                'value_path': 'version',
+                'fallback_manifest_glob': str(manifest),
+                'fallback_manifest_json_path': 'version',
+            }
+
+            with mock.patch.object(checker.subprocess, 'Popen', return_value=process):
+                self.assertEqual(checker.run_detector(detector), '6.2.0')
 
     def test_command_detector_resolves_path_entry_before_python_subprocess(self):
         checker = self.checker
@@ -770,6 +805,11 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             self.assertIn('Do not show the underlying maintenance commands', message)
             self.assertIn('maintain_recommended_tools.py', message)
             self.assertIn('plugin Hook support, not an exposed Skill', message)
+        self.assertIn(
+            'the named tool is a Codex plugin',
+            messages[0],
+        )
+        self.assertIn('use an available Codex plugin-management tool', messages[0])
 
     def test_live_lock_suppresses_duplicate_and_stale_lock_is_reclaimed(self):
         checker = self.checker

@@ -43,7 +43,9 @@
           "items_path": "installed",
           "match_path": "pluginId",
           "match_value": "superpowers@openai-curated",
-          "value_path": "version"
+          "value_path": "version",
+          "fallback_manifest_glob": "{home}/.codex/plugins/cache/openai-curated-remote/superpowers/*/.codex-plugin/plugin.json",
+          "fallback_manifest_json_path": "version"
         }
       ],
       "install": "Install Superpowers from the Codex plugin marketplace.",

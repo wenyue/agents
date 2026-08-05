@@ -139,11 +139,11 @@ class PluginManifestTest(unittest.TestCase):
     def test_project_catalog_matches_native_plugin_version(self):
         catalog = load_json('setup-assets/catalog/assets.json')
         self.assertEqual(catalog['plugin']['id'], 'smartkit')
-        self.assertEqual(catalog['plugin']['version'], '0.1.2')
+        self.assertEqual(catalog['plugin']['version'], '0.1.3')
 
     def test_repository_root_is_the_only_plugin_root(self):
         version = (REPO_ROOT / 'VERSION').read_text(encoding='utf-8').strip()
-        self.assertEqual(version, '0.1.2')
+        self.assertEqual(version, '0.1.3')
         manifests = (
             REPO_ROOT / '.codex-plugin' / 'plugin.json',
             REPO_ROOT / '.cursor-plugin' / 'plugin.json',

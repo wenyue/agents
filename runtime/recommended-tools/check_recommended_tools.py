@@ -155,6 +155,24 @@ def _run_command(command: list[str], timeout: float) -> str | None:
     return captured.decode('utf-8', errors='replace')
 
 
+def _read_manifest_version(pattern: str, json_path: str) -> str | None:
+    candidates = sorted(glob.glob(_expand(pattern)), reverse=True)
+    unreadable = False
+    for candidate in candidates:
+        try:
+            parsed = json.loads(Path(candidate).read_text(encoding='utf-8'))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            unreadable = True
+            continue
+        value = _json_path(parsed, json_path)
+        if isinstance(value, (str, int, float)):
+            return str(value)
+        unreadable = True
+    if unreadable:
+        raise VersionUnreadable('manifest contains no usable version')
+    return None
+
+
 def run_detector(detector: dict[str, Any]) -> str | None:
     if not isinstance(detector, dict):
         raise PolicyError('detector must be an object')
@@ -167,21 +185,7 @@ def run_detector(detector: dict[str, Any]) -> str | None:
         json_path = detector.get('json_path')
         if not isinstance(pattern, str) or not isinstance(json_path, str):
             raise PolicyError('manifest detector requires glob and json_path')
-        candidates = sorted(glob.glob(_expand(pattern)), reverse=True)
-        unreadable = False
-        for candidate in candidates:
-            try:
-                parsed = json.loads(Path(candidate).read_text(encoding='utf-8'))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                unreadable = True
-                continue
-            value = _json_path(parsed, json_path)
-            if isinstance(value, (str, int, float)):
-                return str(value)
-            unreadable = True
-        if unreadable:
-            raise VersionUnreadable('manifest contains no usable version')
-        return None
+        return _read_manifest_version(pattern, json_path)
     if kind in {'command-regex', 'json-command', 'json-command-item'}:
         command = detector.get('command')
         if (
@@ -219,6 +223,20 @@ def run_detector(detector: dict[str, Any]) -> str | None:
             items = _json_path(parsed_output, detector['items_path'])
             if not isinstance(items, list):
                 raise VersionUnreadable('JSON command output contains no usable item list')
+            fallback_glob = detector.get('fallback_manifest_glob')
+            fallback_json_path = detector.get('fallback_manifest_json_path')
+            if (fallback_glob is None) != (fallback_json_path is None) or (
+                fallback_glob is not None
+                and (
+                    not isinstance(fallback_glob, str)
+                    or not fallback_glob
+                    or not isinstance(fallback_json_path, str)
+                    or not fallback_json_path
+                )
+            ):
+                raise PolicyError(
+                    'JSON command item manifest fallback requires glob and json path'
+                )
             matched = False
             for item in items:
                 if _json_path(item, detector['match_path']) != detector['match_value']:
@@ -226,7 +244,16 @@ def run_detector(detector: dict[str, Any]) -> str | None:
                 matched = True
                 value = _json_path(item, detector['value_path'])
                 if isinstance(value, (str, int, float)):
-                    return str(value)
+                    rendered = str(value)
+                    try:
+                        parse_version(rendered)
+                        return rendered
+                    except ValueError:
+                        pass
+                if fallback_glob is not None:
+                    fallback = _read_manifest_version(fallback_glob, fallback_json_path)
+                    if fallback is not None:
+                        return fallback
             if matched:
                 raise VersionUnreadable('matching JSON command item contains no usable version')
             return None
@@ -587,6 +614,14 @@ def _agent_consent_request(findings: str, platform: str) -> str:
     maintenance_runner = Path(__file__).resolve().with_name(
         'maintain_recommended_tools.py'
     )
+    plugin_fallback = (
+        ' If the runner reports that manual action is required and the named tool is a '
+        'Codex plugin, use an available Codex plugin-management tool for that plugin. If '
+        'no such tool is available, tell the user to complete the action in the Codex '
+        'Plugins interface.'
+        if platform == 'codex'
+        else ''
+    )
     return (
         f'{findings}\n'
         '[smartkit] If the user explicitly declines all listed tool actions, do not ask '
@@ -599,7 +634,7 @@ def _agent_consent_request(findings: str, platform: str) -> str:
         'consent, invoke the bundled internal maintenance runner at '
         f'{maintenance_runner} with apply, --platform {platform}, --tool TOOL_ID, '
         '--action install|upgrade, and --approved for only the named tool actions. This '
-        'runner is plugin Hook support, not an exposed Skill.'
+        f'runner is plugin Hook support, not an exposed Skill.{plugin_fallback}'
     )
 
 
