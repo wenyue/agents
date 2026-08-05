@@ -6,11 +6,12 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
 
 ## Repository Areas
 
-- `skills/` contains plugin-visible Skills, including the `setup-project-agents` control plane and
-  capabilities used directly from the plugin. `hooks/` contains the three host lifecycle entry
-  points.
+- `skills/` contains only the plugin-visible `setup-project-agents` control plane. `hooks/` contains
+  the three host lifecycle entry points.
 - `runtime/recommended-tools/` contains private Hook executables and no discoverable Skill.
   `policies/recommended-tools/` contains the declarations shared by that runtime and setup output.
+- `setup-assets/catalog/assets.json` declares setup-owned external project Skills that are fetched
+  into target `.agents/skills/` without becoming plugin Skills or target config entries.
 - `setup-assets/rules/`, `setup-assets/skills/`, and `setup-assets/agents/` contain content that
   becomes runtime capability only after setup installs it. `setup-assets/blueprints/` and
   `setup-assets/templates/` contain generation and rendering inputs, while `setup-assets/catalog/`
@@ -30,8 +31,9 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   runtime and policy files remain plugin-private.
 - Blueprints guide creation of complete target-owned Rules and Skills; they are not installed as
   runtime content themselves.
-- The setup control plane remains in `skills/setup-project-agents/`; other root Skills do not become
-  setup assets. Target changes have no reverse path into plugin runtime assets or documentation.
+- The setup control plane remains in `skills/setup-project-agents/`; catalog-managed external Skills
+  enter targets only through setup. Target changes have no reverse path into plugin runtime assets
+  or documentation.
 
 ## Dependency Direction
 

@@ -42,6 +42,7 @@ class SetupCatalogTest(unittest.TestCase):
         self.assertIn('refactor-code', config.selected_skills)
         self.assertNotIn('setup-project-agents', config.selected_skills)
         self.assertEqual(config.selected_agents, ('change-set-verifier',))
+        self.assertEqual([item.name for item in config.external_skills], ['debug-mode'])
 
     def test_catalog_rejects_escape_and_absolute_targets(self):
         for target in ('../escape', '/tmp/escape', 'C:/escape'):
@@ -362,9 +363,10 @@ class SetupCatalogTest(unittest.TestCase):
                 encoding='utf-8',
             )
             config = load_project_config(path, catalog=load_catalog(REPO_ROOT))
-            self.assertEqual(config.external_skills[0].name, 'sentry-debug-issue')
+            external = {item.name: item for item in config.external_skills}
+            self.assertEqual(set(external), {'debug-mode', 'sentry-debug-issue'})
             self.assertEqual(
-                config.external_skills[0].path.as_posix(),
+                external['sentry-debug-issue'].path.as_posix(),
                 'plugins/sentry/skills/sentry-debug-issue',
             )
             path.write_text(
@@ -386,6 +388,31 @@ class SetupCatalogTest(unittest.TestCase):
                 encoding='utf-8',
             )
             with self.assertRaisesRegex(ContractError, 'owner/name'):
+                load_project_config(path, catalog=load_catalog(REPO_ROOT))
+
+    def test_project_config_cannot_override_setup_managed_external_skill(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'config.json'
+            path.write_text(
+                json.dumps(
+                    {
+                        'version': 1,
+                        'skills': {
+                            'external': [
+                                {
+                                    'name': 'debug-mode',
+                                    'repository': 'example/debug-mode',
+                                    'ref': 'main',
+                                    'path': 'debug-mode',
+                                }
+                            ]
+                        },
+                    }
+                ),
+                encoding='utf-8',
+            )
+
+            with self.assertRaisesRegex(ContractError, 'setup-managed skill'):
                 load_project_config(path, catalog=load_catalog(REPO_ROOT))
 
 

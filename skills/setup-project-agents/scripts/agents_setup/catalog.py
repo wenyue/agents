@@ -33,7 +33,7 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     | {f'LPT{number}' for number in range(1, 10)}
 )
 _ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode', 'control_plane', 'metadata'})
-_CATALOG_FIELDS = frozenset({'plugin', 'assets', 'retired_assets'})
+_CATALOG_FIELDS = frozenset({'plugin', 'assets', 'retired_assets', 'external_skills'})
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
 _PROJECT_CONFIG_FIELDS = frozenset(
     {'$schema', 'version', 'selected_rules', 'selected_skills', 'selected_agents', 'skills'}
@@ -267,7 +267,20 @@ def load_catalog(source_root: Path) -> Catalog:
         raise ContractError('catalog has duplicate retired assets')
     if set(retired_assets).intersection(targets):
         raise ContractError('catalog asset cannot be active and retired')
-    return Catalog(plugin_id, plugin_version, repository, ref, assets, retired_assets)
+    catalog = Catalog(plugin_id, plugin_version, repository, ref, assets, retired_assets)
+    external_skills = parse_external_skills(
+        {'external': document.get('external_skills', [])},
+        catalog,
+    )
+    return Catalog(
+        plugin_id,
+        plugin_version,
+        repository,
+        ref,
+        assets,
+        retired_assets,
+        external_skills,
+    )
 
 
 def _selected(value: object, label: str, catalog: Catalog, kind: str) -> tuple[str, ...]:
@@ -328,7 +341,11 @@ def parse_external_skills(value: object, catalog: Catalog) -> tuple[ExternalSkil
     return tuple(result)
 
 
-def load_project_config(path: Path | None, *, catalog: Catalog) -> ProjectConfig:
+def load_project_config(
+    path: Path | None,
+    *,
+    catalog: Catalog,
+) -> ProjectConfig:
     document: Mapping[str, object]
     if path is None or not path.exists():
         document = {}
@@ -338,10 +355,20 @@ def load_project_config(path: Path | None, *, catalog: Catalog) -> ProjectConfig
     version = document.get('version', 1)
     if type(version) is not int or version != 1:
         raise ContractError('project config version must be 1')
+    project_external_skills = parse_external_skills(document.get('skills'), catalog)
+    managed_names = {item.name for item in catalog.external_skills}
+    conflicts = sorted(
+        item.name for item in project_external_skills if item.name in managed_names
+    )
+    if conflicts:
+        raise ContractError(
+            'project config external skill conflicts with setup-managed skill: '
+            + ', '.join(conflicts)
+        )
     return ProjectConfig(
         version,
         _selected(document.get('selected_rules'), 'selected_rules', catalog, 'rule'),
         _selected(document.get('selected_skills'), 'selected_skills', catalog, 'skill'),
         _selected(document.get('selected_agents'), 'selected_agents', catalog, 'agent'),
-        parse_external_skills(document.get('skills'), catalog),
+        (*catalog.external_skills, *project_external_skills),
     )

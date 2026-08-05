@@ -22,6 +22,7 @@ from agents_setup.models import (  # noqa: E402
     ProjectConfig,
 )
 from agents_setup.planner import build_plan  # noqa: E402
+from agents_setup.project import inspect_project  # noqa: E402
 from agents_setup.renderer import (  # noqa: E402
     RenderError,
     _copy_asset,
@@ -129,6 +130,103 @@ class SetupRendererTest(unittest.TestCase):
                     if path == '.agents/config.json'
                 },
                 {'$schema', 'version'},
+            )
+
+    def test_project_defaults_include_debug_mode_as_an_external_skill(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / 'target'
+
+            project = inspect_project(target, catalog=self.catalog)
+
+            self.assertEqual(
+                [
+                    (
+                        item.name,
+                        item.repository,
+                        item.ref,
+                        item.path.as_posix(),
+                    )
+                    for item in project.config.external_skills
+                ],
+                [
+                    (
+                        'debug-mode',
+                        'doraemonkeys/claude-code-debug-mode',
+                        'master',
+                        'debug-mode',
+                    )
+                ],
+            )
+
+    def test_setup_manages_debug_mode_without_adding_it_to_project_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            config_path = target / '.agents/config.json'
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text(
+                json.dumps(
+                    {
+                        'version': 1,
+                        'skills': {
+                            'external': [
+                                {
+                                    'name': 'local-check',
+                                    'repository': 'example/local-check',
+                                    'ref': 'main',
+                                    'path': 'skills/local-check',
+                                }
+                            ]
+                        },
+                    }
+                ),
+                encoding='utf-8',
+            )
+            project = inspect_project(target, catalog=self.catalog)
+            self.assertEqual(
+                [item.name for item in project.config.external_skills],
+                ['debug-mode', 'local-check'],
+            )
+            external_root = root / 'external'
+            for name in ('local-check', 'debug-mode'):
+                skill = external_root / name / 'SKILL.md'
+                skill.parent.mkdir(parents=True)
+                skill.write_text(
+                    f'---\nname: {name}\ndescription: Use for tests.\n---\n',
+                    encoding='utf-8',
+                )
+
+            rendered = render_desired_state(
+                REPO_ROOT,
+                target,
+                self.catalog,
+                project.config,
+                self.generated_tree(root),
+                self.models,
+                external_root,
+            )
+            rendered_config = json.loads(
+                rendered.files_by_path['.agents/config.json']
+            )
+
+            self.assertEqual(
+                rendered_config['skills']['external'],
+                [
+                    {
+                        'name': 'local-check',
+                        'repository': 'example/local-check',
+                        'ref': 'main',
+                        'path': 'skills/local-check',
+                    }
+                ],
+            )
+            self.assertIn(
+                '.agents/skills/debug-mode/SKILL.md',
+                rendered.files_by_path,
+            )
+            self.assertIn(
+                PurePosixPath('.agents/skills/debug-mode'),
+                rendered.replace_roots,
             )
 
     def test_unsafe_structured_template_field_is_rejected(self):

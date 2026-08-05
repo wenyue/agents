@@ -208,9 +208,8 @@ class PluginManifestTest(unittest.TestCase):
             for path in (REPO_ROOT / 'skills').iterdir()
             if path.is_dir()
         }
-        self.assertEqual(plugin_skills, {'debug-mode', 'setup-project-agents'})
-        self.assertTrue((REPO_ROOT / 'skills/debug-mode/SKILL.md').is_file())
-        self.assertTrue((REPO_ROOT / 'skills/debug-mode/LICENSE').is_file())
+        self.assertEqual(plugin_skills, {'setup-project-agents'})
+        self.assertFalse((REPO_ROOT / 'skills/debug-mode').exists())
         self.assertTrue(
             (
                 REPO_ROOT

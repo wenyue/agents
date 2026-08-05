@@ -142,7 +142,7 @@ class SetupWorkflowTest(unittest.TestCase):
             finish = json.loads(finish_output.getvalue())
             self.assertEqual(finish['phase'], 'finish')
             self.assertEqual(finish['check'], 'clean')
-            self.assertEqual(finish['external_skills'], [])
+            self.assertEqual(finish['external_skills'], ['debug-mode'])
             self.assertEqual(
                 finish['preserved_paths'],
                 [

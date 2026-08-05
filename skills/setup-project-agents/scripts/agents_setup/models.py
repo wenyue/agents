@@ -100,3 +100,4 @@ class Catalog:
     ref: str
     assets: tuple[AssetSpec, ...]
     retired_assets: tuple[PurePosixPath, ...] = ()
+    external_skills: tuple[ExternalSkillSpec, ...] = ()

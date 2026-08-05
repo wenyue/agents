@@ -93,13 +93,32 @@ class SetupCliTest(unittest.TestCase):
         )
         return path
 
-    def prepare(self, target: Path, session: Path, *extra: str) -> int:
-        return setup_project_agents.main(
-            [
-                'prepare', '--target', str(target), '--session', str(session),
-                *extra, *self.source_args(),
-            ]
-        )
+    @staticmethod
+    def snapshot_external_skills(specs, *, session: Path):
+        if not specs:
+            return None
+        root = session / 'external-skills'
+        for spec in specs:
+            skill = root / spec.name / 'SKILL.md'
+            skill.parent.mkdir(parents=True)
+            skill.write_text(
+                f'---\nname: {spec.name}\ndescription: Use for tests.\n---\n',
+                encoding='utf-8',
+            )
+        return root
+
+    def prepare(self, target: Path, session: Path, *extra: str, snapshot=None) -> int:
+        with mock.patch.object(
+            setup_project_agents,
+            'snapshot_external_skills',
+            side_effect=snapshot or self.snapshot_external_skills,
+        ):
+            return setup_project_agents.main(
+                [
+                    'prepare', '--target', str(target), '--session', str(session),
+                    *extra, *self.source_args(),
+                ]
+            )
 
     def test_prepare_rejects_removed_hooks_option(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -142,7 +161,17 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(request['source_root'], str(REPO_ROOT.absolute()))
             self.assertEqual(request['source_commit'], self.source_commit)
             self.assertEqual(request['platforms'], ['codex', 'cursor', 'copilot'])
-            self.assertEqual(request['external_skills'], [])
+            self.assertEqual(
+                request['external_skills'],
+                [
+                    {
+                        'name': 'debug-mode',
+                        'repository': 'doraemonkeys/claude-code-debug-mode',
+                        'ref': 'master',
+                        'path': 'debug-mode',
+                    }
+                ],
+            )
             self.assertNotIn('hooks_enabled', request)
             self.assertEqual(
                 request['model_requests'],
@@ -275,23 +304,26 @@ class SetupCliTest(unittest.TestCase):
             session = self.private_session(root)
 
             def snapshot(specs, *, session):
-                self.assertEqual([item.name for item in specs], ['external-check'])
-                destination = session / 'external-skills/external-check'
-                destination.mkdir(parents=True)
-                (destination / 'SKILL.md').write_text(
-                    '---\nname: external-check\ndescription: Use for checks.\n---\n',
-                    encoding='utf-8',
+                self.assertEqual(
+                    [item.name for item in specs],
+                    ['debug-mode', 'external-check'],
                 )
-                return destination.parent
+                destination = session / 'external-skills'
+                for name in ('external-check', 'debug-mode'):
+                    skill = destination / name / 'SKILL.md'
+                    skill.parent.mkdir(parents=True)
+                    skill.write_text(
+                        f'---\nname: {name}\ndescription: Use for checks.\n---\n',
+                        encoding='utf-8',
+                    )
+                return destination
 
-            with mock.patch.object(
-                setup_project_agents,
-                'snapshot_external_skills',
-                side_effect=snapshot,
-            ):
-                self.assertEqual(self.prepare(target, session), 0)
+            self.assertEqual(self.prepare(target, session, snapshot=snapshot), 0)
             request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
-            self.assertEqual(request['external_skills'][0]['name'], 'external-check')
+            self.assertEqual(
+                [item['name'] for item in request['external_skills']],
+                ['debug-mode', 'external-check'],
+            )
             self.write_generated_outputs(session)
             models = self.write_models(session)
             self.assertEqual(
@@ -480,7 +512,7 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(
                 apply_result['platforms'], ['codex', 'cursor', 'copilot']
             )
-            self.assertEqual(apply_result['external_skills'], [])
+            self.assertEqual(apply_result['external_skills'], ['debug-mode'])
             self.assertEqual(apply_result['preserved_paths'], [])
             self.assertEqual(
                 set(apply_result),
