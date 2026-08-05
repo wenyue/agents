@@ -34,6 +34,17 @@ copilot plugin install smartkit@wenyue
 需要更新 Copilot 插件时，先运行 `copilot plugin marketplace update wenyue`，再运行
 `copilot plugin update smartkit`。
 
+## 平台支持
+
+三个宿主都支持 Windows 和 Linux。初始化会为每个生成的 Agent 设置显式模型；宿主专属字段仍使用
+各自的原生形式。
+
+| 宿主 | Windows 推荐工具 Hook | Linux 推荐工具 Hook | 原生 Agent 字段 |
+| --- | --- | --- | --- |
+| Codex | PowerShell | POSIX sh | `model_reasoning_effort`、`sandbox_mode` |
+| Cursor | 通过 polyglot 分发器调用 PowerShell | 通过 polyglot 分发器调用 POSIX sh | `readonly` |
+| GitHub Copilot | `powershell` 处理器 | `bash` 处理器 | `disable-model-invocation` |
+
 ## 为每个项目执行设置
 
 进入目标仓库后，请 Agent 使用 `setup-project-agents` 完成初始化。初始化流程每次都会配置 Codex、

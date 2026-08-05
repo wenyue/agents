@@ -36,6 +36,17 @@ copilot plugin install smartkit@wenyue
 To update the Copilot plugin, run `copilot plugin marketplace update wenyue`, followed by
 `copilot plugin update smartkit`.
 
+## Platform support
+
+All three hosts support Windows and Linux. Setup gives every generated Agent an explicit model;
+host-specific fields remain native to that host.
+
+| Host | Windows recommended-tool Hook | Linux recommended-tool Hook | Native Agent fields |
+| --- | --- | --- | --- |
+| Codex | PowerShell | POSIX sh | `model_reasoning_effort`, `sandbox_mode` |
+| Cursor | Polyglot dispatcher to PowerShell | Polyglot dispatcher to POSIX sh | `readonly` |
+| GitHub Copilot | `powershell` handler | `bash` handler | `disable-model-invocation` |
+
 ## Set up each project
 
 In the target repository, ask the Agent to use `setup-project-agents` to initialize the project.

@@ -14,6 +14,14 @@ tooling boundaries.
   commands, runtime services, ports, credentials, and health checks as unavailable until repository
   evidence declares them.
 
+## Plugin Version
+
+- Treat root `VERSION` as the only manually maintained plugin version. After changing it, run
+  `python scripts/sync_plugin_version.py` and review the generated manifest, marketplace, and catalog
+  diffs as part of the same change set.
+- Use `python scripts/sync_plugin_version.py --check` for read-only drift detection; CI must reject
+  version fields that do not match `VERSION`.
+
 ## Verification Commands
 
 Use these repository-supported checks:

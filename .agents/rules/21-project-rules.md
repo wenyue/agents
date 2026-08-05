@@ -23,6 +23,10 @@ evolution, and test contracts for this repository.
 
 ## Documentation and Local Rules
 
+- Treat `README.md` and `docs/zh-CN/README.md` as public end-user documentation. Include only
+  information users need to install, configure, use, or troubleshoot the plugin; keep contributor
+  release, generation, repository-maintenance, and internal implementation instructions in their
+  owning project rules or tooling.
 - Treat `docs/zh-CN/` as Simplified-Chinese documentation. It is not a runtime source, plugin
   entry point, setup input, or target-installation asset.
 - Keep every Chinese translation one-to-one with its corresponding English source. Preserve the

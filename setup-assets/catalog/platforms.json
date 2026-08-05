@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "requiredOperatingSystems": ["windows", "linux"],
+  "platforms": {
+    "codex": {
+      "hookManifest": "hooks/hooks.json",
+      "hookEvent": "SessionStart",
+      "hookRoutes": {
+        "windows": "commandWindows",
+        "linux": "command"
+      },
+      "agentTemplate": "setup-assets/templates/wrappers/agent-wrappers/codex.toml"
+    },
+    "cursor": {
+      "hookManifest": "hooks/cursor.json",
+      "hookEvent": "sessionStart",
+      "hookRoutes": {
+        "windows": "dispatcher",
+        "linux": "dispatcher"
+      },
+      "agentTemplate": "setup-assets/templates/wrappers/agent-wrappers/cursor.md"
+    },
+    "copilot": {
+      "hookManifest": "hooks/copilot.json",
+      "hookEvent": "sessionStart",
+      "hookRoutes": {
+        "windows": "powershell",
+        "linux": "bash"
+      },
+      "agentTemplate": "setup-assets/templates/wrappers/agent-wrappers/github.agent.md"
+    }
+  }
+}

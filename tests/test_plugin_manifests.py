@@ -1,5 +1,7 @@
 import json
+import os
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -138,12 +140,17 @@ class PluginManifestTest(unittest.TestCase):
 
     def test_project_catalog_matches_native_plugin_version(self):
         catalog = load_json('setup-assets/catalog/assets.json')
+        version = (REPO_ROOT / 'VERSION').read_text(encoding='utf-8').strip()
         self.assertEqual(catalog['plugin']['id'], 'smartkit')
-        self.assertEqual(catalog['plugin']['version'], '0.1.4')
+        self.assertEqual(catalog['plugin']['version'], version)
 
     def test_repository_root_is_the_only_plugin_root(self):
         version = (REPO_ROOT / 'VERSION').read_text(encoding='utf-8').strip()
-        self.assertEqual(version, '0.1.4')
+        self.assertRegex(
+            version,
+            r'^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'
+            r'(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$',
+        )
         manifests = (
             REPO_ROOT / '.codex-plugin' / 'plugin.json',
             REPO_ROOT / '.cursor-plugin' / 'plugin.json',
@@ -229,7 +236,12 @@ class PluginManifestTest(unittest.TestCase):
             with self.subTest(platform=platform):
                 self.assertTrue(path.is_file())
                 content = path.read_text(encoding='utf-8')
-                self.assertIn('check_recommended_tools', content)
+                expected_entry = (
+                    'run_recommended_tools'
+                    if platform == 'cursor'
+                    else 'check_recommended_tools'
+                )
+                self.assertIn(expected_entry, content)
                 self.assertIn('runtime/recommended-tools', content.replace('\\', '/'))
                 self.assertIn(f'--platform {platform}', content)
                 self.assertNotIn('.agents/', content)
@@ -258,6 +270,69 @@ class PluginManifestTest(unittest.TestCase):
             set(load_json('hooks/copilot.json')['hooks']),
             {'sessionStart'},
         )
+
+    def test_cursor_hook_uses_cross_platform_dispatcher(self):
+        cursor_hooks = load_json('hooks/cursor.json')['hooks']
+        commands = {
+            cursor_hooks['sessionStart'][0]['command'],
+            cursor_hooks['beforeSubmitPrompt'][0]['command'],
+        }
+        dispatcher = REPO_ROOT / 'runtime/recommended-tools/run_recommended_tools.cmd'
+
+        self.assertTrue(dispatcher.is_file())
+        for command in commands:
+            self.assertIn('run_recommended_tools.cmd', command)
+            self.assertNotRegex(command, r'\bpython3?\b')
+
+        if os.name == 'nt':
+            invocation = ['cmd.exe', '/d', '/c', str(dispatcher), '--help']
+        else:
+            self.assertTrue(os.access(dispatcher, os.X_OK))
+            invocation = [
+                'sh', '-c', '"$1" --help', 'smartkit-cursor-hook', str(dispatcher)
+            ]
+        result = subprocess.run(
+            invocation,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('usage:', result.stdout.lower())
+
+    def test_hook_platform_contract(self):
+        contract_path = REPO_ROOT / 'setup-assets/catalog/platforms.json'
+        self.assertTrue(contract_path.is_file())
+        contract = load_json('setup-assets/catalog/platforms.json')
+
+        self.assertEqual(contract['version'], 1)
+        self.assertEqual(
+            contract['requiredOperatingSystems'],
+            ['windows', 'linux'],
+        )
+        self.assertEqual(
+            set(contract['platforms']),
+            {'codex', 'cursor', 'copilot'},
+        )
+
+        for platform, spec in contract['platforms'].items():
+            with self.subTest(platform=platform):
+                manifest = load_json(spec['hookManifest'])
+                entry = manifest['hooks'][spec['hookEvent']][0]
+                if 'hooks' in entry:
+                    entry = entry['hooks'][0]
+                for route in spec['hookRoutes'].values():
+                    if route == 'dispatcher':
+                        self.assertIn('run_recommended_tools.cmd', entry['command'])
+                    else:
+                        self.assertIn(route, entry)
+                agent_template = (
+                    REPO_ROOT / spec['agentTemplate']
+                ).read_text(encoding='utf-8')
+                self.assertRegex(agent_template, r'(?m)^model\s*[:=]')
 
 
 if __name__ == '__main__':
