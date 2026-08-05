@@ -54,9 +54,11 @@ CodeGraph, Tokscale, and multi-agent support. These checks only detect issues; t
 tools or change related configuration by themselves.
 
 When missing or outdated tools are detected, SmartKit first lists the affected items and asks the
-user. It continues only after explicit consent; items that cannot be handled automatically include
-manual instructions. Cursor blocks affected prompts in interactive sessions and uses the same
-ask-and-stop requirement as session context in headless `--print` sessions.
+user. It runs maintenance actions only after explicit consent. If the user explicitly declines the
+listed actions, SmartKit skips them without asking again and the original task continues. Items that
+cannot be handled automatically include manual instructions. Cursor blocks affected prompts in
+interactive sessions and uses the same ask-and-stop requirement as session context in headless
+`--print` sessions.
 
 ## Typical workflow
 

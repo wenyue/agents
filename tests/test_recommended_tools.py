@@ -761,6 +761,11 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 'Tell the user which tools need installation or upgrade and ask whether they consent',
                 message,
             )
+            self.assertIn(
+                'If the user explicitly declines all listed tool actions',
+                message,
+            )
+            self.assertIn('continue the original task', message)
             self.assertIn('End this turn after requesting consent', message)
             self.assertIn('Do not show the underlying maintenance commands', message)
             self.assertIn('maintain_recommended_tools.py', message)

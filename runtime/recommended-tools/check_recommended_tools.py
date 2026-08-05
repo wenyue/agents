@@ -589,7 +589,9 @@ def _agent_consent_request(findings: str, platform: str) -> str:
     )
     return (
         f'{findings}\n'
-        '[smartkit] Stop the current task now. Tell the user which tools need '
+        '[smartkit] If the user explicitly declines all listed tool actions, do not ask '
+        'again or run maintenance; continue the original task. Otherwise, stop the current '
+        'task now. Tell the user which tools need '
         'installation or upgrade and ask whether they consent to those tool actions. Do '
         'not show the underlying maintenance commands. Do not mutate tools or '
         'configuration before the user consents. End this turn after requesting consent '
