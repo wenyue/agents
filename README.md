@@ -38,8 +38,8 @@ To update the Copilot plugin, run `copilot plugin marketplace update wenyue`, fo
 
 ## Set up each project
 
-In the target repository, ask the Agent to use `setup-project-agents` to initialize the project and
-choose the platforms to support; Codex, Cursor, and Copilot are configured by default.
+In the target repository, ask the Agent to use `setup-project-agents` to initialize the project.
+Setup always configures Codex, Cursor, and Copilot.
 
 Setup writes the rules, skills, and Agent configuration required by the project into the repository.
 Run `setup-project-agents` again when you want to adopt a new version of SmartKit.

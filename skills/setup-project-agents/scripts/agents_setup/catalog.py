@@ -36,7 +36,7 @@ _ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode'
 _CATALOG_FIELDS = frozenset({'plugin', 'assets', 'retired_assets'})
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
 _PROJECT_CONFIG_FIELDS = frozenset(
-    {'$schema', 'version', 'platforms', 'selected_rules', 'selected_skills', 'selected_agents', 'skills'}
+    {'$schema', 'version', 'selected_rules', 'selected_skills', 'selected_agents', 'skills'}
 )
 _SKILLS_FIELDS = frozenset({'external'})
 _EXTERNAL_SKILL_FIELDS = frozenset({'name', 'repository', 'ref', 'path'})
@@ -336,9 +336,8 @@ def load_project_config(path: Path | None, *, catalog: Catalog) -> ProjectConfig
     version = document.get('version', 1)
     if type(version) is not int or version != 1:
         raise ContractError('project config version must be 1')
-    platforms = _platforms(document.get('platforms'), 'project config platforms', tuple(Platform))
     return ProjectConfig(
-        version, platforms,
+        version,
         _selected(document.get('selected_rules'), 'selected_rules', catalog, 'rule'),
         _selected(document.get('selected_skills'), 'selected_skills', catalog, 'skill'),
         _selected(document.get('selected_agents'), 'selected_agents', catalog, 'agent'),

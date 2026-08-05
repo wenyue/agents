@@ -5,10 +5,10 @@ description: Use when initializing or updating a repository with the Agents Rule
 
 # Setup Project Agents
 
-Run the script-backed setup workflow for one target repository. The agent chooses platforms and any
-models that the target does not already define, authors the requested project-specific content,
-reviews it, and consumes the structured result; the scripts own every deterministic setup
-operation.
+Run the script-backed setup workflow for one target repository. The workflow always enables Codex,
+Cursor, and Copilot. The agent chooses any models that the target does not already define, authors
+the requested project-specific content, reviews it, and consumes the structured result; the scripts
+own every deterministic setup operation.
 
 ## Ownership
 
@@ -32,16 +32,15 @@ Do not edit `request.json` or create another models or generated root.
 
 - Start at the target repository root and identify the loaded Skill directory as
   `SETUP_PROJECT_AGENTS_ROOT`.
-- Ask once which platforms to enable. When `.agents/config.json` exists, use its platforms unless
-  the user changes them; otherwise default to Codex, Cursor, and Copilot.
+- Enable Codex, Cursor, and Copilot on every run.
 
 ## Reconciliation Workflow
 
-1. Invoke the platform wrapper with `start`, the target, and every selected platform:
+1. Invoke the platform wrapper with `start` and the target:
 
    ```sh
    sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" start \
-     --target "$PWD" --platform codex --platform cursor --platform copilot
+     --target "$PWD"
    ```
 
    On Windows, invoke `setup_project_agents.ps1` with the same arguments. Stop on a nonzero result.
@@ -91,6 +90,6 @@ the session; restart with start after resolving the reported cause.
 
 ## Validation and Result
 
-Report the fields returned by finish: pinned source commit, selected platforms, changed paths,
+Report the fields returned by finish: pinned source commit, enabled platforms, changed paths,
 external Skills, preserved project-owned paths, and check status. On failure, report the exact
 script error; do not infer a successful or partially successful setup without a clean finish result.

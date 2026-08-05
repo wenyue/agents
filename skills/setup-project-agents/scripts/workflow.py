@@ -259,8 +259,6 @@ def _start(args: argparse.Namespace) -> int:
             'prepare', '--target', str(Path(args.target).absolute()),
             '--session', str(session),
         ]
-        for platform in args.platform or ():
-            forwarded.extend(('--platform', platform))
         result = bootstrap.main(forwarded)
         if result != 0:
             _remove_session(session)
@@ -438,9 +436,6 @@ def build_parser() -> argparse.ArgumentParser:
     phases = parser.add_subparsers(dest='phase', required=True)
     start = phases.add_parser('start', allow_abbrev=False)
     start.add_argument('--target', type=Path, required=True)
-    start.add_argument(
-        '--platform', choices=('codex', 'cursor', 'copilot'), action='append'
-    )
     finish = phases.add_parser('finish', allow_abbrev=False)
     finish.add_argument('--session', type=Path, required=True)
     cancel = phases.add_parser('cancel', allow_abbrev=False)

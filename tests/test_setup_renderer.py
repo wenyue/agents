@@ -47,7 +47,6 @@ class SetupRendererTest(unittest.TestCase):
     def config(self) -> ProjectConfig:
         return ProjectConfig(
             1,
-            tuple(Platform),
             ('00-global-rule-config',),
             ('refactor-code',),
             ('change-set-verifier',),
@@ -241,7 +240,6 @@ class SetupRendererTest(unittest.TestCase):
             (generated / 'shared.md').write_text('generated\n', encoding='utf-8')
             config = ProjectConfig(
                 1,
-                (Platform.CODEX,),
                 ('shared',),
                 (),
                 (),
@@ -310,7 +308,6 @@ class SetupRendererTest(unittest.TestCase):
             config_path.write_text(
                 json.dumps({
                     'version': 1,
-                    'platforms': ['codex'],
                     'selected_rules': ['00-global-rule-config'],
                 }),
                 encoding='utf-8',
@@ -326,7 +323,7 @@ class SetupRendererTest(unittest.TestCase):
                 if change.path.as_posix() == '.agents/config.json'
             )
             self.assertEqual(config_change.kind, ChangeKind.UPDATE)
-            self.assertEqual(desired_config['platforms'], ['codex'])
+            self.assertNotIn('platforms', desired_config)
             self.assertEqual(
                 {
                     key
@@ -352,7 +349,7 @@ class SetupRendererTest(unittest.TestCase):
             self.assertEqual(change.kind, ChangeKind.UPDATE)
             self.assertEqual(json.loads(change.content)['version'], 1)
 
-    def test_deselected_assets_and_platform_outputs_are_removed(self):
+    def test_deselected_assets_are_removed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -369,7 +366,6 @@ class SetupRendererTest(unittest.TestCase):
 
             config = ProjectConfig(
                 1,
-                (Platform.CODEX,),
                 ('00-global-rule-config',),
                 ('refactor-code',),
                 (),
@@ -396,50 +392,6 @@ class SetupRendererTest(unittest.TestCase):
             }
 
             self.assertTrue(set(stale_paths).issubset(deleted))
-
-    def test_disabled_structured_platform_removes_only_template_fields(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            target = root / 'target'
-            settings = target / '.github/copilot/settings.json'
-            settings.parent.mkdir(parents=True)
-            settings.write_text(
-                json.dumps({
-                    'extraKnownMarketplaces': {
-                        'superpowers-marketplace': {
-                            'source': {'source': 'github', 'repo': 'old/value'}
-                        }
-                    },
-                    'enabledPlugins': {'superpowers@superpowers-marketplace': False},
-                    'unmanaged': {'keep': True},
-                }),
-                encoding='utf-8',
-            )
-            config = ProjectConfig(
-                1,
-                (Platform.CODEX,),
-                ('00-global-rule-config',),
-                ('refactor-code',),
-                (),
-            )
-
-            rendered = render_desired_state(
-                REPO_ROOT,
-                target,
-                self.catalog,
-                config,
-                self.generated_tree(root),
-                {},
-            )
-            remaining = json.loads(
-                rendered.files_by_path['.github/copilot/settings.json']
-            )
-
-            self.assertEqual(remaining, {'unmanaged': {'keep': True}})
-            self.assertNotIn(
-                PurePosixPath('.github/copilot/settings.json'),
-                rendered.delete_paths,
-            )
 
     def test_project_rules_and_skills_are_discovered_without_becoming_managed_content(self):
         with tempfile.TemporaryDirectory() as temp_dir:

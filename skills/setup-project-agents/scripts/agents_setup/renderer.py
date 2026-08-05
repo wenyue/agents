@@ -242,13 +242,12 @@ def render_desired_state(
     for asset in catalog.assets:
         if asset.control_plane or asset.target is None:
             continue
-        platform_selected = bool(set(asset.platforms).intersection(config.platforms))
         asset_selected = (
             (asset.kind != 'rule' or asset.id in config.selected_rules)
             and (asset.kind != 'skill' or asset.id in config.selected_skills)
             and (asset.kind != 'agent' or asset.id in config.selected_agents)
         )
-        if not platform_selected or not asset_selected:
+        if not asset.platforms or not asset_selected:
             if asset.kind == 'template' and _format_for(asset.target):
                 format_name = _format_for(asset.target)
                 assert format_name is not None

@@ -41,6 +41,7 @@ _MODEL_WRAPPER_IDS = {
     Platform.CURSOR: 'wrapper-agent-cursor',
     Platform.COPILOT: 'wrapper-agent-copilot',
 }
+_PLATFORMS = tuple(Platform)
 
 
 class SetupError(ValueError):
@@ -138,7 +139,7 @@ def _request(
         'target': str(target),
         'source_root': str(source_root),
         'source_commit': source_commit,
-        'platforms': [item.value for item in config.platforms],
+        'platforms': [item.value for item in _PLATFORMS],
         'selected_rules': list(config.selected_rules),
         'selected_skills': list(config.selected_skills),
         'selected_agents': list(config.selected_agents),
@@ -163,7 +164,7 @@ def _model_requests(
     assets = {asset.id: asset for asset in catalog.assets}
     requests: list[dict[str, object]] = []
     for agent in sorted(config.selected_agents):
-        for platform in sorted(config.platforms, key=lambda item: item.value):
+        for platform in sorted(_PLATFORMS, key=lambda item: item.value):
             wrapper = assets.get(_MODEL_WRAPPER_IDS[platform])
             if (
                 wrapper is None
@@ -226,7 +227,7 @@ def _request_config(
         raise SetupError('session request source root does not match this pinned source')
     try:
         platforms = tuple(Platform(item) for item in request['platforms'])
-        if not platforms or len(set(platforms)) != len(platforms):
+        if platforms != _PLATFORMS:
             raise ValueError
         selections = (
             _selected_request_ids(request['selected_rules'], catalog=catalog, kind='rule'),
@@ -259,7 +260,7 @@ def _request_config(
         external_skills = parse_external_skills(
             {'external': request['external_skills']}, catalog
         )
-        config = ProjectConfig(1, platforms, *selections, external_skills)
+        config = ProjectConfig(1, *selections, external_skills)
         if request['model_requests'] != _model_requests(config, catalog):
             raise ValueError
     except (KeyError, TypeError, ValueError, SetupError) as error:
@@ -367,11 +368,7 @@ def build_parser() -> argparse.ArgumentParser:
         command = phases.add_parser(phase, allow_abbrev=False)
         command.add_argument('--target', type=Path, required=True)
         command.add_argument('--session', type=Path, required=True)
-        if phase == 'prepare':
-            command.add_argument(
-                '--platform', choices=tuple(item.value for item in Platform), action='append'
-            )
-        else:
+        if phase != 'prepare':
             command.add_argument('--models', type=Path, required=True)
         command.add_argument('--source-root', type=Path, required=True)
         command.add_argument('--source-commit', required=True)
@@ -382,21 +379,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _prepare(args: argparse.Namespace, session: Path, source_commit: str | None) -> None:
     catalog = load_catalog(args.source_root)
     project = inspect_project(args.target, catalog=catalog)
-    platforms = (
-        tuple(Platform(item) for item in args.platform)
-        if args.platform
-        else project.config.platforms
-    )
-    if len(set(platforms)) != len(platforms):
-        raise SetupError('platforms must not contain duplicates')
-    config = ProjectConfig(
-        1,
-        platforms,
-        project.config.selected_rules,
-        project.config.selected_skills,
-        project.config.selected_agents,
-        project.config.external_skills,
-    )
+    config = project.config
     generated = session / _GENERATED_NAME
     generated_rules = generated / '.agents' / 'rules'
     generated_skills = generated / '.agents' / 'skills'
@@ -473,7 +456,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         plan, target, config, rendered = _plan(args, session, source_commit)
         result_context = {
-            'platforms': [item.value for item in config.platforms],
+            'platforms': [item.value for item in _PLATFORMS],
             'external_skills': [item.name for item in config.external_skills],
             'preserved_paths': [item.as_posix() for item in rendered.preserved_paths],
         }

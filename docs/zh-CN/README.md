@@ -36,8 +36,8 @@ copilot plugin install smartkit@wenyue
 
 ## 为每个项目执行设置
 
-进入目标仓库后，请 Agent 使用 `setup-project-agents` 完成初始化，并选择需要支持的平台；默认会
-配置 Codex、Cursor 和 Copilot。
+进入目标仓库后，请 Agent 使用 `setup-project-agents` 完成初始化。初始化流程每次都会配置 Codex、
+Cursor 和 Copilot。
 
 初始化会把项目所需的规则、技能和 Agent 配置写入仓库。想采用 SmartKit 的新版本时，再次运行
 `setup-project-agents` 即可。

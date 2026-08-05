@@ -82,7 +82,9 @@ class SetupCliTest(unittest.TestCase):
                 {
                     'agents': {
                         'change-set-verifier': {
+                            'codex': {'model': 'codex-default'},
                             'cursor': {'model': model},
+                            'github': {'model': 'copilot-default'},
                         }
                     }
                 }
@@ -95,7 +97,7 @@ class SetupCliTest(unittest.TestCase):
         return setup_project_agents.main(
             [
                 'prepare', '--target', str(target), '--session', str(session),
-                '--platform', 'cursor', *extra, *self.source_args(),
+                *extra, *self.source_args(),
             ]
         )
 
@@ -112,7 +114,20 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(result, 2)
             self.assertEqual(self.snapshot_tree(target), {})
 
-    def test_prepare_records_pinned_choices_and_five_generation_requests_without_target_writes(self):
+    def test_prepare_rejects_removed_platform_option(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            session = self.private_session(root)
+
+            with redirect_stderr(StringIO()):
+                result = self.prepare(target, session, '--platform', 'cursor')
+
+            self.assertEqual(result, 2)
+            self.assertEqual(self.snapshot_tree(target), {})
+
+    def test_prepare_records_fixed_platforms_and_five_generation_requests_without_target_writes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -126,12 +141,26 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(request['target'], str(target.absolute()))
             self.assertEqual(request['source_root'], str(REPO_ROOT.absolute()))
             self.assertEqual(request['source_commit'], self.source_commit)
-            self.assertEqual(request['platforms'], ['cursor'])
+            self.assertEqual(request['platforms'], ['codex', 'cursor', 'copilot'])
             self.assertEqual(request['external_skills'], [])
             self.assertNotIn('hooks_enabled', request)
             self.assertEqual(
                 request['model_requests'],
                 [
+                    {
+                        'agent': 'change-set-verifier',
+                        'platform': 'codex',
+                        'model_key': 'codex',
+                        'config_path': '.codex/agents/change-set-verifier.toml',
+                        'required_fields': ['model'],
+                    },
+                    {
+                        'agent': 'change-set-verifier',
+                        'platform': 'copilot',
+                        'model_key': 'github',
+                        'config_path': '.github/agents/change-set-verifier.agent.md',
+                        'required_fields': ['model'],
+                    },
                     {
                         'agent': 'change-set-verifier',
                         'platform': 'cursor',
@@ -448,7 +477,9 @@ class SetupCliTest(unittest.TestCase):
             self.assertIsNone(apply_result['drift'])
             self.assertEqual(apply_result['changed_paths'], sorted(apply_result['changed_paths']))
             self.assertIn('.agents/rules/00-global-rule-config.md', apply_result['changed_paths'])
-            self.assertEqual(apply_result['platforms'], ['cursor'])
+            self.assertEqual(
+                apply_result['platforms'], ['codex', 'cursor', 'copilot']
+            )
             self.assertEqual(apply_result['external_skills'], [])
             self.assertEqual(apply_result['preserved_paths'], [])
             self.assertEqual(
@@ -475,7 +506,6 @@ class SetupCliTest(unittest.TestCase):
             session = self.private_session(root)
             prepare_args = [
                 'prepare', '--target', str(target), '--session', str(session),
-                '--platform', 'codex', '--platform', 'cursor', '--platform', 'copilot',
                 *self.source_args(),
             ]
             self.assertEqual(setup_project_agents.main(prepare_args), 0)
@@ -600,7 +630,6 @@ class SetupEndToEndTest(unittest.TestCase):
             self.assertEqual(
                 bootstrap.main([
                     'prepare', '--target', str(target), '--session', str(session),
-                    '--platform', 'codex', '--platform', 'cursor', '--platform', 'copilot',
                 ]),
                 0,
             )
@@ -734,7 +763,7 @@ class SetupEndToEndTest(unittest.TestCase):
             baseline_session = self.private_session(root, 'baseline-session')
             self.assertEqual(setup_project_agents.main([
                 'prepare', '--target', str(target), '--session', str(baseline_session),
-                '--platform', 'cursor', '--source-root', str(source),
+                '--source-root', str(source),
                 '--source-commit', 'a' * 40, '--no-bootstrap',
             ]), 0)
             self.write_generated_outputs(baseline_session)
@@ -748,7 +777,7 @@ class SetupEndToEndTest(unittest.TestCase):
             collision_session = self.private_session(root, 'collision-session')
             self.assertEqual(setup_project_agents.main([
                 'prepare', '--target', str(collision_target), '--session', str(collision_session),
-                '--platform', 'cursor', '--source-root', str(source),
+                '--source-root', str(source),
                 '--source-commit', 'a' * 40, '--no-bootstrap',
             ]), 0)
             self.write_generated_outputs(collision_session)
@@ -768,7 +797,7 @@ class SetupEndToEndTest(unittest.TestCase):
             rollback_session = self.private_session(root, 'rollback-session')
             self.assertEqual(setup_project_agents.main([
                 'prepare', '--target', str(target), '--session', str(rollback_session),
-                '--platform', 'cursor', '--source-root', str(source),
+                '--source-root', str(source),
                 '--source-commit', 'b' * 40, '--no-bootstrap',
             ]), 0)
             self.write_generated_outputs(rollback_session)

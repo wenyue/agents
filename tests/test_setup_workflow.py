@@ -68,10 +68,20 @@ class SetupWorkflowTest(unittest.TestCase):
     @staticmethod
     def fill_models(session: Path) -> None:
         models = json.loads((session / 'models.json').read_text(encoding='utf-8'))
-        models['agents']['change-set-verifier']['cursor']['model'] = 'cursor-test'
+        for platform in models['agents']['change-set-verifier'].values():
+            if not platform['model']:
+                platform['model'] = 'test-model'
         (session / 'models.json').write_text(
             json.dumps(models) + '\n', encoding='utf-8'
         )
+
+    def test_start_rejects_removed_platform_option(self):
+        with redirect_stderr(StringIO()):
+            result = workflow.main([
+                'start', '--target', str(REPO_ROOT), '--platform', 'cursor'
+            ])
+
+        self.assertEqual(result, 2)
 
     def test_start_and_finish_own_session_apply_check_summary_and_cleanup(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -106,9 +116,7 @@ class SetupWorkflowTest(unittest.TestCase):
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
                 with redirect_stdout(start_output):
                     self.assertEqual(
-                        workflow.main([
-                            'start', '--target', str(target), '--platform', 'cursor'
-                        ]),
+                        workflow.main(['start', '--target', str(target)]),
                         0,
                     )
 
@@ -183,11 +191,7 @@ class SetupWorkflowTest(unittest.TestCase):
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
                 with redirect_stdout(output):
                     self.assertEqual(
-                        workflow.main([
-                            'start', '--target', str(target),
-                            '--platform', 'codex', '--platform', 'cursor',
-                            '--platform', 'copilot',
-                        ]),
+                        workflow.main(['start', '--target', str(target)]),
                         0,
                     )
 
@@ -219,9 +223,7 @@ class SetupWorkflowTest(unittest.TestCase):
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
                 with redirect_stdout(output):
                     self.assertEqual(
-                        workflow.main([
-                            'start', '--target', str(target), '--platform', 'cursor'
-                        ]),
+                        workflow.main(['start', '--target', str(target)]),
                         0,
                     )
             session = Path(json.loads(output.getvalue())['session'])
@@ -261,9 +263,7 @@ class SetupWorkflowTest(unittest.TestCase):
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
                 with redirect_stdout(output):
                     self.assertEqual(
-                        workflow.main([
-                            'start', '--target', str(target), '--platform', 'cursor'
-                        ]),
+                        workflow.main(['start', '--target', str(target)]),
                         0,
                     )
             session = Path(json.loads(output.getvalue())['session'])
@@ -336,9 +336,7 @@ class SetupWorkflowTest(unittest.TestCase):
                 redirect_stderr(warning),
             ):
                 self.assertEqual(
-                    workflow.main([
-                        'start', '--target', str(target), '--platform', 'cursor'
-                    ]),
+                    workflow.main(['start', '--target', str(target)]),
                     0,
                 )
             start = json.loads(output.getvalue())

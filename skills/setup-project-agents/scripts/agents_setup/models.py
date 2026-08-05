@@ -31,7 +31,6 @@ class AssetSpec:
 @dataclass(frozen=True)
 class ProjectConfig:
     version: int
-    platforms: tuple[Platform, ...]
     selected_rules: tuple[str, ...]
     selected_skills: tuple[str, ...]
     selected_agents: tuple[str, ...]

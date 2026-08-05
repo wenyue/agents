@@ -15,7 +15,6 @@ from agents_setup.catalog import (  # noqa: E402
     parse_asset,
     safe_relative,
 )
-from agents_setup.models import Platform  # noqa: E402
 
 
 class SetupCatalogTest(unittest.TestCase):
@@ -36,10 +35,9 @@ class SetupCatalogTest(unittest.TestCase):
                 elif asset.kind in {'rule', 'skill', 'agent', 'blueprint', 'template', 'wrapper'}:
                     self.assertTrue(asset.source.as_posix().startswith('setup-assets/'))
 
-    def test_project_config_defaults_to_all_hosts(self):
+    def test_project_config_loads_current_project_selections(self):
         config = load_project_config(None, catalog=load_catalog(REPO_ROOT))
 
-        self.assertEqual(config.platforms, tuple(Platform))
         self.assertIn('00-global-rule-config', config.selected_rules)
         self.assertIn('refactor-code', config.selected_skills)
         self.assertNotIn('setup-project-agents', config.selected_skills)
@@ -231,6 +229,12 @@ class SetupCatalogTest(unittest.TestCase):
             config_path = root / 'config.json'
             config_path.write_text(
                 json.dumps({'version': 1, 'unknown': True}), encoding='utf-8'
+            )
+            with self.assertRaisesRegex(ContractError, 'unknown project config fields'):
+                load_project_config(config_path, catalog=catalog)
+
+            config_path.write_text(
+                json.dumps({'version': 1, 'platforms': ['codex']}), encoding='utf-8'
             )
             with self.assertRaisesRegex(ContractError, 'unknown project config fields'):
                 load_project_config(config_path, catalog=catalog)
