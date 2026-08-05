@@ -146,6 +146,32 @@ class SetupRendererTest(unittest.TestCase):
                 [{'name': 'x', 'options': {'active': True}}],
             )
 
+    def test_existing_toml_omits_redundant_parent_tables_and_preserves_empty_tables(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            codex = target / '.codex/config.toml'
+            codex.parent.mkdir(parents=True)
+            codex.write_text(
+                '[mcp_servers.sentry]\n'
+                'command = "npx"\n'
+                '\n'
+                '[intentionally_empty]\n',
+                encoding='utf-8',
+            )
+
+            rendered = self.render(target, self.generated_tree(root))
+            content = rendered.files_by_path['.codex/config.toml'].decode()
+
+            self.assertNotIn('[mcp_servers]\n', content)
+            self.assertIn('[mcp_servers.sentry]\n', content)
+            self.assertIn('[intentionally_empty]\n', content)
+            self.assertEqual(
+                tomllib.loads(content)['mcp_servers']['sentry']['command'],
+                'npx',
+            )
+            self.assertEqual(tomllib.loads(content)['intentionally_empty'], {})
+
     def test_existing_jsonc_trailing_commas_do_not_change_string_values(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

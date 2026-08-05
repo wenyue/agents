@@ -171,14 +171,14 @@ def dump_toml(document: Mapping[str, object]) -> bytes:
     lines: list[str] = []
 
     def emit(table: Mapping[str, object], prefix: tuple[str, ...]) -> None:
-        if prefix:
-            lines.append('[' + '.'.join(_toml_key(part) for part in prefix) + ']')
         scalar_items = [
             (str(key), value) for key, value in table.items() if not isinstance(value, Mapping)
         ]
         table_items = [
             (str(key), value) for key, value in table.items() if isinstance(value, Mapping)
         ]
+        if prefix and (scalar_items or not table_items):
+            lines.append('[' + '.'.join(_toml_key(part) for part in prefix) + ']')
         for key, value in scalar_items:
             lines.append(f'{_toml_key(key)} = {_toml_scalar(value)}')
         if scalar_items and table_items:
