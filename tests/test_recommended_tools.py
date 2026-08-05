@@ -927,6 +927,28 @@ class RecommendedToolMaintainerTest(unittest.TestCase):
         self.assertNotIn('codex plugin add', rendered)
         self.assertNotIn('superpowers@openai-curated', rendered)
 
+    def test_approved_codex_superpowers_upgrade_reinstalls_from_marketplace(self):
+        executor = mock.Mock(return_value=mock.Mock(returncode=0))
+        with mock.patch.object(
+            self.maintainer,
+            'required_action',
+            side_effect=('upgrade', None),
+        ):
+            result = self.maintainer.apply_maintenance(
+                'codex',
+                'superpowers',
+                'upgrade',
+                approved=True,
+                executor=executor,
+            )
+
+        self.assertEqual(result.status, 'completed')
+        executor.assert_called_once_with(
+            ['codex', 'plugin', 'add', 'superpowers@openai-curated'],
+            check=False,
+        )
+        self.assertIn('upgrade completed', self.maintainer.render_result(result))
+
     def test_manual_recipe_returns_manual_action_without_execution(self):
         executor = mock.Mock()
         with mock.patch.object(self.maintainer, 'required_action', return_value='install'):

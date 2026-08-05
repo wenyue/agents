@@ -79,7 +79,7 @@ _PLATFORM_RECIPES = {
             ),
             'upgrade': Recipe(
                 'Superpowers',
-                manual_guidance='Update Superpowers from the Codex Plugins interface.',
+                command=('codex', 'plugin', 'add', 'superpowers@openai-curated'),
             ),
         },
     },
