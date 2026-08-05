@@ -406,6 +406,39 @@ class SetupWorkflowTest(unittest.TestCase):
             self.assertFalse(session.exists())
             self.assertEqual(tuple(target.rglob('*')), before)
 
+    def test_finish_reports_actionable_undeclared_generated_directory_error(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            origin = self.make_origin(root)
+            target = root / 'target'
+            target.mkdir()
+            output = StringIO()
+            with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        workflow.main(['start', '--target', str(target)]),
+                        0,
+                    )
+            session = Path(json.loads(output.getvalue())['session'])
+            (session / 'generated/rules').mkdir()
+            error = StringIO()
+
+            with redirect_stderr(error):
+                self.assertEqual(
+                    workflow.main(['finish', '--session', str(session)]), 2
+                )
+
+            self.assertIn(
+                'generated output contains an undeclared directory: rules',
+                error.getvalue(),
+            )
+            self.assertIn(
+                'write each generation_requests target unchanged under generated',
+                error.getvalue(),
+            )
+
     def test_finish_rejects_unowned_directory_without_deleting_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             unowned = Path(temp_dir)

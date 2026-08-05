@@ -23,8 +23,10 @@ The agent may edit only these workflow inputs:
 
 - any requested model values the user explicitly changes and empty values that remain in the
   reported `models.json`;
-- the three Rule and two Skill targets listed by `generation_requests` under the reported
-  `generated` directory.
+- the three Rule and two Skill targets listed by `generation_requests`. Write each repository-relative
+  `target` unchanged under the reported `generated` directory. For example, target
+  `.agents/rules/20-project-tools.md` belongs at
+  `GENERATED/.agents/rules/20-project-tools.md`, never `GENERATED/rules/20-project-tools.md`.
 
 Do not edit `request.json` or create another models or generated root.
 
@@ -45,7 +47,7 @@ Do not edit `request.json` or create another models or generated root.
 
    On Windows, invoke `setup_project_agents.ps1` with the same arguments. Stop on a nonzero result.
    From the single JSON result, record `session` as `SESSION` and use its reported request, models,
-   generated, and source paths.
+   generated, and source paths; record the reported generated path as `GENERATED`.
 
 2. Read `SESSION/request.json` and the reported `models.json`. Start preserves model settings from
    existing platform Agent configurations. Keep every prefilled value unless the user explicitly
@@ -56,7 +58,8 @@ Do not edit `request.json` or create another models or generated root.
 3. Resolve the reported `source_root` as `SOURCE_ROOT`. Read the complete authoring contracts at
    `SOURCE_ROOT/setup-assets/skills/write-rule/SKILL.md` and
    `SOURCE_ROOT/setup-assets/skills/write-skill/SKILL.md`. Apply the listed Blueprints and write
-   exactly the five `generation_requests` targets under the reported generated directory.
+   exactly the five `generation_requests` targets to `GENERATED/<target>`, preserving every target
+   path segment including `.agents/`.
 
 4. After the Review Gate passes, invoke the same wrapper with `finish` and only the session path:
 
@@ -67,22 +70,24 @@ Do not edit `request.json` or create another models or generated root.
 
    Do not invoke the internal prepare/apply/check commands directly.
 
-5. If the workflow cannot reach finish after a successful start, invoke `cancel` with only
-   `--session "$SESSION"`.
+5. If the workflow must stop after a successful start but before invoking finish, invoke `cancel`
+   with only `--session "$SESSION"`. Do not invoke cancel after finish returns: finish owns session
+   cleanup on both success and failure.
 
 ## Stop Conditions
 
-Stop on any start, finish, or cancel error and report it exactly. Do not repair script-owned state,
-choose per-file coverage, change the request, pass unrequested paths to finish, or manually remove
-the session; restart with start after resolving the reported cause.
+Stop on any start, finish, or cancel error and report it exactly. After a finish error, do not invoke
+cancel or reuse that session; resolve the reported cause and restart with start. Do not repair
+script-owned state, choose per-file coverage, change the request, pass unrequested paths to finish,
+or manually remove the session.
 
 ## Review Gate
 
 - [ ] Read each complete generated Rule and Skill; confirm it follows its authoring contract and
       uses current target evidence.
 - [ ] Read the completed models file; confirm every requested agent/platform has a non-empty model.
-- [ ] Confirm the request is unchanged and the generated directory contains exactly the five
-      requested files.
+- [ ] Confirm the request is unchanged and `GENERATED` contains exactly the five requested target
+      paths, including their `.agents/` prefix, with no undeclared directories.
 
 ## Acceptance Gate
 

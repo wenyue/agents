@@ -295,7 +295,11 @@ def _generated_root(session: Path) -> Path:
         if path.is_file():
             files.add(path.relative_to(root).as_posix())
         elif path.is_dir() and relative not in expected_directories:
-            raise SetupError('generated output contains an undeclared directory')
+            raise SetupError(
+                'generated output contains an undeclared directory: '
+                f'{relative.as_posix()}; write each generation_requests target '
+                'unchanged under generated'
+            )
         elif not path.is_dir():
             raise SetupError('generated output contains a non-file entry')
     if files != expected:
