@@ -1,9 +1,9 @@
 {
   "plugin": {
     "id": "smartkit",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "repository": "https://github.com/wenyue/agents.git",
-    "ref": "main"
+    "ref": "master"
   },
   "retired_assets": [
     ".agents/lock.json",

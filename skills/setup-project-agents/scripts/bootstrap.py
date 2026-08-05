@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Sequence
 
 from agents_setup.source import (
+    CANONICAL_REF,
     CANONICAL_REPOSITORY,
     InvalidFetchedSource,
     SourceSnapshot,
     SourceUnavailable,
-    fetch_main,
+    fetch_canonical,
     validate_source,
 )
 
@@ -47,21 +48,25 @@ def _initial_prepare(argv: Sequence[str]) -> tuple[list[str], Path] | None:
 
 
 def main(argv: Sequence[str] | None = None, *, installed_root: Path | None = None) -> int:
-    """Fetch canonical main once and hand only the initial prepare to its pinned CLI."""
+    """Fetch the canonical source once and hand only initial prepare to its pinned CLI."""
     forwarded_and_session = _initial_prepare(list(sys.argv[1:] if argv is None else argv))
     if forwarded_and_session is None:
         print('ERROR: bootstrap accepts only prepare with --session and no reserved options', file=sys.stderr)
         return 2
     forwarded, session = forwarded_and_session
     try:
-        snapshot = fetch_main(CANONICAL_REPOSITORY, work_root=session)
+        snapshot = fetch_canonical(CANONICAL_REPOSITORY, work_root=session)
     except SourceUnavailable:
         try:
             root = validate_source(installed_root if installed_root is not None else _installed_root())
         except InvalidFetchedSource as error:
             print(f'ERROR: installed fallback source is invalid: {error}', file=sys.stderr)
             return 1
-        print('WARNING: canonical main is unavailable; using installed plugin source.', file=sys.stderr)
+        print(
+            f'WARNING: canonical {CANONICAL_REF} is unavailable; '
+            'using installed plugin source.',
+            file=sys.stderr,
+        )
         snapshot = SourceSnapshot(root, 'offline')
     except InvalidFetchedSource as error:
         print(f'ERROR: fetched canonical source is invalid: {error}', file=sys.stderr)

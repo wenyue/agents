@@ -26,6 +26,7 @@ from .catalog import ContractError, load_catalog
 
 
 CANONICAL_REPOSITORY = 'https://github.com/wenyue/agents.git'
+CANONICAL_REF = 'master'
 _COMMIT = re.compile(r'^[0-9a-fA-F]{40}$')
 _ENTRYPOINT = PurePosixPath(
     'skills/setup-project-agents/scripts/setup_project_agents.py'
@@ -186,7 +187,7 @@ def _validate_source(source_root: Path, *, fd_root: bool) -> Path:
         catalog.plugin_id != 'smartkit'
         or catalog.plugin_version != version
         or catalog.repository != CANONICAL_REPOSITORY
-        or catalog.ref != 'main'
+        or catalog.ref != CANONICAL_REF
     ):
         raise InvalidFetchedSource('source catalog identity/version/ref mismatch')
     _validate_catalog_sources(root, tuple(asset.source for asset in catalog.assets))
@@ -328,7 +329,7 @@ def _open_safe_workspace_fallback(value: Path) -> _Workspace:
     return _Workspace(path, None)
 
 
-def _fetch_main_fallback(repository: str, work_root: Path) -> SourceSnapshot:
+def _fetch_canonical_fallback(repository: str, work_root: Path) -> SourceSnapshot:
     """Fetch one snapshot in a private Windows session without POSIX dir-fd primitives."""
     workspace = _open_safe_workspace_fallback(work_root)
     source = workspace.path / 'source'
@@ -345,7 +346,10 @@ def _fetch_main_fallback(repository: str, work_root: Path) -> SourceSnapshot:
             failure=SourceUnavailable,
         )
         _run_git(
-            ('git', '-C', str(candidate), 'fetch', '--depth=1', 'origin', 'main'),
+            (
+                'git', '-C', str(candidate), 'fetch', '--depth=1',
+                'origin', CANONICAL_REF,
+            ),
             failure=SourceUnavailable,
         )
         _run_git(
@@ -638,12 +642,12 @@ def _validate_repository(repository: str) -> str:
     return repository
 
 
-def fetch_main(repository: str, *, work_root: Path) -> SourceSnapshot:
-    """Fetch one depth-one `main` snapshot into ``work_root / 'source'``."""
+def fetch_canonical(repository: str, *, work_root: Path) -> SourceSnapshot:
+    """Fetch one depth-one canonical snapshot into ``work_root / 'source'``."""
     repository = _validate_repository(repository)
     if not _secure_fetch_supported():
         if os.name == 'nt':
-            return _fetch_main_fallback(repository, work_root)
+            return _fetch_canonical_fallback(repository, work_root)
         raise SourceUnavailable('secure remote source fetch is unavailable on this platform')
     workspace = _open_safe_workspace(work_root)
     source: _HeldSource | None = None
@@ -676,7 +680,10 @@ def fetch_main(repository: str, *, work_root: Path) -> SourceSnapshot:
             pass_fds=(source.fd,),
         )
         _run_git(
-            ('git', '-C', git_root, 'fetch', '--depth=1', 'origin', 'main'),
+            (
+                'git', '-C', git_root, 'fetch', '--depth=1',
+                'origin', CANONICAL_REF,
+            ),
             failure=SourceUnavailable,
             pass_fds=(source.fd,),
         )

@@ -209,13 +209,13 @@ class SetupWorkflowTest(unittest.TestCase):
         )
         subprocess.run(('git', 'init', '--bare', '--quiet', str(origin)), check=True)
         subprocess.run(('git', '-C', str(work), 'init', '--quiet'), check=True)
-        run_git(work, 'checkout', '--quiet', '-b', 'main')
+        run_git(work, 'checkout', '--quiet', '-b', 'master')
         run_git(work, 'config', 'user.email', 'test@example.invalid')
         run_git(work, 'config', 'user.name', 'Setup Test')
         run_git(work, 'add', '.')
         run_git(work, 'commit', '--quiet', '-m', 'workflow source')
         run_git(work, 'remote', 'add', 'origin', origin.as_uri())
-        run_git(work, 'push', '--quiet', 'origin', 'main')
+        run_git(work, 'push', '--quiet', 'origin', 'master')
         return origin
 
     @staticmethod

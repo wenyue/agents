@@ -611,13 +611,13 @@ class SetupEndToEndTest(unittest.TestCase):
         )
         subprocess.run(('git', 'init', '--bare', '--quiet', str(origin)), check=True)
         subprocess.run(('git', '-C', str(work), 'init', '--quiet'), check=True)
-        run_git(work, 'checkout', '--quiet', '-b', 'main')
+        run_git(work, 'checkout', '--quiet', '-b', 'master')
         run_git(work, 'config', 'user.email', 'test@example.com')
         run_git(work, 'config', 'user.name', 'Setup Test')
         run_git(work, 'add', '.')
-        run_git(work, 'commit', '--quiet', '-m', 'initial main')
+        run_git(work, 'commit', '--quiet', '-m', 'initial master')
         run_git(work, 'remote', 'add', 'origin', origin.as_uri())
-        run_git(work, 'push', '--quiet', 'origin', 'main')
+        run_git(work, 'push', '--quiet', 'origin', 'master')
         return origin, work
 
     @staticmethod
@@ -699,7 +699,7 @@ class SetupEndToEndTest(unittest.TestCase):
             '--source-commit', request['source_commit'] or 'offline', '--no-bootstrap',
         ])
 
-    def test_remote_main_upgrade_is_idempotent_and_keeps_setup_control_plane_out_of_snapshot(self):
+    def test_remote_master_upgrade_is_idempotent_and_keeps_setup_control_plane_out_of_snapshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             origin, work = self.make_origin(root)
@@ -727,10 +727,10 @@ class SetupEndToEndTest(unittest.TestCase):
             before_upgrade = self.snapshot_tree(target)
 
             rule = work / 'setup-assets/rules/00-global-rule-config.md'
-            rule.write_text(rule.read_text(encoding='utf-8') + '\nRemote main update.\n', encoding='utf-8')
+            rule.write_text(rule.read_text(encoding='utf-8') + '\nRemote master update.\n', encoding='utf-8')
             run_git(work, 'add', 'setup-assets/rules/00-global-rule-config.md')
             run_git(work, 'commit', '--quiet', '-m', 'update managed rule')
-            run_git(work, 'push', '--quiet', 'origin', 'main')
+            run_git(work, 'push', '--quiet', 'origin', 'master')
 
             second_session = self.private_session(root, 'second-session')
             self.bootstrap_prepare(origin, target, second_session)
@@ -767,11 +767,11 @@ class SetupEndToEndTest(unittest.TestCase):
 
             invalid_catalog = work / 'setup-assets/catalog/assets.json'
             document = json.loads(invalid_catalog.read_text(encoding='utf-8'))
-            document['plugin']['ref'] = 'not-main'
+            document['plugin']['ref'] = 'not-master'
             invalid_catalog.write_text(json.dumps(document), encoding='utf-8')
             run_git(work, 'add', 'setup-assets/catalog/assets.json')
             run_git(work, 'commit', '--quiet', '-m', 'invalid fetched source')
-            run_git(work, 'push', '--quiet', 'origin', 'main')
+            run_git(work, 'push', '--quiet', 'origin', 'master')
             before_invalid = self.snapshot_tree(target)
             invalid_session = self.private_session(root, 'invalid-session')
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
@@ -792,7 +792,7 @@ class SetupEndToEndTest(unittest.TestCase):
                     ]),
                     0,
                 )
-            self.assertIn('WARNING: canonical main is unavailable', stderr.getvalue())
+            self.assertIn('WARNING: canonical master is unavailable', stderr.getvalue())
 
             source = root / 'source'
             shutil.copytree(REPO_ROOT, source, ignore=shutil.ignore_patterns('.git', '.superpowers', '__pycache__', '*.pyc'))

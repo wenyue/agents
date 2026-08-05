@@ -19,7 +19,7 @@ from agents_setup.source import (  # noqa: E402
     InvalidFetchedSource,
     SourceSnapshot,
     SourceUnavailable,
-    fetch_main,
+    fetch_canonical,
     validate_source,
 )
 from agents_setup import source as source_module  # noqa: E402
@@ -81,7 +81,7 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
                     'id': 'smartkit',
                     'version': version,
                     'repository': CANONICAL_REPOSITORY,
-                    'ref': 'main',
+                    'ref': 'master',
                 },
                 'assets': [
                     {
@@ -111,52 +111,84 @@ class SetupSourceTest(unittest.TestCase):
         origin_work = root / 'origin-work'
         subprocess.run(('git', 'init', '--bare', '--quiet', str(origin)), check=True)
         subprocess.run(('git', 'init', '--quiet', str(origin_work)), check=True)
-        run_git(origin_work, 'checkout', '--quiet', '-b', 'main')
+        run_git(origin_work, 'checkout', '--quiet', '-b', 'master')
         run_git(origin_work, 'config', 'user.email', 'test@example.com')
         run_git(origin_work, 'config', 'user.name', 'Test User')
         write_valid_source(origin_work)
         run_git(origin_work, 'add', '.')
-        run_git(origin_work, 'commit', '--quiet', '-m', 'initial main')
+        run_git(origin_work, 'commit', '--quiet', '-m', 'initial master')
         run_git(origin_work, 'remote', 'add', 'origin', origin.as_uri())
-        run_git(origin_work, 'push', '--quiet', 'origin', 'main')
+        run_git(origin_work, 'push', '--quiet', 'origin', 'master')
         return origin, origin_work
 
-    def test_fetch_main_pins_a_valid_main_snapshot(self):
+    def test_fetch_canonical_pins_a_valid_master_snapshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             origin, origin_work = self.make_origin(temporary)
 
-            snapshot = fetch_main(origin.as_uri(), work_root=temporary / 'session')
+            snapshot = fetch_canonical(origin.as_uri(), work_root=temporary / 'session')
 
-            self.assertEqual(snapshot.commit, run_git(origin_work, 'rev-parse', 'main').strip())
+            self.assertEqual(snapshot.commit, run_git(origin_work, 'rev-parse', 'master').strip())
             self.assertEqual(snapshot.root.joinpath('VERSION').read_text().strip(), '0.1.0')
             self.assertFalse(snapshot.root.joinpath('.git').is_symlink())
             self.assertEqual(snapshot.root, temporary / 'session' / 'source')
 
-    def test_fetch_main_uses_the_new_main_commit_for_a_new_session(self):
+    def test_fetch_canonical_uses_the_new_master_commit_for_a_new_session(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             origin, origin_work = self.make_origin(temporary)
-            first = fetch_main(origin.as_uri(), work_root=temporary / 'first')
-            (origin_work / 'new-main.txt').write_text('new main\n', encoding='utf-8')
-            run_git(origin_work, 'add', 'new-main.txt')
-            run_git(origin_work, 'commit', '--quiet', '-m', 'advance main')
-            run_git(origin_work, 'push', '--quiet', 'origin', 'main')
+            first = fetch_canonical(origin.as_uri(), work_root=temporary / 'first')
+            (origin_work / 'new-master.txt').write_text('new master\n', encoding='utf-8')
+            run_git(origin_work, 'add', 'new-master.txt')
+            run_git(origin_work, 'commit', '--quiet', '-m', 'advance master')
+            run_git(origin_work, 'push', '--quiet', 'origin', 'master')
 
-            second = fetch_main(origin.as_uri(), work_root=temporary / 'second')
+            second = fetch_canonical(origin.as_uri(), work_root=temporary / 'second')
 
             self.assertNotEqual(first.commit, second.commit)
-            self.assertEqual(second.commit, run_git(origin_work, 'rev-parse', 'main').strip())
-            self.assertEqual(second.root.joinpath('new-main.txt').read_text(), 'new main\n')
+            self.assertEqual(second.commit, run_git(origin_work, 'rev-parse', 'master').strip())
+            self.assertEqual(
+                second.root.joinpath('new-master.txt').read_text(),
+                'new master\n',
+            )
+
+    def test_bootstrap_fetches_canonical_master_when_main_is_stale(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temporary = Path(temp_dir)
+            origin, origin_work = self.make_origin(temporary)
+            run_git(origin_work, 'checkout', '--quiet', '-b', 'main')
+            entrypoint = origin_work / (
+                'skills/setup-project-agents/scripts/setup_project_agents.py'
+            )
+            entrypoint.write_text('raise SystemExit(19)\n', encoding='utf-8')
+            catalog_path = origin_work / 'setup-assets/catalog/assets.json'
+            catalog = json.loads(catalog_path.read_text(encoding='utf-8'))
+            catalog['plugin']['ref'] = 'main'
+            catalog_path.write_text(json.dumps(catalog), encoding='utf-8')
+            run_git(origin_work, 'add', entrypoint.relative_to(origin_work).as_posix())
+            run_git(origin_work, 'add', catalog_path.relative_to(origin_work).as_posix())
+            run_git(origin_work, 'commit', '--quiet', '-m', 'leave stale main')
+            run_git(origin_work, 'push', '--quiet', 'origin', 'main')
+
+            with mock.patch.object(
+                bootstrap,
+                'CANONICAL_REPOSITORY',
+                origin.as_uri(),
+            ):
+                result = bootstrap.main(
+                    ['prepare', '--session', str(temporary / 'session')]
+                )
+
+            self.assertEqual(result, 0)
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX session ownership')
-    def test_fetch_main_creates_a_missing_private_session(self):
+    def test_fetch_canonical_creates_a_missing_private_session(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             origin, _ = self.make_origin(temporary)
             session = temporary / 'missing-session'
 
-            fetch_main(origin.as_uri(), work_root=session)
+            fetch_canonical(origin.as_uri(), work_root=session)
 
             status = session.stat()
             self.assertEqual(status.st_uid, os.geteuid())
@@ -172,10 +204,10 @@ class SetupSourceTest(unittest.TestCase):
             catalog_path.write_text(json.dumps(catalog), encoding='utf-8')
             run_git(origin_work, 'add', 'setup-assets/catalog/assets.json')
             run_git(origin_work, 'commit', '--quiet', '-m', 'invalid catalog')
-            run_git(origin_work, 'push', '--quiet', 'origin', 'main')
+            run_git(origin_work, 'push', '--quiet', 'origin', 'master')
 
             with self.assertRaises(InvalidFetchedSource):
-                fetch_main(origin.as_uri(), work_root=temporary / 'session')
+                fetch_canonical(origin.as_uri(), work_root=temporary / 'session')
 
     def test_validate_source_rejects_symlinked_root_git_and_entrypoint(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -239,7 +271,7 @@ class SetupSourceTest(unittest.TestCase):
             sentinel = workspace / 'request.json'
             sentinel.write_text('{}\n', encoding='utf-8')
             with self.assertRaises(SourceUnavailable):
-                fetch_main((Path(temp_dir) / 'missing-origin.git').as_uri(), work_root=workspace)
+                fetch_canonical((Path(temp_dir) / 'missing-origin.git').as_uri(), work_root=workspace)
 
             self.assertTrue(workspace.is_dir())
             self.assertEqual(sentinel.read_text(encoding='utf-8'), '{}\n')
@@ -251,7 +283,7 @@ class SetupSourceTest(unittest.TestCase):
             )
             origin, _ = self.make_origin(Path(temp_dir))
             self.assertEqual(
-                fetch_main(origin.as_uri(), work_root=workspace).root,
+                fetch_canonical(origin.as_uri(), work_root=workspace).root,
                 workspace / 'source',
             )
 
@@ -277,7 +309,7 @@ class SetupSourceTest(unittest.TestCase):
                 side_effect=fail_only_the_initial_marker_write,
             ):
                 with self.assertRaises(InvalidFetchedSource):
-                    fetch_main(origin.as_uri(), work_root=workspace)
+                    fetch_canonical(origin.as_uri(), work_root=workspace)
 
             self.assertFalse((workspace / 'source').exists())
             self.assertEqual(len(candidate_directories(workspace)), 1)
@@ -286,7 +318,7 @@ class SetupSourceTest(unittest.TestCase):
                 {source_module._INCOMPLETE_MARKER},
             )
             self.assertEqual(
-                fetch_main(origin.as_uri(), work_root=workspace).root,
+                fetch_canonical(origin.as_uri(), work_root=workspace).root,
                 workspace / 'source',
             )
 
@@ -303,15 +335,15 @@ class SetupSourceTest(unittest.TestCase):
                 side_effect=OSError('marker storage unavailable'),
             ):
                 with self.assertRaises(InvalidFetchedSource):
-                    fetch_main(origin.as_uri(), work_root=workspace)
+                    fetch_canonical(origin.as_uri(), work_root=workspace)
 
             self.assertFalse((workspace / 'source').exists())
             self.assertEqual(
-                fetch_main(origin.as_uri(), work_root=workspace).root,
+                fetch_canonical(origin.as_uri(), work_root=workspace).root,
                 workspace / 'source',
             )
 
-    def test_fetch_main_rejects_a_missing_session_below_a_symlinked_ancestor(self):
+    def test_fetch_canonical_rejects_a_missing_session_below_a_symlinked_ancestor(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             outside = temporary / 'outside'
@@ -320,18 +352,18 @@ class SetupSourceTest(unittest.TestCase):
             ancestor.symlink_to(outside, target_is_directory=True)
 
             with self.assertRaises(InvalidFetchedSource):
-                fetch_main('file:///origin.git', work_root=ancestor / 'session')
+                fetch_canonical('file:///origin.git', work_root=ancestor / 'session')
 
             self.assertFalse((outside / 'session').exists())
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX ownership and mode checks')
-    def test_fetch_main_rejects_a_nonprivate_workspace_before_git(self):
+    def test_fetch_canonical_rejects_a_nonprivate_workspace_before_git(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'
             workspace.mkdir(mode=0o755)
             with mock.patch.object(source_module.subprocess, 'run') as run:
                 with self.assertRaises(InvalidFetchedSource):
-                    fetch_main('file:///origin.git', work_root=workspace)
+                    fetch_canonical('file:///origin.git', work_root=workspace)
             run.assert_not_called()
 
     def test_git_commands_receive_a_sanitized_environment(self):
@@ -362,12 +394,12 @@ class SetupSourceTest(unittest.TestCase):
                 side_effect=OSError('cleanup failed'),
             ):
                 with self.assertRaises(SourceUnavailable):
-                    fetch_main(
+                    fetch_canonical(
                         (Path(temp_dir) / 'missing-origin.git').as_uri(),
                         work_root=Path(temp_dir) / 'session',
                     )
 
-    def test_fetch_main_never_overwrites_a_preexisting_source(self):
+    def test_fetch_canonical_never_overwrites_a_preexisting_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             origin, _ = self.make_origin(temporary)
@@ -378,10 +410,10 @@ class SetupSourceTest(unittest.TestCase):
             marker = source / 'keep'
             marker.write_text('preserve\n', encoding='utf-8')
             with self.assertRaises(InvalidFetchedSource):
-                fetch_main(origin.as_uri(), work_root=workspace)
+                fetch_canonical(origin.as_uri(), work_root=workspace)
             self.assertEqual(marker.read_text(encoding='utf-8'), 'preserve\n')
 
-    def test_fetch_main_rejects_a_preexisting_source_symlink_without_touching_its_target(self):
+    def test_fetch_canonical_rejects_a_preexisting_source_symlink_without_touching_its_target(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             origin, _ = self.make_origin(temporary)
@@ -393,10 +425,10 @@ class SetupSourceTest(unittest.TestCase):
             marker.write_text('preserve\n', encoding='utf-8')
             (workspace / 'source').symlink_to(outside, target_is_directory=True)
             with self.assertRaises(InvalidFetchedSource):
-                fetch_main(origin.as_uri(), work_root=workspace)
+                fetch_canonical(origin.as_uri(), work_root=workspace)
             self.assertEqual(marker.read_text(encoding='utf-8'), 'preserve\n')
 
-    def test_fetch_main_rejects_a_preexisting_empty_source(self):
+    def test_fetch_canonical_rejects_a_preexisting_empty_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             origin, _ = self.make_origin(temporary)
@@ -404,11 +436,11 @@ class SetupSourceTest(unittest.TestCase):
             source.parent.mkdir(mode=0o700)
             source.mkdir(mode=0o700)
             with self.assertRaises(InvalidFetchedSource):
-                fetch_main(origin.as_uri(), work_root=source.parent)
+                fetch_canonical(origin.as_uri(), work_root=source.parent)
             self.assertTrue(source.is_dir())
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX retry markers')
-    def test_fetch_main_reuses_a_preexisting_marker_only_source(self):
+    def test_fetch_canonical_reuses_a_preexisting_marker_only_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temporary = Path(temp_dir)
             origin, _ = self.make_origin(temporary)
@@ -419,7 +451,7 @@ class SetupSourceTest(unittest.TestCase):
             marker.write_bytes(source_module._INCOMPLETE_MARKER_BYTES)
             marker.chmod(0o600)
 
-            snapshot = fetch_main(origin.as_uri(), work_root=source.parent)
+            snapshot = fetch_canonical(origin.as_uri(), work_root=source.parent)
 
             self.assertEqual(snapshot.root, source)
             self.assertFalse(marker.exists())
@@ -434,7 +466,7 @@ class SetupSourceTest(unittest.TestCase):
             ]
             with mock.patch.object(source_module.subprocess, 'run', side_effect=commands) as run:
                 with self.assertRaises(SourceUnavailable):
-                    fetch_main('file:///origin.git', work_root=workspace)
+                    fetch_canonical('file:///origin.git', work_root=workspace)
 
             argv = run.call_args_list[0].args[0]
             self.assertRegex(argv[-1], r'^/proc/self/fd/[0-9]+$')
@@ -458,7 +490,7 @@ class SetupSourceTest(unittest.TestCase):
 
             with mock.patch.object(source_module, '_before_first_git', replace_namespace):
                 with self.assertRaises(InvalidFetchedSource):
-                    fetch_main('file:///origin.git', work_root=workspace)
+                    fetch_canonical('file:///origin.git', work_root=workspace)
 
             self.assertFalse(any(external.iterdir()))
 
@@ -494,7 +526,7 @@ class SetupSourceTest(unittest.TestCase):
                 mock.patch.object(source_module.subprocess, 'run') as run,
             ):
                 with self.assertRaises((SourceUnavailable, InvalidFetchedSource)):
-                    fetch_main('file:///origin.git', work_root=workspace)
+                    fetch_canonical('file:///origin.git', work_root=workspace)
 
             run.assert_not_called()
             self.assertEqual(len(replacements), 1)
@@ -521,7 +553,7 @@ class SetupSourceTest(unittest.TestCase):
                 side_effect=rename_then_raise,
             ):
                 with self.assertRaises(InvalidFetchedSource):
-                    fetch_main(origin.as_uri(), work_root=workspace)
+                    fetch_canonical(origin.as_uri(), work_root=workspace)
 
             self.assertEqual(
                 {path.name for path in (workspace / 'source').iterdir()},
@@ -548,7 +580,7 @@ class SetupSourceTest(unittest.TestCase):
                 create=True,
             ):
                 with self.assertRaises(InvalidFetchedSource):
-                    fetch_main(origin.as_uri(), work_root=workspace)
+                    fetch_canonical(origin.as_uri(), work_root=workspace)
 
             self.assertEqual((workspace / 'source' / 'sentinel').read_text(encoding='utf-8'), 'keep\\n')
             self.assertEqual(
@@ -575,7 +607,7 @@ class SetupSourceTest(unittest.TestCase):
                 replace_source_before_final_guard,
             ):
                 with self.assertRaises(InvalidFetchedSource):
-                    fetch_main(origin.as_uri(), work_root=workspace)
+                    fetch_canonical(origin.as_uri(), work_root=workspace)
 
             self.assertEqual((workspace / 'source' / 'sentinel').read_text(encoding='utf-8'), 'keep\n')
             self.assertEqual(
@@ -593,12 +625,12 @@ class SetupSourceTest(unittest.TestCase):
                 mock.patch.object(source_module.subprocess, 'run') as run,
             ):
                 with self.assertRaises(SourceUnavailable):
-                    fetch_main('file:///origin.git', work_root=workspace)
+                    fetch_canonical('file:///origin.git', work_root=workspace)
             mkdir.assert_not_called()
             run.assert_not_called()
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX retry markers')
-    def test_fetch_main_classifies_post_fetch_git_failures_as_invalid(self):
+    def test_fetch_canonical_classifies_post_fetch_git_failures_as_invalid(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir) / 'session'
             checkout_failure = [
@@ -609,7 +641,7 @@ class SetupSourceTest(unittest.TestCase):
             ]
             with mock.patch('agents_setup.source.subprocess.run', side_effect=checkout_failure):
                 with self.assertRaises(InvalidFetchedSource):
-                    fetch_main('file:///origin.git', work_root=workspace)
+                    fetch_canonical('file:///origin.git', work_root=workspace)
             candidates = candidate_directories(workspace)
             self.assertEqual(len(candidates), 1)
             self.assertTrue((candidates[0] / source_module._INCOMPLETE_MARKER).is_file())
@@ -623,17 +655,17 @@ class SetupSourceTest(unittest.TestCase):
             ]
             with mock.patch('agents_setup.source.subprocess.run', side_effect=rev_parse_failure):
                 with self.assertRaises(InvalidFetchedSource):
-                    fetch_main('file:///origin.git', work_root=workspace)
+                    fetch_canonical('file:///origin.git', work_root=workspace)
             candidates = candidate_directories(workspace)
             self.assertEqual(len(candidates), 2)
             self.assertTrue(all((candidate / source_module._INCOMPLETE_MARKER).is_file() for candidate in candidates))
 
-    def test_fetch_main_rejects_unsafe_repository_argv(self):
+    def test_fetch_canonical_rejects_unsafe_repository_argv(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             for repository in ('-c', 'https://example.invalid/\x00repo', 'https://example.invalid/\nrepo'):
                 with self.subTest(repository=repository):
                     with self.assertRaises(InvalidFetchedSource):
-                        fetch_main(repository, work_root=Path(temp_dir) / repository.replace('/', '_').replace('\x00', 'nul').replace('\n', 'nl'))
+                        fetch_canonical(repository, work_root=Path(temp_dir) / repository.replace('/', '_').replace('\x00', 'nul').replace('\n', 'nl'))
 
     def test_bootstrap_falls_back_only_when_fetch_is_unavailable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -645,7 +677,7 @@ class SetupSourceTest(unittest.TestCase):
             with (
                 mock.patch.object(
                     bootstrap,
-                    'fetch_main',
+                    'fetch_canonical',
                     side_effect=SourceUnavailable('network unavailable'),
                 ),
                 mock.patch.object(bootstrap.subprocess, 'run', return_value=completed) as run,
@@ -669,7 +701,7 @@ class SetupSourceTest(unittest.TestCase):
             with (
                 mock.patch.object(
                     bootstrap,
-                    'fetch_main',
+                    'fetch_canonical',
                     side_effect=InvalidFetchedSource('bad fetched source'),
                 ),
                 mock.patch.object(bootstrap.subprocess, 'run') as run,
@@ -690,7 +722,7 @@ class SetupSourceTest(unittest.TestCase):
             snapshot = SourceSnapshot(source, 'a' * 40)
             forwarded = ['prepare', '--session', str(temporary / 'session'), '--target', str(temporary / 'target')]
             with (
-                mock.patch.object(bootstrap, 'fetch_main', return_value=snapshot) as fetch,
+                mock.patch.object(bootstrap, 'fetch_canonical', return_value=snapshot) as fetch,
                 mock.patch.object(
                     bootstrap.subprocess,
                     'run',
@@ -721,7 +753,7 @@ class SetupSourceTest(unittest.TestCase):
             with (
                 mock.patch.object(
                     bootstrap,
-                    'fetch_main',
+                    'fetch_canonical',
                     side_effect=SourceUnavailable('network unavailable'),
                 ),
                 mock.patch.object(

@@ -2,14 +2,14 @@
 
 ## 目标
 
-Smartkit 从远端规范 `main` 为一个目标仓库生成可重复收敛的 Rule、Skill、Agent 和平台配置
+Smartkit 从远端规范 `master` 为一个目标仓库生成可重复收敛的 Rule、Skill、Agent 和平台配置
 快照。每次 setup 都以本次固定的来源和生成结果为准，直接替换 Smartkit 管理的内容，同时
 保留自动发现的项目私有 Rule、Skill 和结构化配置中的非受管字段。
 
 ## 来源
 
 `workflow.py` 通过配对 wrapper 暴露 `start`、`finish` 和 `cancel`。Start 自动创建带所有权标记
-的系统临时私有 session，再由 `bootstrap.py` 拉取远端 `main`，验证插件 manifest、版本、catalog、控制面
+的系统临时私有 session，再由 `bootstrap.py` 拉取远端 `master`，验证插件 manifest、版本、catalog、控制面
 入口和所有 catalog 来源，然后把实际 commit 和来源根目录交给固定入口。POSIX 使用目录描述符
 和不可替换发布；Windows 使用经过链接与目录边界检查的私有 session 候选目录。只有远端不可用
 时才能使用已安装来源，拉取到无效内容时必须停止。

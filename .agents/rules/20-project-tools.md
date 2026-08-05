@@ -39,7 +39,7 @@ Run both commands for every completed change set; together they form the require
   the public `start`/`finish`/`cancel` control plane. The pinned
   `setup_project_agents.py` prepare/apply/check phases are internal workflow operations.
 - Start creates and owns the private session, reads `setup-assets/catalog/assets.json`, fetches
-  canonical `main`, snapshots external Skills, and creates the request and models template. Finish
+  canonical `master`, snapshots external Skills, and creates the request and models template. Finish
   discovers project-owned Rules and Skills, force-converges catalog-managed, generated, and
   configured external content, checks convergence, summarizes, and cleans up without a project
   lock. Cancel safely cleans up an unfinished workflow-owned session.
