@@ -63,6 +63,7 @@ class ChangeKind(str, Enum):
     CREATE = 'create'
     UPDATE = 'update'
     DELETE = 'delete'
+    DELETE_DIRECTORY = 'delete-directory'
     UNCHANGED = 'unchanged'
 
 

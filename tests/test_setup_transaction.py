@@ -86,6 +86,44 @@ class SetupTransactionTest(unittest.TestCase):
             self.assertEqual(first.read_bytes(), b'a-old\n')
             self.assertEqual(second.read_bytes(), b'b-old\n')
 
+    def test_rolls_back_a_retired_directory_when_parent_removal_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            original = self.write(target, 'retired/nested/owned.txt', b'old\n')
+            plan = self.plan(
+                Change(ChangeKind.DELETE, PurePosixPath('retired/nested/owned.txt'), None),
+                Change(ChangeKind.DELETE_DIRECTORY, PurePosixPath('retired/nested'), None),
+                Change(ChangeKind.DELETE_DIRECTORY, PurePosixPath('retired'), None),
+            )
+
+            if transaction._SECURE_DIR_FDS:
+                real_rmdir = os.rmdir
+
+                def fail_retired(path, *args, **kwargs):
+                    if path == 'retired':
+                        raise OSError('injected directory removal failure')
+                    return real_rmdir(path, *args, **kwargs)
+
+                patch = mock.patch.object(transaction.os, 'rmdir', side_effect=fail_retired)
+            else:
+                real_rmdir = Path.rmdir
+
+                def fail_retired(path):
+                    if path.name == 'retired':
+                        raise OSError('injected directory removal failure')
+                    return real_rmdir(path)
+
+                patch = mock.patch.object(Path, 'rmdir', new=fail_retired)
+
+            with patch:
+                with self.assertRaisesRegex(
+                    TransactionError,
+                    'injected directory removal failure',
+                ):
+                    apply_plan(target, plan)
+
+            self.assertEqual(original.read_bytes(), b'old\n')
+
     @unittest.skipIf(os.name == 'nt', 'POSIX mode assertion')
     def test_update_preserves_existing_permissions(self):
         with tempfile.TemporaryDirectory() as temp_dir:

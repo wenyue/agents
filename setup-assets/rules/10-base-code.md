@@ -2,8 +2,8 @@
 
 Strength: `Default`
 
-Scope: Cross-language ownership, boundaries, clarity, state integrity, dependencies, abstractions,
-diagnostics, and documentation.
+Scope: Cross-language ownership, boundaries, clarity, local consistency, state integrity,
+dependencies, abstractions, diagnostics, and documentation.
 
 ## Ownership And APIs
 
@@ -15,6 +15,9 @@ diagnostics, and documentation.
 
 ## Clarity And Abstraction
 
+- Before editing code, inspect the target file and nearby implementations for comparable work.
+  Follow their established naming, structure, control flow, API, and comment patterns unless a more
+  specific rule or an explicitly approved design requires a deliberate departure.
 - Use names, types, and structure to make responsibilities, valid states, and the main decision path
   understandable locally.
 - Keep side effects, failure modes, retries, fallbacks, and lifecycle transitions visible in the

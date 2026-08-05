@@ -9,6 +9,7 @@ sys.path.insert(0, str(REPO_ROOT / 'skills' / 'setup-project-agents' / 'scripts'
 
 from agents_setup.models import ChangeKind, DesiredField, DesiredFile  # noqa: E402
 from agents_setup.planner import PlanningError, build_plan  # noqa: E402
+from agents_setup.transaction import apply_plan  # noqa: E402
 
 
 class SetupPlannerTest(unittest.TestCase):
@@ -51,6 +52,30 @@ class SetupPlannerTest(unittest.TestCase):
                 delete_paths=(PurePosixPath('.agents/lock.json'),),
             )
             self.assertEqual(plan.changes[0].kind, ChangeKind.DELETE)
+
+    def test_explicit_retired_directory_is_deleted_without_touching_siblings(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            retired = self.write(
+                target,
+                '.agents/skills/setup-project-agents/scripts/setup.py',
+                b'old\n',
+            ).parents[1]
+            sibling = self.write(
+                target,
+                '.agents/skills/project-owned/SKILL.md',
+                b'keep\n',
+            )
+
+            plan = build_plan(
+                target,
+                (),
+                delete_paths=(PurePosixPath('.agents/skills/setup-project-agents'),),
+            )
+            apply_plan(target, plan)
+
+            self.assertFalse(retired.exists())
+            self.assertEqual(sibling.read_bytes(), b'keep\n')
 
     def test_replace_root_removes_stale_files_and_preserves_other_directories(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -109,6 +134,26 @@ class SetupPlannerTest(unittest.TestCase):
                     linked,
                     (DesiredFile(PurePosixPath('owned.md'), b'new\n'),),
                 )
+
+    def test_rejects_symlinks_inside_a_retired_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            retired = root / '.agents' / 'skills' / 'retired'
+            retired.mkdir(parents=True)
+            outside = self.write(root, 'outside.txt', b'outside\n')
+            linked = retired / 'linked.txt'
+            try:
+                linked.symlink_to(outside)
+            except OSError:
+                self.skipTest('symlinks are unavailable')
+
+            with self.assertRaisesRegex(PlanningError, 'symlink'):
+                build_plan(
+                    root,
+                    (),
+                    delete_paths=(PurePosixPath('.agents/skills/retired'),),
+                )
+            self.assertEqual(outside.read_bytes(), b'outside\n')
 
 
 if __name__ == '__main__':

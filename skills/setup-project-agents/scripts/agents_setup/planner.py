@@ -89,6 +89,39 @@ def _files_under(target: Path, root: PurePosixPath) -> set[PurePosixPath]:
     return result
 
 
+def _retired_entries(
+    target: Path, root: PurePosixPath
+) -> tuple[set[PurePosixPath], set[PurePosixPath]]:
+    try:
+        current = confined_target(target, root)
+    except ProjectError as error:
+        raise PlanningError(str(error)) from error
+    if _is_link_like(current):
+        raise PlanningError(f'retired path contains a symlink: {_path_key(root)}')
+    if not current.exists():
+        return set(), set()
+    if current.is_file():
+        return {root}, set()
+    if not current.is_dir():
+        raise PlanningError(f'retired path is not a file or directory: {_path_key(root)}')
+
+    files: set[PurePosixPath] = set()
+    directories = {root}
+    for path in current.rglob('*'):
+        relative = root / path.relative_to(current).as_posix()
+        if _is_link_like(path):
+            raise PlanningError(f'retired path contains a symlink: {_path_key(relative)}')
+        if path.is_file():
+            files.add(relative)
+        elif path.is_dir():
+            directories.add(relative)
+        else:
+            raise PlanningError(
+                f'retired path is not a file or directory: {_path_key(relative)}'
+            )
+    return files, directories
+
+
 def build_plan(
     target_root: Path,
     desired_files: Sequence[DesiredFile],
@@ -100,11 +133,26 @@ def build_plan(
     """Build a deterministic force-convergence plan from current and desired content."""
     files = _desired_files(desired_files)
     _validate_fields(desired_fields, files)
-    removals = set(delete_paths)
+    removals: set[PurePosixPath] = set()
+    directory_removals: set[PurePosixPath] = set()
+    retired_roots = set(delete_paths)
+    for path in delete_paths:
+        retired_files, retired_directories = _retired_entries(target_root, path)
+        removals.update(retired_files)
+        directory_removals.update(retired_directories)
     for root in replace_roots:
         removals.update(_files_under(target_root, root) - set(files))
-    if removals.intersection(files):
-        path = min(removals.intersection(files), key=_path_key)
+    overlap = removals.intersection(files)
+    overlap.update(
+        desired
+        for desired in files
+        if any(
+            desired == retired or retired in desired.parents or desired in retired.parents
+            for retired in retired_roots
+        )
+    )
+    if overlap:
+        path = min(overlap, key=_path_key)
         raise PlanningError(f'desired and deleted path overlap: {_path_key(path)}')
 
     changes: list[Change] = []
@@ -121,4 +169,9 @@ def build_plan(
             changes.append(Change(ChangeKind.UNCHANGED, path, desired.content))
         else:
             changes.append(Change(ChangeKind.UPDATE, path, desired.content))
+    for path in sorted(
+        directory_removals,
+        key=lambda item: (-len(item.parts), _path_key(item)),
+    ):
+        changes.append(Change(ChangeKind.DELETE_DIRECTORY, path, None))
     return Plan(tuple(changes))

@@ -70,9 +70,15 @@ def _validate_change(change: Change) -> PurePosixPath:
         raise TransactionError(error) from error
     if not isinstance(change.kind, ChangeKind):
         raise TransactionError(TypeError(f'unsupported change kind: {change.kind!r}'))
-    if change.kind is ChangeKind.DELETE and change.content is not None:
+    if (
+        change.kind in {ChangeKind.DELETE, ChangeKind.DELETE_DIRECTORY}
+        and change.content is not None
+    ):
         raise TransactionError(TypeError(f'delete change has content: {_path_key(change.path)}'))
-    if change.kind is not ChangeKind.DELETE and not isinstance(change.content, bytes):
+    if (
+        change.kind not in {ChangeKind.DELETE, ChangeKind.DELETE_DIRECTORY}
+        and not isinstance(change.content, bytes)
+    ):
         raise TransactionError(TypeError(f'file change content must be bytes: {_path_key(change.path)}'))
     return path
 
@@ -89,7 +95,15 @@ def _operations(plan: Plan) -> tuple[_Operation, ...]:
         seen.add(path)
         if change.kind is not ChangeKind.UNCHANGED:
             operations.append(_Operation(path, change.kind, change.content))
-    operations.sort(key=lambda operation: _path_key(operation.path))
+    operations.sort(
+        key=lambda operation: (
+            1 if operation.kind is ChangeKind.DELETE_DIRECTORY else 0,
+            -len(operation.path.parts)
+            if operation.kind is ChangeKind.DELETE_DIRECTORY
+            else 0,
+            _path_key(operation.path),
+        )
+    )
     return tuple(operations)
 
 
@@ -148,19 +162,25 @@ def _open_parent(root_fd: int, path: PurePosixPath, *, create: bool, created: li
         raise
 
 
-def _stat_at(parent_fd: int, name: str) -> os.stat_result | None:
+def _stat_at(
+    parent_fd: int, name: str, *, directory: bool = False
+) -> os.stat_result | None:
     try:
         entry = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
     except FileNotFoundError:
         return None
     if stat.S_ISLNK(entry.st_mode):
         raise TransactionError(f'unsafe symlink at transaction target: {name}')
-    if not stat.S_ISREG(entry.st_mode):
-        raise TransactionError(f'target path is not a regular file: {name}')
+    expected = stat.S_ISDIR(entry.st_mode) if directory else stat.S_ISREG(entry.st_mode)
+    if not expected:
+        kind = 'directory' if directory else 'regular file'
+        raise TransactionError(f'target path is not a {kind}: {name}')
     return entry
 
 
-def _read_at(parent_fd: int, name: str) -> tuple[bytes, int] | None:
+def _read_at(
+    parent_fd: int, name: str
+) -> tuple[bytes, int, tuple[int, int]] | None:
     entry = _stat_at(parent_fd, name)
     if entry is None:
         return None
@@ -232,12 +252,20 @@ def _expected(root_fd: int, operation: _Operation) -> None:
             return
         raise TransactionError(f'target disappeared after planning: {_path_key(operation.path)}')
     try:
-        entry = _stat_at(parent_fd, operation.path.name)
+        entry = _stat_at(
+            parent_fd,
+            operation.path.name,
+            directory=operation.kind is ChangeKind.DELETE_DIRECTORY,
+        )
     finally:
         os.close(parent_fd)
     if operation.kind is ChangeKind.CREATE and entry is not None:
         raise TransactionError(f'create target appeared after planning: {_path_key(operation.path)}')
-    if operation.kind in {ChangeKind.UPDATE, ChangeKind.DELETE} and entry is None:
+    if operation.kind in {
+        ChangeKind.UPDATE,
+        ChangeKind.DELETE,
+        ChangeKind.DELETE_DIRECTORY,
+    } and entry is None:
         raise TransactionError(f'target disappeared after planning: {_path_key(operation.path)}')
 
 
@@ -247,6 +275,16 @@ def _backup(root_fd: int, operation: _Operation, backup_root: Path, index: int) 
     except FileNotFoundError:
         return _Backup(operation, None, None, None)
     try:
+        if operation.kind is ChangeKind.DELETE_DIRECTORY:
+            entry = _stat_at(parent_fd, operation.path.name, directory=True)
+            if entry is None:
+                return _Backup(operation, None, None, None)
+            return _Backup(
+                operation,
+                None,
+                stat.S_IMODE(entry.st_mode),
+                (entry.st_dev, entry.st_ino),
+            )
         current = _read_at(parent_fd, operation.path.name)
     finally:
         os.close(parent_fd)
@@ -259,7 +297,11 @@ def _backup(root_fd: int, operation: _Operation, backup_root: Path, index: int) 
 
 
 def _final_matches(parent_fd: int, operation: _Operation, backup: _Backup) -> None:
-    current = _stat_at(parent_fd, operation.path.name)
+    current = _stat_at(
+        parent_fd,
+        operation.path.name,
+        directory=operation.kind is ChangeKind.DELETE_DIRECTORY,
+    )
     if backup.identity is None:
         if current is not None:
             raise TransactionError(f'unsafe final target appeared: {_path_key(operation.path)}')
@@ -268,13 +310,16 @@ def _final_matches(parent_fd: int, operation: _Operation, backup: _Backup) -> No
 
 
 def _apply(root_fd: int, guard: _RootGuard, operation: _Operation, backup: _Backup, created: list[PurePosixPath], applied: list[_Mutation]) -> None:
-    if operation.kind is ChangeKind.DELETE:
+    if operation.kind in {ChangeKind.DELETE, ChangeKind.DELETE_DIRECTORY}:
         parent_fd = _open_parent(root_fd, operation.path, create=False, created=created)
         try:
             _assert_root(guard)
             _final_matches(parent_fd, operation, backup)
             applied.append(_Mutation(backup, None))
-            os.unlink(operation.path.name, dir_fd=parent_fd)
+            if operation.kind is ChangeKind.DELETE_DIRECTORY:
+                os.rmdir(operation.path.name, dir_fd=parent_fd)
+            else:
+                os.unlink(operation.path.name, dir_fd=parent_fd)
         finally:
             os.close(parent_fd)
         return
@@ -302,16 +347,20 @@ def _verify_desired(root_fd: int, changes: tuple[Change, ...]) -> None:
         try:
             parent_fd = _open_parent(root_fd, change.path, create=False, created=[])
         except FileNotFoundError:
-            if change.kind is ChangeKind.DELETE:
+            if change.kind in {ChangeKind.DELETE, ChangeKind.DELETE_DIRECTORY}:
                 continue
             raise TransactionError(f'content changed before transaction commit: {_path_key(change.path)}')
         try:
-            current = _read_at(parent_fd, change.path.name)
+            current = (
+                _stat_at(parent_fd, change.path.name, directory=True)
+                if change.kind is ChangeKind.DELETE_DIRECTORY
+                else _read_at(parent_fd, change.path.name)
+            )
         except FileNotFoundError:
             current = None
         finally:
             os.close(parent_fd)
-        if change.kind is ChangeKind.DELETE:
+        if change.kind in {ChangeKind.DELETE, ChangeKind.DELETE_DIRECTORY}:
             if current is not None:
                 raise TransactionError(f'delete result changed: {_path_key(change.path)}')
         elif current is None or current[0] != change.content:
@@ -320,6 +369,39 @@ def _verify_desired(root_fd: int, changes: tuple[Change, ...]) -> None:
 
 def _restore(root_fd: int, mutation: _Mutation, created: list[PurePosixPath]) -> None:
     backup = mutation.backup
+    if backup.operation.kind is ChangeKind.DELETE_DIRECTORY:
+        parent_fd = _open_parent(
+            root_fd,
+            backup.operation.path,
+            create=False,
+            created=created,
+        )
+        try:
+            current = _stat_at(
+                parent_fd,
+                backup.operation.path.name,
+                directory=True,
+            )
+            current_identity = None if current is None else (current.st_dev, current.st_ino)
+            if current_identity == backup.identity:
+                return
+            if current_identity != mutation.result_identity:
+                raise TransactionError(
+                    f'third-party target retained during rollback: '
+                    f'{_path_key(backup.operation.path)}'
+                )
+            if backup.identity is None:
+                raise TransactionError(
+                    f'directory backup is missing: {_path_key(backup.operation.path)}'
+                )
+            os.mkdir(
+                backup.operation.path.name,
+                backup.mode if backup.mode is not None else 0o777,
+                dir_fd=parent_fd,
+            )
+        finally:
+            os.close(parent_fd)
+        return
     try:
         parent_fd = _open_parent(root_fd, backup.operation.path, create=backup.snapshot is not None, created=created)
     except FileNotFoundError:
@@ -425,12 +507,16 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
         if stat.S_ISLNK(item.st_mode) or not stat.S_ISDIR(item.st_mode) or (item.st_dev, item.st_ino) != root_identity:
             raise TransactionError('unsafe fallback root namespace changed')
 
-    def entry(path: Path) -> os.stat_result | None:
+    def entry(path: Path, *, directory: bool = False) -> os.stat_result | None:
         try:
             item = path.lstat()
         except FileNotFoundError:
             return None
-        if stat.S_ISLNK(item.st_mode) or not stat.S_ISREG(item.st_mode):
+        is_link = stat.S_ISLNK(item.st_mode) or path.is_symlink() or (
+            hasattr(path, 'is_junction') and path.is_junction()
+        )
+        expected = stat.S_ISDIR(item.st_mode) if directory else stat.S_ISREG(item.st_mode)
+        if is_link or not expected:
             raise TransactionError(f'unsafe fallback target: {path}')
         return item
 
@@ -473,10 +559,17 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
         return temporary
 
     def expected(operation: _Operation) -> None:
-        current = entry(target(operation.path))
+        current = entry(
+            target(operation.path),
+            directory=operation.kind is ChangeKind.DELETE_DIRECTORY,
+        )
         if operation.kind is ChangeKind.CREATE and current is not None:
             raise TransactionError(f'create target appeared after planning: {_path_key(operation.path)}')
-        if operation.kind in {ChangeKind.UPDATE, ChangeKind.DELETE} and current is None:
+        if operation.kind in {
+            ChangeKind.UPDATE,
+            ChangeKind.DELETE,
+            ChangeKind.DELETE_DIRECTORY,
+        } and current is None:
             raise TransactionError(f'target disappeared after planning: {_path_key(operation.path)}')
         if operation.kind is ChangeKind.UNCHANGED:
             assert operation.content is not None
@@ -491,9 +584,19 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
         backups: dict[PurePosixPath, _Backup] = {}
         for index, operation in enumerate(operations):
             path = target(operation.path)
-            item = entry(path)
+            item = entry(
+                path,
+                directory=operation.kind is ChangeKind.DELETE_DIRECTORY,
+            )
             if item is None:
                 backups[operation.path] = _Backup(operation, None, None, None)
+            elif operation.kind is ChangeKind.DELETE_DIRECTORY:
+                backups[operation.path] = _Backup(
+                    operation,
+                    None,
+                    stat.S_IMODE(item.st_mode),
+                    (item.st_dev, item.st_ino),
+                )
             else:
                 snapshot = snapshots / f'{index:04d}'
                 snapshot.write_bytes(path.read_bytes())
@@ -503,13 +606,19 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
             backup = backups[operation.path]
             path = target(operation.path)
             guard()
-            current = entry(path)
+            current = entry(
+                path,
+                directory=operation.kind is ChangeKind.DELETE_DIRECTORY,
+            )
             identity = None if current is None else (current.st_dev, current.st_ino)
             if identity != backup.identity:
                 raise TransactionError(f'unsafe fallback final target changed: {_path_key(operation.path)}')
-            if operation.kind is ChangeKind.DELETE:
+            if operation.kind in {ChangeKind.DELETE, ChangeKind.DELETE_DIRECTORY}:
                 applied.append(_Mutation(backup, None))
-                path.unlink()
+                if operation.kind is ChangeKind.DELETE_DIRECTORY:
+                    path.rmdir()
+                else:
+                    path.unlink()
                 continue
             assert operation.content is not None
             temporary = sibling(path, operation.content, backup.mode)
@@ -544,13 +653,23 @@ def _apply_fallback(target_root: Path, plan: Plan) -> None:
                 guard()
                 path = target(operation.path)
                 guard()
-                current = entry(path)
+                current = entry(
+                    path,
+                    directory=operation.kind is ChangeKind.DELETE_DIRECTORY,
+                )
                 identity = None if current is None else (current.st_dev, current.st_ino)
                 if identity == backup.identity:
                     continue
                 if identity != mutation.result_identity:
                     raise TransactionError(f'third-party fallback target retained: {_path_key(operation.path)}')
-                if backup.snapshot is None:
+                if operation.kind is ChangeKind.DELETE_DIRECTORY:
+                    if backup.identity is None:
+                        raise TransactionError(
+                            f'directory backup is missing: {_path_key(operation.path)}'
+                        )
+                    guard()
+                    path.mkdir(mode=backup.mode if backup.mode is not None else 0o777)
+                elif backup.snapshot is None:
                     if current is not None:
                         guard()
                         path.unlink()
