@@ -42,8 +42,7 @@ In the target repository, ask the Agent to use `setup-project-agents` to initial
 Setup always configures Codex, Cursor, and Copilot.
 
 Setup writes the rules, skills, and Agent configuration required by the project into the repository.
-SmartKit also exposes `debug-mode` directly for difficult interactive debugging. Run
-`setup-project-agents` again when you want to adopt a new version of the setup-managed snapshot.
+Run `setup-project-agents` again when you want to adopt a new version of the setup-managed snapshot.
 
 SmartKit manages only the content it generates and preserves the project's existing files and user
 configuration whenever possible. All changes can be viewed and reviewed through version control.

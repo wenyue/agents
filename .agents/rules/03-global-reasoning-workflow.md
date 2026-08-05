@@ -52,10 +52,19 @@ outcomes across tasks.
   context.
 - Keep the action within the requested scope. Present a broader option and its material trade-offs
   before expanding that scope.
-- Keep progress updates within the runtime's maximum interval; when none is specified, do not let
-  more than 60 seconds pass between updates. This interval is not a process timeout. When a command
-  may run longer, set an execution timeout that covers the entire operation and use yielded
-  execution or an equivalent wait mechanism to preserve the process and its output streams.
+- When supported, batch already-known, independent read-only calls from the same stage into one
+  orchestration call and run them concurrently. In JavaScript, use `Promise.allSettled` when partial
+  results remain useful; use `Promise.all` when every result is required.
+- Keep dependent, state-changing, approval, and wait calls sequential, and batch only work already
+  inside the authorized scope.
+- Minimize model-visible polling. Keep progress updates within the runtime's maximum interval; when
+  none is specified, do not let more than 60 seconds pass between updates. For long-running work,
+  prefer the longest single wait that does not exceed that interval. If a wait produces no new
+  state, query status only when it can change the next action; otherwise wait again or do useful
+  independent work.
+- The progress-update interval is not a process timeout. When a command may run longer, set an
+  execution timeout that covers the entire operation and use yielded execution or an equivalent
+  wait mechanism to preserve the process and its output streams.
 - Do not intentionally time out a healthy process to regain conversational control. After an
   unexpected timeout or interrupted execution channel, inspect the original process and its
   preserved output before retrying. Do not retry the same logical operation while the original

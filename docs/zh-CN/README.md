@@ -39,8 +39,8 @@ copilot plugin install smartkit@wenyue
 进入目标仓库后，请 Agent 使用 `setup-project-agents` 完成初始化。初始化流程每次都会配置 Codex、
 Cursor 和 Copilot。
 
-初始化会把项目所需的规则、技能和 Agent 配置写入仓库。SmartKit 还会直接提供 `debug-mode`，
-用于处理困难的交互式调试问题。需要采用新版初始化快照时，再次运行 `setup-project-agents` 即可。
+初始化会把项目所需的规则、技能和 Agent 配置写入仓库。需要采用新版初始化快照时，再次运行
+`setup-project-agents` 即可。
 
 SmartKit 只管理自己生成的内容，并尽量保留项目原有文件和用户配置。所有改动都可以通过版本控制
 查看和审阅。

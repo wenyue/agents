@@ -2,21 +2,29 @@
 
 Strength: `Mandatory`
 
-Scope: Subagent delegation, Superpowers activation and execution-plan language, worktree workflow
-ownership, and Git safety.
+Scope: Subagent delegation, Superpowers activation, worktree workflow ownership, and Git safety.
 
 ## Delegation
 
 - Automatically authorize the agent to use subagents when needed.
+- Choose each subagent's model and reasoning effort for its task: prefer faster, lower-cost options
+  for bounded supporting work and stronger options for ambiguous, cross-cutting, or high-risk work.
+- Preserve settings required by the user, an applicable rule or skill, or the selected named agent;
+  otherwise choose task-appropriate settings instead of inheriting the parent's by default.
+- When using a different model, inherit no history or only the smallest sufficient history and give
+  the subagent a self-contained brief. Use a full-history fork, which inherits the parent model,
+  only when the task requires the complete parent conversation.
+- If no suitable alternate model is available, delegate only when isolation or independent
+  execution still helps; otherwise keep the work in the parent agent.
 
 ## Superpowers
 
+- Treat `superpowers:using-superpowers` as disabled. Evaluate other `superpowers:*` skills directly
+  under their own trigger conditions and applicable higher-priority rules.
 - Use `write-skill` for Skill authoring and `write-rule` for Rule authoring. Reserve
   `superpowers:writing-skills` for an explicit user request for adversarial behavioral evaluation or
   pressure testing.
 - Reserve `superpowers:brainstorming` for an explicit user request for brainstorming.
-- Use English for concrete Superpowers execution plans. This exception applies to step-by-step
-  implementation plans, not design documents.
 
 ## Worktree Workflow
 
@@ -24,13 +32,18 @@ ownership, and Git safety.
   creation timing, detection, consent, location, and creation.
 - After creating a worktree, use the target repository's `worktree-environment-setup` skill when it
   exists, then run the baseline verification required by `superpowers:using-git-worktrees`.
-- When implementation is complete, use `worktree-integrate`. Its default review mode returns changes
-  to the current checkout as unstaged or untracked work while preserving the current `HEAD`, index,
-  and unrelated local changes.
+- When implementation in a named linked worktree is complete and verified, present four outcomes
+  before acting: merge locally into the recorded base branch; push and create a pull request; keep
+  the task branch and worktree; or integrate into the current checkout.
+- Execute the selected outcome without asking again: use `worktree-integrate` for current-checkout
+  integration and `superpowers:finishing-a-development-branch` for local merge, pull request,
+  keep-branch, or explicitly requested discard.
+- Treat local merge and current-checkout integration as different outcomes even when the current
+  checkout is on the recorded base branch. Local merge advances the base branch;
+  `worktree-integrate` review mode keeps the current `HEAD` and index unchanged and returns task
+  changes as unstaged or untracked while preserving unrelated local changes.
 - Use `worktree-integrate` commit mode only when the user explicitly requests local integration with
   a commit, and keep all business changes in one commit.
-- Use `superpowers:finishing-a-development-branch` for pull-request, keep-branch, or discard
-  outcomes.
 
 ## Git Safety
 
