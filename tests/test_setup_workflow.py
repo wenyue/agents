@@ -22,6 +22,9 @@ import bootstrap  # noqa: E402
 import workflow  # noqa: E402
 
 
+POWERSHELL = shutil.which('pwsh') or shutil.which('powershell')
+
+
 def run_git(directory: Path, *args: str) -> None:
     subprocess.run(
         ('git', '-C', str(directory), *args),
@@ -32,6 +35,169 @@ def run_git(directory: Path, *args: str) -> None:
 
 
 class SetupWorkflowTest(unittest.TestCase):
+    def test_powershell_wrapper_keeps_minimum_version_exit_reachable(self):
+        wrapper = (
+            SCRIPTS_ROOT / 'setup_project_agents.ps1'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn(
+            "[Console]::Error.WriteLine('Python 3.10 or newer is required.')",
+            wrapper,
+        )
+        self.assertIn("exit 2", wrapper)
+
+    @unittest.skipUnless(
+        os.name == 'posix' and shutil.which('dirname') and shutil.which('tr'),
+        'requires POSIX shell tools',
+    )
+    def test_shell_wrapper_reports_minimum_when_uv_cannot_find_python(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executable_root = Path(temp_dir)
+            for name in ('dirname', 'tr'):
+                executable = shutil.which(name)
+                self.assertIsNotNone(executable)
+                (executable_root / name).symlink_to(executable)
+            for name in ('python3', 'python', 'uv'):
+                incompatible_command = executable_root / name
+                incompatible_command.write_text(
+                    '#!/bin/sh\nexit 1\n', encoding='utf-8'
+                )
+                incompatible_command.chmod(0o755)
+            environment = dict(os.environ)
+            environment['PATH'] = str(executable_root)
+
+            completed = subprocess.run(
+                (
+                    '/bin/sh',
+                    str(SCRIPTS_ROOT / 'setup_project_agents.sh'),
+                    '--help',
+                ),
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=environment,
+            )
+
+            self.assertEqual(completed.returncode, 2)
+            self.assertIn(
+                'ERROR: Python 3.10 or newer is required.', completed.stderr
+            )
+
+    @unittest.skipUnless(POWERSHELL, 'requires PowerShell')
+    def test_powershell_wrapper_reports_minimum_when_uv_cannot_find_python(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executable_root = Path(temp_dir)
+            for name in ('python3', 'python', 'uv'):
+                if os.name == 'nt':
+                    incompatible_command = executable_root / f'{name}.cmd'
+                    incompatible_command.write_text(
+                        '@exit /b 1\r\n', encoding='utf-8'
+                    )
+                else:
+                    incompatible_command = executable_root / name
+                    incompatible_command.write_text(
+                        '#!/bin/sh\nexit 1\n', encoding='utf-8'
+                    )
+                    incompatible_command.chmod(0o755)
+            environment = dict(os.environ)
+            environment['PATH'] = str(executable_root)
+
+            completed = subprocess.run(
+                (
+                    str(POWERSHELL),
+                    '-NoProfile',
+                    '-File',
+                    str(SCRIPTS_ROOT / 'setup_project_agents.ps1'),
+                    '--help',
+                ),
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=environment,
+            )
+
+            self.assertEqual(completed.returncode, 2)
+            self.assertIn(
+                'Python 3.10 or newer is required.',
+                completed.stdout + completed.stderr,
+            )
+
+    @unittest.skipUnless(
+        os.name == 'posix'
+        and shutil.which('python3.10')
+        and shutil.which('dirname')
+        and shutil.which('tr'),
+        'requires Python 3.10 and POSIX shell tools',
+    )
+    def test_shell_wrapper_runs_workflow_with_python_310(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executable_root = Path(temp_dir)
+            for name in ('python3', 'dirname', 'tr'):
+                executable = shutil.which('python3.10' if name == 'python3' else name)
+                self.assertIsNotNone(executable)
+                (executable_root / name).symlink_to(executable)
+            for name in ('python', 'uv'):
+                incompatible_command = executable_root / name
+                incompatible_command.write_text(
+                    '#!/bin/sh\nexit 1\n', encoding='utf-8'
+                )
+                incompatible_command.chmod(0o755)
+            environment = dict(os.environ)
+            environment['PATH'] = str(executable_root)
+
+            completed = subprocess.run(
+                (
+                    '/bin/sh',
+                    str(SCRIPTS_ROOT / 'setup_project_agents.sh'),
+                    '--help',
+                ),
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=environment,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn('usage:', completed.stdout)
+
+    @unittest.skipUnless(os.name == 'posix', 'requires a POSIX shell')
+    def test_shell_wrapper_selects_a_compatible_versioned_python(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executable_root = Path(temp_dir)
+            for name in ('python3', 'python', 'uv'):
+                incompatible_command = executable_root / name
+                incompatible_command.write_text(
+                    '#!/bin/sh\nexit 1\n', encoding='utf-8'
+                )
+                incompatible_command.chmod(0o755)
+            compatible_python = executable_root / (
+                f'python{sys.version_info.major}.{sys.version_info.minor}'
+            )
+            compatible_python.symlink_to(sys.executable)
+            environment = dict(os.environ)
+            environment['PATH'] = (
+                f'{executable_root}{os.pathsep}{environment.get("PATH", "")}'
+            )
+
+            completed = subprocess.run(
+                (
+                    'sh',
+                    str(SCRIPTS_ROOT / 'setup_project_agents.sh'),
+                    '--help',
+                ),
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=environment,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn('usage:', completed.stdout)
+
     @staticmethod
     def make_origin(root: Path) -> Path:
         origin = root / 'origin.git'

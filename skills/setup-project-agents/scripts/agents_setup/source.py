@@ -30,6 +30,17 @@ _COMMIT = re.compile(r'^[0-9a-fA-F]{40}$')
 _ENTRYPOINT = PurePosixPath(
     'skills/setup-project-agents/scripts/setup_project_agents.py'
 )
+_VENDORED_TOMLI_FILES = tuple(
+    PurePosixPath('skills/setup-project-agents/scripts/_vendor') / relative
+    for relative in (
+        '__init__.py',
+        'tomli/LICENSE',
+        'tomli/__init__.py',
+        'tomli/_parser.py',
+        'tomli/_re.py',
+        'tomli/_types.py',
+    )
+)
 _MANIFESTS = (
     (PurePosixPath('.codex-plugin/plugin.json'), {'skills': './skills/'}),
     (PurePosixPath('.cursor-plugin/plugin.json'), {'skills': './skills/'}),
@@ -165,6 +176,8 @@ def _validate_source(source_root: Path, *, fd_root: bool) -> Path:
         _safe_required(root, PurePosixPath('.git'), directory=True)
 
     entrypoint = _safe_required(root, _ENTRYPOINT)
+    for relative in _VENDORED_TOMLI_FILES:
+        _safe_required(root, relative)
     try:
         catalog = load_catalog(root)
     except ContractError as error:

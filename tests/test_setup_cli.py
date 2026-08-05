@@ -12,12 +12,16 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path, PurePosixPath
 from unittest import mock
-import tomllib
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_ROOT = REPO_ROOT / 'skills' / 'setup-project-agents' / 'scripts'
 sys.path.insert(0, str(SCRIPTS_ROOT))
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    from _vendor import tomli as tomllib
 
 import setup_project_agents  # noqa: E402
 import bootstrap  # noqa: E402

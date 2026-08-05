@@ -28,6 +28,14 @@ import setup_project_agents  # noqa: E402
 
 
 CANONICAL_REPOSITORY = 'https://github.com/wenyue/agents.git'
+VENDORED_TOMLI_FILES = (
+    'skills/setup-project-agents/scripts/_vendor/__init__.py',
+    'skills/setup-project-agents/scripts/_vendor/tomli/LICENSE',
+    'skills/setup-project-agents/scripts/_vendor/tomli/__init__.py',
+    'skills/setup-project-agents/scripts/_vendor/tomli/_parser.py',
+    'skills/setup-project-agents/scripts/_vendor/tomli/_re.py',
+    'skills/setup-project-agents/scripts/_vendor/tomli/_types.py',
+)
 
 
 def run_git(directory: Path, *args: str) -> str:
@@ -48,6 +56,10 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
     entrypoint = root / 'skills' / 'setup-project-agents' / 'scripts' / 'setup_project_agents.py'
     entrypoint.parent.mkdir(parents=True)
     entrypoint.write_text('raise SystemExit(0)\n', encoding='utf-8')
+    for relative in VENDORED_TOMLI_FILES:
+        vendored_file = root / relative
+        vendored_file.parent.mkdir(parents=True, exist_ok=True)
+        vendored_file.write_text('test\n', encoding='utf-8')
     (root / 'VERSION').write_text(f'{version}\n', encoding='utf-8')
     manifests = {
         '.codex-plugin/plugin.json': {
@@ -188,6 +200,17 @@ class SetupSourceTest(unittest.TestCase):
 
     def test_validate_source_accepts_the_actual_plugin_root(self):
         self.assertEqual(validate_source(REPO_ROOT), REPO_ROOT)
+
+    def test_validate_source_requires_complete_vendored_tomli(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for index, relative in enumerate(VENDORED_TOMLI_FILES):
+                with self.subTest(relative=relative):
+                    source = Path(temp_dir) / f'source-{index}'
+                    write_valid_source(source)
+                    (source / relative).unlink()
+
+                    with self.assertRaises(InvalidFetchedSource):
+                        validate_source(source)
 
     def test_validate_source_requires_exact_platform_manifest_roots(self):
         with tempfile.TemporaryDirectory() as temp_dir:

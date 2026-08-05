@@ -5,13 +5,17 @@ import json
 import shutil
 import sys
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path, PurePosixPath
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / 'skills' / 'setup-project-agents' / 'scripts'))
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    from _vendor import tomli as tomllib
 
 from agents_setup.catalog import load_catalog, load_project_config  # noqa: E402
 from agents_setup.models import (  # noqa: E402
