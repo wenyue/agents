@@ -59,8 +59,7 @@ Cursor 和 Copilot，并在 `docs/agents/issue-tracker.md`、`docs/agents/triage
 
 新仓库由一名维护者运行 setup、审查结果并提交受管项目快照。其他开发者通过 clone 或 pull 获取，
 无需逐人运行 setup。只有项目需要采用新版 setup 受管快照契约时，才再次运行
-`setup-project-agents`。只有明确需要重新配置或修复 tracker、triage labels 或 domain layout 时，
-才单独使用 `setup-matt-pocock-skills`。
+`setup-project-agents`。
 
 SmartKit 只管理自己生成的内容，并尽量保留项目原有文件和用户配置。应提交 `AGENTS.md`、
 `.agents/`、受管宿主 wrapper 和配置以及 `docs/agents/`；不要将它们加入 `.gitignore`。Session

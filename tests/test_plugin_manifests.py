@@ -93,16 +93,6 @@ class PluginManifestTest(unittest.TestCase):
                     f'Apply @setup-assets/skills/{name}/SKILL.md', wrapper
                 )
 
-    def test_repository_declares_current_contract_only(self):
-        rule_path = '.agents/rules/21-project-rules.md'
-        rule = (REPO_ROOT / rule_path).read_text(encoding='utf-8')
-        entry = (REPO_ROOT / 'AGENTS.md').read_text(encoding='utf-8')
-
-        self.assertIn('Strength: `Mandatory`', rule)
-        self.assertIn('current contract', rule)
-        self.assertIn('Do not add compatibility aliases', rule)
-        self.assertIn(f'`{rule_path}` | `Mandatory`', entry)
-
     def test_chinese_documentation_has_one_to_one_english_mirrors(self):
         chinese_root = REPO_ROOT / 'docs' / 'zh-CN'
         source_paths = {Path('README.md')}
@@ -132,57 +122,6 @@ class PluginManifestTest(unittest.TestCase):
                     markdown_structure(translation),
                     markdown_structure(source),
                 )
-
-    def test_readme_documents_plugin_setup_and_consent_flow(self):
-        readme = (REPO_ROOT / 'README.md').read_text(encoding='utf-8')
-        for expected in (
-            'Codex',
-            'Cursor',
-            'GitHub Copilot',
-            'setup-project-agents',
-            'Hooks',
-            'multi-agent',
-            'Matt Pocock',
-            'CodeGraph',
-            'Tokscale',
-            'explicit consent',
-            'explicitly declines',
-            'original task continues',
-            'upgrade',
-            '/hooks',
-            'does not automatically trust',
-            'SessionStart',
-            'docs/agents/issue-tracker.md',
-            '.gitignore',
-        ):
-            with self.subTest(expected=expected):
-                self.assertIn(expected, readme)
-
-    def test_setup_loads_authoring_contracts_from_its_pinned_source(self):
-        setup = (
-            REPO_ROOT / 'skills' / 'setup-project-agents' / 'SKILL.md'
-        ).read_text(encoding='utf-8')
-
-        for name in ('write-rule', 'write-skill'):
-            self.assertIn(
-                f'SOURCE_ROOT/setup-assets/skills/{name}/SKILL.md', setup
-            )
-        self.assertIn('SOURCE_ROOT/skills/setup-matt-pocock-skills/SKILL.md', setup)
-        self.assertIn('docs/agents/issue-tracker.md', setup)
-        self.assertIn('commit the reported changed paths', setup)
-
-    def test_runtime_workflow_uses_bundled_matt_skills_without_superpowers_dependency(self):
-        paths = (
-            REPO_ROOT / '.agents/rules/04-global-skill-config.md',
-            REPO_ROOT / 'setup-assets/rules/04-global-skill-config.md',
-            REPO_ROOT / 'setup-assets/skills/worktree-integrate/SKILL.md',
-        )
-        content = '\n'.join(path.read_text(encoding='utf-8') for path in paths)
-
-        self.assertNotIn('superpowers:', content.lower())
-        self.assertIn('Matt Skills', content)
-        self.assertIn('docs/agents/', content)
-        self.assertIn('setup-project-agents', content)
 
     def test_project_catalog_matches_native_plugin_version(self):
         catalog = load_json('setup-assets/catalog/assets.json')

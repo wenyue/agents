@@ -63,8 +63,6 @@ Setup always configures Codex, Cursor, and Copilot and also creates the Matt rep
 One maintainer runs setup for a new repository, reviews the result, and commits the managed project
 snapshot. Other developers receive it through clone or pull and do not run setup individually. Run
 `setup-project-agents` again only when the project adopts a newer setup-managed snapshot contract.
-Use `setup-matt-pocock-skills` separately only to explicitly reconfigure or repair the tracker,
-triage labels, or domain layout.
 
 SmartKit manages only the content it generates and preserves the project's existing files and user
 configuration whenever possible. Commit `AGENTS.md`, `.agents/`, managed host wrappers and config,

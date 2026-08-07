@@ -2,7 +2,7 @@
 
 强度：`Mandatory`
 
-适用范围：Subagent 委派、内置 Skill 优先级、仓库上下文、worktree 工作流归属和 Git 安全。
+适用范围：Subagent 委派、Skill 优先级、worktree 工作流归属和 Git 安全。
 
 ## 委派
 
@@ -15,21 +15,18 @@
   父对话时，才使用会继承父模型的完整历史 fork。
 - 没有合适的其他模型时，只有隔离上下文或独立执行仍有价值才委派；否则由父 Agent 完成。
 
-## 内置 Skills
+## Skill 优先级
 
-- Matt Skills 随 SmartKit 插件提供。根据每个 Skill 声明的用户和模型调用元数据使用它；不要安装
-  第二份副本，也不要在 Rule 中维护固定的 Skill 名称列表。
-- 某个 Skill 依赖 `docs/agents/` 下的仓库上下文时，如果引用的文件缺失或不完整，应停止并使用
-  `setup-project-agents` 修复完整项目快照。只有用户明确要求重新配置 tracker、triage label 或
-  domain layout 时，才单独使用 `setup-matt-pocock-skills`；不得猜测这些项目事实。
-- 项目本地 Skill 和更具体的项目 Rule 在各自负责的范围内优先。尤其是触发条件匹配时，应使用
-  `write-rule`、`write-skill`、`change-set-verification`、`worktree-environment-setup` 和其他
-  项目特定工作流。
+- 根据 Skill 声明的用户和模型调用元数据使用它。在职责重叠的范围内，项目本地 Skill 和更具体的
+  项目 Rule 优先于内置 Skill。
 
 ## Worktree 工作流
 
-- 宿主提供原生 worktree 能力时使用它；否则在取得所需授权后，使用位置安全且已被忽略的 Git
-  worktree 创建隔离工作区。
+- 对于会改变状态的实现工作，当用户要求隔离、宿主或适用 Skill 要求隔离，或者必须通过隔离保护
+  checkout 中原有状态时，使用关联 worktree。不得为只读工作创建 worktree，也不得仅因任务涉及仓库
+  就创建 worktree。
+- 选择使用关联 worktree 时，如果宿主已经提供，应复用它；否则使用宿主的原生 worktree 能力，或在
+  取得所需授权后，使用位置安全且已被忽略的 Git worktree。
 - 创建 worktree 后，如果目标仓库提供 `worktree-environment-setup` Skill，应先使用它，再在实现前
   运行仓库的基线验证。
 - 具名关联 worktree 中的实现完成并通过验证时，提供四种结果：在本地合并到已记录的基准分支；

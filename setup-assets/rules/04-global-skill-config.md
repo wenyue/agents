@@ -2,8 +2,7 @@
 
 Strength: `Mandatory`
 
-Scope: Subagent delegation, bundled Skill precedence, repository context, worktree workflow
-ownership, and Git safety.
+Scope: Subagent delegation, Skill precedence, worktree workflow ownership, and Git safety.
 
 ## Delegation
 
@@ -18,23 +17,19 @@ ownership, and Git safety.
 - If no suitable alternate model is available, delegate only when isolation or independent
   execution still helps; otherwise keep the work in the parent Agent.
 
-## Bundled Skills
+## Skill Precedence
 
-- Matt Skills are bundled with the SmartKit plugin. Apply each Skill according to its declared user
-  and model invocation metadata; do not maintain a second installed copy or a fixed Rule-side list
-  of Skill names.
-- When a Skill requires repository context under `docs/agents/`, stop if the referenced files are
-  missing or incomplete and use `setup-project-agents` to repair the complete project snapshot. Use
-  `setup-matt-pocock-skills` separately only when the user explicitly requests a tracker, triage
-  label, or domain-layout reconfiguration; do not guess those project facts.
-- Project-local Skills and more-specific project Rules take precedence within their owned scope.
-  In particular, use `write-rule`, `write-skill`, `change-set-verification`,
-  `worktree-environment-setup`, and other project-specific workflows when their triggers match.
+- Apply Skills according to their declared user and model invocation metadata. Within overlapping
+  scope, project-local Skills and more-specific project Rules take precedence over bundled Skills.
 
 ## Worktree Workflow
 
-- Create isolated work with the host's native worktree capability when available, or use a safely
-  located and ignored Git worktree after obtaining any required consent.
+- For state-changing implementation, use a linked worktree when the user requests isolation, the
+  host or an applicable Skill requires it, or isolation is needed to protect pre-existing checkout
+  state. Do not create a worktree for read-only work or solely because a repository task exists.
+- When a linked worktree is selected, reuse a host-provided worktree when one exists. Otherwise, use
+  the host's native worktree capability or a safely located and ignored Git worktree after obtaining
+  any required consent.
 - After creating a worktree, use the target repository's `worktree-environment-setup` Skill when it
   exists, then run the repository's baseline verification before implementation.
 - When implementation in a named linked worktree is complete and verified, present four outcomes:
