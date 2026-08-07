@@ -62,8 +62,7 @@ description: 当具名关联 Git worktree 中已通过验证的实现需要返�
 ## 禁止的操作
 
 此 Skill 没有执行 push、pull、force-update、stash、reset、clean 或创建 merge commit 的权限。
-PR、保留分支或丢弃结果等后续操作交给
-`superpowers:finishing-a-development-branch`。
+PR、保留分支或丢弃结果等后续操作应交还父 Agent；父 Agent 必须遵守全局 Git 安全策略和用户选择的结果。
 
 ## 结果
 

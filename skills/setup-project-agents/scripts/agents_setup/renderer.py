@@ -200,6 +200,29 @@ def _known_wrapper_targets(catalog: Catalog) -> set[PurePosixPath]:
     return targets
 
 
+def _remove_dotted_field(document: dict[str, object], key: str) -> bool:
+    segments = key.split('.')
+    current: dict[str, object] = document
+    parents: list[tuple[dict[str, object], str]] = []
+    for segment in segments[:-1]:
+        value = current.get(segment)
+        if not isinstance(value, dict):
+            return False
+        parents.append((current, segment))
+        current = value
+    leaf = segments[-1]
+    if leaf not in current:
+        return False
+    del current[leaf]
+    for parent, segment in reversed(parents):
+        child = parent.get(segment)
+        if isinstance(child, dict) and not child:
+            del parent[segment]
+        else:
+            break
+    return True
+
+
 def render_desired_state(
     source_root: Path,
     target_root: Path,
@@ -351,6 +374,29 @@ def render_desired_state(
                 raise RenderError(f'external Skill is missing SKILL.md: {skill.name}')
             _copy_asset(files, source, PurePosixPath('.agents/skills') / skill.name)
             replace_roots.add(PurePosixPath('.agents/skills') / skill.name)
+
+    for retired in catalog.retired_fields:
+        format_name = _format_for(retired.path)
+        if format_name is None:
+            raise RenderError(
+                f'retired field path has no structured format: {retired.path.as_posix()}'
+            )
+        if retired.path in native_documents:
+            document = native_documents[retired.path]
+        else:
+            try:
+                target_path = confined_target(target_root, retired.path)
+            except ProjectError as error:
+                raise RenderError(str(error)) from error
+            document = _load_structured(target_path, format_name)
+        if not _remove_dotted_field(document, retired.key):
+            continue
+        if document:
+            native_documents[retired.path] = document
+        else:
+            native_documents.pop(retired.path, None)
+            native_templates.pop(retired.path, None)
+            delete_paths.add(retired.path)
 
     for path, document in native_documents.items():
         format_name = _format_for(path)

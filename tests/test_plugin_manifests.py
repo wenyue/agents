@@ -8,6 +8,34 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
+MATT_PROMOTED = {
+    'ask-matt': 'skills/engineering/ask-matt',
+    'diagnosing-bugs': 'skills/engineering/diagnosing-bugs',
+    'grill-with-docs': 'skills/engineering/grill-with-docs',
+    'triage': 'skills/engineering/triage',
+    'improve-codebase-architecture': 'skills/engineering/improve-codebase-architecture',
+    'setup-matt-pocock-skills': 'skills/engineering/setup-matt-pocock-skills',
+    'tdd': 'skills/engineering/tdd',
+    'to-spec': 'skills/engineering/to-spec',
+    'to-tickets': 'skills/engineering/to-tickets',
+    'wayfinder': 'skills/engineering/wayfinder',
+    'implement': 'skills/engineering/implement',
+    'prototype': 'skills/engineering/prototype',
+    'research': 'skills/engineering/research',
+    'domain-modeling': 'skills/engineering/domain-modeling',
+    'codebase-design': 'skills/engineering/codebase-design',
+    'code-review': 'skills/engineering/code-review',
+    'resolving-merge-conflicts': 'skills/engineering/resolving-merge-conflicts',
+    'wizard': 'skills/engineering/wizard',
+    'grill-me': 'skills/productivity/grill-me',
+    'grilling': 'skills/productivity/grilling',
+    'handoff': 'skills/productivity/handoff',
+    'teach': 'skills/productivity/teach',
+    'to-questionnaire': 'skills/productivity/to-questionnaire',
+    'wait-what': 'skills/productivity/wait-what',
+    'writing-for-agents': 'skills/productivity/writing-for-agents',
+}
+
 
 def load_json(relative_path: str) -> dict:
     value = json.loads((REPO_ROOT / relative_path).read_text(encoding='utf-8'))
@@ -83,7 +111,7 @@ class PluginManifestTest(unittest.TestCase):
             'setup-assets/skills',
             'setup-assets/agents',
             'setup-assets/blueprints',
-            'skills',
+            'skills/setup-project-agents',
         ):
             source_paths.update(
                 path.relative_to(REPO_ROOT)
@@ -114,7 +142,7 @@ class PluginManifestTest(unittest.TestCase):
             'setup-project-agents',
             'Hooks',
             'multi-agent',
-            'Superpowers',
+            'Matt Pocock',
             'CodeGraph',
             'Tokscale',
             'explicit consent',
@@ -124,6 +152,8 @@ class PluginManifestTest(unittest.TestCase):
             '/hooks',
             'does not automatically trust',
             'SessionStart',
+            'docs/agents/issue-tracker.md',
+            '.gitignore',
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, readme)
@@ -137,6 +167,22 @@ class PluginManifestTest(unittest.TestCase):
             self.assertIn(
                 f'SOURCE_ROOT/setup-assets/skills/{name}/SKILL.md', setup
             )
+        self.assertIn('SOURCE_ROOT/skills/setup-matt-pocock-skills/SKILL.md', setup)
+        self.assertIn('docs/agents/issue-tracker.md', setup)
+        self.assertIn('commit the reported changed paths', setup)
+
+    def test_runtime_workflow_uses_bundled_matt_skills_without_superpowers_dependency(self):
+        paths = (
+            REPO_ROOT / '.agents/rules/04-global-skill-config.md',
+            REPO_ROOT / 'setup-assets/rules/04-global-skill-config.md',
+            REPO_ROOT / 'setup-assets/skills/worktree-integrate/SKILL.md',
+        )
+        content = '\n'.join(path.read_text(encoding='utf-8') for path in paths)
+
+        self.assertNotIn('superpowers:', content.lower())
+        self.assertIn('Matt Skills', content)
+        self.assertIn('docs/agents/', content)
+        self.assertIn('setup-project-agents', content)
 
     def test_project_catalog_matches_native_plugin_version(self):
         catalog = load_json('setup-assets/catalog/assets.json')
@@ -208,7 +254,35 @@ class PluginManifestTest(unittest.TestCase):
             for path in (REPO_ROOT / 'skills').iterdir()
             if path.is_dir()
         }
-        self.assertEqual(plugin_skills, {'setup-project-agents'})
+        self.assertEqual(plugin_skills, {'setup-project-agents', *MATT_PROMOTED})
+        lock = load_json('vendor/mattpocock-skills.lock.json')
+        self.assertEqual(lock['schema_version'], 1)
+        self.assertEqual(lock['repository'], 'mattpocock/skills')
+        self.assertEqual(lock['upstream_version'], '1.2.3')
+        self.assertEqual(lock['tag'], 'v1.2.3')
+        self.assertEqual(
+            lock['commit'],
+            '6acc160e4e0cd062dbbbd7a1b26ae92855edf07e',
+        )
+        self.assertEqual(
+            {skill['name']: skill['source_path'] for skill in lock['skills']},
+            MATT_PROMOTED,
+        )
+        self.assertEqual(
+            set(lock['files']),
+            {
+                path.relative_to(REPO_ROOT).as_posix()
+                for name in MATT_PROMOTED
+                for path in (REPO_ROOT / 'skills' / name).rglob('*')
+                if path.is_file()
+            },
+        )
+        for name in MATT_PROMOTED:
+            with self.subTest(skill=name):
+                skill_root = REPO_ROOT / 'skills' / name
+                skill_text = (skill_root / 'SKILL.md').read_text(encoding='utf-8')
+                self.assertRegex(skill_text, rf'(?m)^name:\s*{re.escape(name)}\s*$')
+                self.assertTrue((skill_root / 'agents' / 'openai.yaml').is_file())
         self.assertFalse((REPO_ROOT / 'skills/debug-mode').exists())
         self.assertTrue(
             (

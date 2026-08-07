@@ -2,42 +2,47 @@
 
 Strength: `Mandatory`
 
-Scope: Subagent delegation, Superpowers activation, worktree workflow ownership, and Git safety.
+Scope: Subagent delegation, bundled Skill precedence, repository context, worktree workflow
+ownership, and Git safety.
 
 ## Delegation
 
 - Automatically authorize the agent to use subagents when needed.
 - Choose each subagent's model and reasoning effort for its task: prefer faster, lower-cost options
   for bounded supporting work and stronger options for ambiguous, cross-cutting, or high-risk work.
-- Preserve settings required by the user, an applicable rule or skill, or the selected named agent;
+- Preserve settings required by the user, an applicable Rule or Skill, or the selected named Agent;
   otherwise choose task-appropriate settings instead of inheriting the parent's by default.
 - When using a different model, inherit no history or only the smallest sufficient history and give
   the subagent a self-contained brief. Use a full-history fork, which inherits the parent model,
   only when the task requires the complete parent conversation.
 - If no suitable alternate model is available, delegate only when isolation or independent
-  execution still helps; otherwise keep the work in the parent agent.
+  execution still helps; otherwise keep the work in the parent Agent.
 
-## Superpowers
+## Bundled Skills
 
-- Treat `superpowers:using-superpowers` as disabled. Evaluate other `superpowers:*` skills directly
-  under their own trigger conditions and applicable higher-priority rules.
-- Use `write-skill` for Skill authoring and `write-rule` for Rule authoring. Reserve
-  `superpowers:writing-skills` for an explicit user request for adversarial behavioral evaluation or
-  pressure testing.
-- Reserve `superpowers:brainstorming` for an explicit user request for brainstorming.
+- Matt Skills are bundled with the SmartKit plugin. Apply each Skill according to its declared user
+  and model invocation metadata; do not maintain a second installed copy or a fixed Rule-side list
+  of Skill names.
+- When a Skill requires repository context under `docs/agents/`, stop if the referenced files are
+  missing or incomplete and use `setup-project-agents` to repair the complete project snapshot. Use
+  `setup-matt-pocock-skills` separately only when the user explicitly requests a tracker, triage
+  label, or domain-layout reconfiguration; do not guess those project facts.
+- Project-local Skills and more-specific project Rules take precedence within their owned scope.
+  In particular, use `write-rule`, `write-skill`, `change-set-verification`,
+  `worktree-environment-setup`, and other project-specific workflows when their triggers match.
 
 ## Worktree Workflow
 
-- Subject to the Superpowers policy above, let `superpowers:using-git-worktrees` own worktree
-  creation timing, detection, consent, location, and creation.
-- After creating a worktree, use the target repository's `worktree-environment-setup` skill when it
-  exists, then run the baseline verification required by `superpowers:using-git-worktrees`.
-- When implementation in a named linked worktree is complete and verified, present four outcomes
-  before acting: merge locally into the recorded base branch; push and create a pull request; keep
-  the task branch and worktree; or integrate into the current checkout.
-- Execute the selected outcome without asking again: use `worktree-integrate` for current-checkout
-  integration and `superpowers:finishing-a-development-branch` for local merge, pull request,
-  keep-branch, or explicitly requested discard.
+- Create isolated work with the host's native worktree capability when available, or use a safely
+  located and ignored Git worktree after obtaining any required consent.
+- After creating a worktree, use the target repository's `worktree-environment-setup` Skill when it
+  exists, then run the repository's baseline verification before implementation.
+- When implementation in a named linked worktree is complete and verified, present four outcomes:
+  merge locally into the recorded base branch; push and create a pull request; keep the task branch
+  and worktree; or integrate into the current checkout.
+- Use `worktree-integrate` only for current-checkout integration. The parent Agent owns local merge,
+  pull-request, keep-branch, and explicitly requested discard outcomes under this Rule's Git Safety
+  constraints.
 - Treat local merge and current-checkout integration as different outcomes even when the current
   checkout is on the recorded base branch. Local merge advances the base branch;
   `worktree-integrate` review mode keeps the current `HEAD` and index unchanged and returns task

@@ -13,6 +13,7 @@ from .models import (
     ExternalSkillSpec,
     Platform,
     ProjectConfig,
+    RetiredFieldSpec,
 )
 
 
@@ -33,13 +34,28 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     | {f'LPT{number}' for number in range(1, 10)}
 )
 _ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode', 'control_plane', 'metadata'})
-_CATALOG_FIELDS = frozenset({'plugin', 'assets', 'retired_assets', 'external_skills'})
+_CATALOG_FIELDS = frozenset(
+    {'plugin', 'assets', 'retired_assets', 'retired_fields', 'external_skills'}
+)
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
 _PROJECT_CONFIG_FIELDS = frozenset(
     {'$schema', 'version', 'selected_rules', 'selected_skills', 'selected_agents', 'skills'}
 )
 _SKILLS_FIELDS = frozenset({'external'})
 _EXTERNAL_SKILL_FIELDS = frozenset({'name', 'repository', 'ref', 'path'})
+_RETIRED_FIELD_FIELDS = frozenset({'path', 'key'})
+_STRUCTURED_SUFFIXES = frozenset({'.json', '.jsonc', '.toml'})
+_MATT_BLUEPRINTS = {
+    PurePosixPath('docs/agents/issue-tracker.md'): PurePosixPath(
+        'skills/setup-matt-pocock-skills/issue-tracker-github.md'
+    ),
+    PurePosixPath('docs/agents/triage-labels.md'): PurePosixPath(
+        'skills/setup-matt-pocock-skills/triage-labels.md'
+    ),
+    PurePosixPath('docs/agents/domain.md'): PurePosixPath(
+        'skills/setup-matt-pocock-skills/domain.md'
+    ),
+}
 
 
 def safe_relative(value: str, label: str) -> PurePosixPath:
@@ -212,6 +228,19 @@ def parse_asset(value: Mapping[str, object]) -> AssetSpec:
     )
 
 
+def parse_retired_field(value: object) -> RetiredFieldSpec:
+    item = _object(value, 'retired field')
+    _fields(item, _RETIRED_FIELD_FIELDS, 'retired field')
+    path_value = _required(item, 'path', 'retired field')
+    if not isinstance(path_value, str):
+        raise ContractError('retired field path must be a relative path')
+    path = safe_relative(path_value, 'retired field path')
+    if path.suffix.lower() not in _STRUCTURED_SUFFIXES:
+        raise ContractError('retired field path must use a structured format')
+    key = safe_field_key(_required(item, 'key', 'retired field'), 'retired field key')
+    return RetiredFieldSpec(path, key)
+
+
 def _load_json(path: Path, label: str) -> Mapping[str, object]:
     try:
         value = json.loads(path.read_text(encoding='utf-8'))
@@ -255,6 +284,20 @@ def load_catalog(source_root: Path) -> Catalog:
     targets = [asset.target for asset in assets if asset.target is not None]
     if len(set(targets)) != len(targets):
         raise ContractError('catalog has duplicate asset targets')
+    for asset in assets:
+        if asset.control_plane:
+            continue
+        if asset.source.parts[:1] == ('setup-assets',):
+            continue
+        if (
+            asset.kind == 'blueprint'
+            and asset.target is not None
+            and _MATT_BLUEPRINTS.get(asset.target) == asset.source
+        ):
+            continue
+        raise ContractError(
+            f'catalog asset source is outside an allowed ownership root: {asset.source}'
+        )
     retired_value = document.get('retired_assets', [])
     if not isinstance(retired_value, list) or not all(
         isinstance(item, str) for item in retired_value
@@ -267,7 +310,22 @@ def load_catalog(source_root: Path) -> Catalog:
         raise ContractError('catalog has duplicate retired assets')
     if set(retired_assets).intersection(targets):
         raise ContractError('catalog asset cannot be active and retired')
-    catalog = Catalog(plugin_id, plugin_version, repository, ref, assets, retired_assets)
+    retired_fields_value = document.get('retired_fields', [])
+    if not isinstance(retired_fields_value, list):
+        raise ContractError('catalog retired_fields must be an array')
+    retired_fields = tuple(parse_retired_field(item) for item in retired_fields_value)
+    retired_field_keys = {(item.path, item.key) for item in retired_fields}
+    if len(retired_field_keys) != len(retired_fields):
+        raise ContractError('catalog has duplicate retired fields')
+    catalog = Catalog(
+        plugin_id,
+        plugin_version,
+        repository,
+        ref,
+        assets,
+        retired_assets=retired_assets,
+        retired_fields=retired_fields,
+    )
     external_skills = parse_external_skills(
         {'external': document.get('external_skills', [])},
         catalog,
@@ -278,8 +336,9 @@ def load_catalog(source_root: Path) -> Catalog:
         repository,
         ref,
         assets,
-        retired_assets,
-        external_skills,
+        retired_assets=retired_assets,
+        external_skills=external_skills,
+        retired_fields=retired_fields,
     )
 
 

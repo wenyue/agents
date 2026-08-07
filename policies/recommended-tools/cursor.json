@@ -17,21 +17,6 @@
       "upgrade": "Upgrade Cursor Agent CLI with the official Cursor updater so the required default subagent capability is available."
     },
     {
-      "id": "superpowers",
-      "name": "Superpowers for Cursor",
-      "target_version": "6.1.1",
-      "comparison": ">",
-      "detectors": [
-        {
-          "kind": "json-manifest-glob",
-          "glob": "{home}/.cursor/plugins/cache/*/superpowers/*/.cursor-plugin/plugin.json",
-          "json_path": "version"
-        }
-      ],
-      "install": "Install the Superpowers plugin from the Cursor marketplace.",
-      "upgrade": "Update the Superpowers plugin in Cursor."
-    },
-    {
       "id": "codegraph",
       "name": "CodeGraph",
       "target_version": "1.4.1",

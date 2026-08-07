@@ -17,21 +17,6 @@
       "upgrade": "Upgrade GitHub Copilot CLI with its supported updater so the required default subagent capability is available."
     },
     {
-      "id": "superpowers",
-      "name": "Superpowers for GitHub Copilot",
-      "target_version": "6.1.1",
-      "comparison": ">",
-      "detectors": [
-        {
-          "kind": "command-regex",
-          "command": ["copilot", "plugin", "list"],
-          "pattern": "superpowers@[^ ]+ \\(v([0-9]+(?:\\.[0-9]+)+)\\)"
-        }
-      ],
-      "install": "Install Superpowers from the configured Copilot plugin marketplace.",
-      "upgrade": "Update the Superpowers plugin with GitHub Copilot CLI."
-    },
-    {
       "id": "codegraph",
       "name": "CodeGraph",
       "target_version": "1.4.1",

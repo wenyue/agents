@@ -33,3 +33,17 @@ The meaning of `Mandatory`, `Default`, and `Advisory` is defined in
   rule applies.
 - When multiple referenced rule files apply, prefer the more specific file-type or project-local
   rule over the general rule.
+
+## Agent skills
+
+### Issue tracker
+
+See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+See `docs/agents/domain.md`.

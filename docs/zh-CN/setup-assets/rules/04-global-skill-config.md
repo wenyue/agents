@@ -2,7 +2,7 @@
 
 强度：`Mandatory`
 
-适用范围：子 Agent 委派、Superpowers 启用条件、工作树工作流归属和 Git 安全。
+适用范围：Subagent 委派、内置 Skill 优先级、仓库上下文、worktree 工作流归属和 Git 安全。
 
 ## 委派
 
@@ -15,34 +15,36 @@
   父对话时，才使用会继承父模型的完整历史 fork。
 - 没有合适的其他模型时，只有隔离上下文或独立执行仍有价值才委派；否则由父 Agent 完成。
 
-## Superpowers
+## 内置 Skills
 
-- 将 `superpowers:using-superpowers` 视为已禁用。其他 `superpowers:*` Skill 根据各自的触发条件和
-  适用的更高优先级规则直接判断。
-- 编写 Skill 时使用 `write-skill`，编写 Rule 时使用 `write-rule`。仅在用户明确要求对抗性行为评测
-  或压力测试时使用 `superpowers:writing-skills`。
-- 仅在用户明确要求 brainstorming 时使用 `superpowers:brainstorming`。
+- Matt Skills 随 SmartKit 插件提供。根据每个 Skill 声明的用户和模型调用元数据使用它；不要安装
+  第二份副本，也不要在 Rule 中维护固定的 Skill 名称列表。
+- 某个 Skill 依赖 `docs/agents/` 下的仓库上下文时，如果引用的文件缺失或不完整，应停止并使用
+  `setup-project-agents` 修复完整项目快照。只有用户明确要求重新配置 tracker、triage label 或
+  domain layout 时，才单独使用 `setup-matt-pocock-skills`；不得猜测这些项目事实。
+- 项目本地 Skill 和更具体的项目 Rule 在各自负责的范围内优先。尤其是触发条件匹配时，应使用
+  `write-rule`、`write-skill`、`change-set-verification`、`worktree-environment-setup` 和其他
+  项目特定工作流。
 
-## 工作树工作流
+## Worktree 工作流
 
-- 在遵守上述 Superpowers 策略的前提下，工作树的创建时机、检测、授权、位置选择和创建过程，
-  均由 `superpowers:using-git-worktrees` 负责。
-- 创建工作树后，如果目标仓库提供 `worktree-environment-setup` Skill，应先使用它，再执行
-  `superpowers:using-git-worktrees` 要求的基线验证。
-- 具名关联 worktree 中的实现完成并通过验证时，先提供四种选择，再执行操作：在本地合并到已记录的
-  基准分支；推送并创建 pull request；保留任务分支和 worktree；或集成到当前 checkout。
-- 按用户选择的结果直接执行，不再重复询问：集成到当前 checkout 使用 `worktree-integrate`；
-  本地合并、pull request、保留分支或用户明确要求的丢弃使用
-  `superpowers:finishing-a-development-branch`。
+- 宿主提供原生 worktree 能力时使用它；否则在取得所需授权后，使用位置安全且已被忽略的 Git
+  worktree 创建隔离工作区。
+- 创建 worktree 后，如果目标仓库提供 `worktree-environment-setup` Skill，应先使用它，再在实现前
+  运行仓库的基线验证。
+- 具名关联 worktree 中的实现完成并通过验证时，提供四种结果：在本地合并到已记录的基准分支；
+  推送并创建 pull request；保留任务分支和 worktree；或集成到当前 checkout。
+- 只有集成到当前 checkout 才使用 `worktree-integrate`。父 Agent 根据本 Rule 的 Git 安全约束负责
+  本地合并、pull request、保留分支和用户明确要求的丢弃结果。
 - 即使当前 checkout 位于已记录的基准分支，也要将本地合并和集成到当前 checkout 视为不同结果。
   本地合并会推进基准分支；`worktree-integrate` 的 review mode 保持当前 `HEAD` 和 index 不变，
   将任务改动作为 unstaged 或 untracked 内容交回，并保留无关本地改动。
-- 只有用户明确要求整合后创建本地提交时，才使用 `worktree-integrate` 的提交模式，并将所有业务改动放在
-  一个提交中。
+- 只有用户明确要求整合后创建本地提交时，才使用 `worktree-integrate` 的 commit mode，并将所有
+  业务改动放在一个提交中。
 
 ## Git 安全
 
 - 保留已有本地改动。某项操作会覆盖、stash、reset、clean 或丢弃这些改动时，停止并改用无损方案，
   或请求用户决定。
 - 同一文件存在改动重叠并不必然构成阻塞。置信度高且结果可验证时可以合并；否则停止并询问用户。
-- 只有用户明确要求远程操作后，才能推送或创建拉取请求。
+- 只有用户明确要求远程操作后，才能推送或创建 pull request。

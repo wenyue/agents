@@ -32,26 +32,6 @@
       "upgrade": "Upgrade Codex CLI with the package manager used to install it."
     },
     {
-      "id": "superpowers",
-      "name": "Superpowers for Codex",
-      "target_version": "6.1.1",
-      "comparison": ">",
-      "detectors": [
-        {
-          "kind": "json-command-item",
-          "command": ["codex", "plugin", "list", "--marketplace", "openai-curated", "--json"],
-          "items_path": "installed",
-          "match_path": "pluginId",
-          "match_value": "superpowers@openai-curated",
-          "value_path": "version",
-          "fallback_manifest_glob": "{home}/.codex/plugins/cache/openai-curated-remote/superpowers/*/.codex-plugin/plugin.json",
-          "fallback_manifest_json_path": "version"
-        }
-      ],
-      "install": "Install Superpowers from the Codex plugin marketplace.",
-      "upgrade": "Update the Superpowers plugin with Codex plugin management."
-    },
-    {
       "id": "codegraph",
       "name": "CodeGraph",
       "target_version": "1.4.1",

@@ -59,9 +59,9 @@ class RecommendedToolPolicyTest(unittest.TestCase):
 
     def test_plugin_policies_are_centralized_and_codex_checks_only_effective_multi_agent(self):
         expected = {
-            'codex': {'codex', 'superpowers', 'codegraph', 'tokscale'},
-            'cursor': {'cursor-agent', 'superpowers', 'codegraph', 'tokscale'},
-            'copilot': {'copilot', 'superpowers', 'codegraph', 'tokscale'},
+            'codex': {'codex', 'codegraph', 'tokscale'},
+            'cursor': {'cursor-agent', 'codegraph', 'tokscale'},
+            'copilot': {'copilot', 'codegraph', 'tokscale'},
         }
         for platform, tool_ids in expected.items():
             with self.subTest(platform=platform):
@@ -122,19 +122,16 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         expected = {
             'codex': {
                 'codex': '0.144.0',
-                'superpowers': '6.1.1',
                 'codegraph': '1.4.1',
                 'tokscale': '4.6.1',
             },
             'cursor': {
                 'cursor-agent': '2026.01.27',
-                'superpowers': '6.1.1',
                 'codegraph': '1.4.1',
                 'tokscale': '4.6.1',
             },
             'copilot': {
                 'copilot': '1.0.58',
-                'superpowers': '6.1.1',
                 'codegraph': '1.4.1',
                 'tokscale': '4.6.1',
             },
@@ -152,64 +149,6 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             ['multi_agent'],
         )
         self.assertEqual(codex_policy['required_values'][0]['expected'], 'true')
-
-    def test_superpowers_policies_use_platform_plugin_installation_state_only(self):
-        expected_detectors = {
-            'codex': [
-                {
-                    'kind': 'json-command-item',
-                    'command': [
-                        'codex',
-                        'plugin',
-                        'list',
-                        '--marketplace',
-                        'openai-curated',
-                        '--json',
-                    ],
-                    'items_path': 'installed',
-                    'match_path': 'pluginId',
-                    'match_value': 'superpowers@openai-curated',
-                    'value_path': 'version',
-                    'fallback_manifest_glob': (
-                        '{home}/.codex/plugins/cache/openai-curated-remote/'
-                        'superpowers/*/.codex-plugin/plugin.json'
-                    ),
-                    'fallback_manifest_json_path': 'version',
-                }
-            ],
-            'cursor': [
-                {
-                    'kind': 'json-manifest-glob',
-                    'glob': (
-                        '{home}/.cursor/plugins/cache/*/superpowers/*/'
-                        '.cursor-plugin/plugin.json'
-                    ),
-                    'json_path': 'version',
-                }
-            ],
-            'copilot': [
-                {
-                    'kind': 'command-regex',
-                    'command': ['copilot', 'plugin', 'list'],
-                    'pattern': 'superpowers@[^ ]+ \\(v([0-9]+(?:\\.[0-9]+)+)\\)',
-                }
-            ],
-        }
-
-        actual_detectors = {}
-        for platform, expected in expected_detectors.items():
-            with self.subTest(platform=platform):
-                policy = json.loads(
-                    (POLICY_ROOT / f'{platform}.json').read_text(encoding='utf-8')
-                )
-                superpowers = next(tool for tool in policy['tools'] if tool['id'] == 'superpowers')
-                actual_detectors[platform] = superpowers['detectors']
-                self.assertEqual(superpowers['detectors'], expected)
-
-        serialized = json.dumps(actual_detectors)
-        self.assertNotIn('.codex/superpowers', serialized)
-        self.assertNotIn('.cache/copilot/marketplaces', serialized)
-        self.assertNotIn('.copilot/installed-plugins', serialized)
 
     def test_policy_guidance_describes_actions_without_exposing_commands(self):
         forbidden = (
@@ -893,7 +832,7 @@ class RecommendedToolMaintainerTest(unittest.TestCase):
         with self.assertRaises(self.maintainer.ApprovalRequired):
             self.maintainer.apply_maintenance(
                 'codex',
-                'superpowers',
+                'codegraph',
                 'install',
                 approved=False,
                 executor=executor,
@@ -906,37 +845,11 @@ class RecommendedToolMaintainerTest(unittest.TestCase):
         with mock.patch.object(
             self.maintainer,
             'required_action',
-            side_effect=('install', None),
-        ):
-            result = self.maintainer.apply_maintenance(
-                'codex',
-                'superpowers',
-                'install',
-                approved=True,
-                executor=executor,
-            )
-
-        self.assertEqual(result.status, 'completed')
-        executor.assert_called_once_with(
-            ['codex', 'plugin', 'add', 'superpowers@openai-curated'],
-            check=False,
-        )
-        rendered = self.maintainer.render_result(result)
-        self.assertIn('Superpowers', rendered)
-        self.assertIn('installation completed', rendered)
-        self.assertNotIn('codex plugin add', rendered)
-        self.assertNotIn('superpowers@openai-curated', rendered)
-
-    def test_approved_codex_superpowers_upgrade_reinstalls_from_marketplace(self):
-        executor = mock.Mock(return_value=mock.Mock(returncode=0))
-        with mock.patch.object(
-            self.maintainer,
-            'required_action',
             side_effect=('upgrade', None),
         ):
             result = self.maintainer.apply_maintenance(
                 'codex',
-                'superpowers',
+                'codegraph',
                 'upgrade',
                 approved=True,
                 executor=executor,
@@ -944,24 +857,33 @@ class RecommendedToolMaintainerTest(unittest.TestCase):
 
         self.assertEqual(result.status, 'completed')
         executor.assert_called_once_with(
-            ['codex', 'plugin', 'add', 'superpowers@openai-curated'],
+            ['codegraph', 'upgrade'],
             check=False,
         )
-        self.assertIn('upgrade completed', self.maintainer.render_result(result))
+        rendered = self.maintainer.render_result(result)
+        self.assertIn('CodeGraph', rendered)
+        self.assertIn('upgrade completed', rendered)
+        self.assertNotIn('codegraph upgrade', rendered)
+
+    def test_retired_plugin_is_not_a_supported_maintenance_target(self):
+        for platform in ('codex', 'cursor', 'copilot'):
+            with self.subTest(platform=platform):
+                with self.assertRaises(self.maintainer.MaintenanceError):
+                    self.maintainer.resolve_recipe(platform, 'superpowers', 'install')
 
     def test_manual_recipe_returns_manual_action_without_execution(self):
         executor = mock.Mock()
         with mock.patch.object(self.maintainer, 'required_action', return_value='install'):
             result = self.maintainer.apply_maintenance(
                 'cursor',
-                'superpowers',
+                'cursor-agent',
                 'install',
                 approved=True,
                 executor=executor,
             )
 
         self.assertEqual(result.status, 'manual-action-required')
-        self.assertIn('Cursor Marketplace', result.detail)
+        self.assertIn('official Cursor distribution', result.detail)
         executor.assert_not_called()
 
 

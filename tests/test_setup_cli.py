@@ -59,13 +59,8 @@ class SetupCliTest(unittest.TestCase):
 
     @staticmethod
     def write_generated_outputs(session: Path) -> None:
-        for relative in (
-            '.agents/rules/20-project-tools.md',
-            '.agents/rules/21-project-rules.md',
-            '.agents/rules/22-project-structure.md',
-            '.agents/skills/change-set-verification/SKILL.md',
-            '.agents/skills/worktree-environment-setup/SKILL.md',
-        ):
+        request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
+        for relative in (item['target'] for item in request['generation_requests']):
             path = session / 'generated' / PurePosixPath(relative)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f'# generated {path.name}\n', encoding='utf-8')
@@ -150,7 +145,7 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(result, 2)
             self.assertEqual(self.snapshot_tree(target), {})
 
-    def test_prepare_records_fixed_platforms_and_five_generation_requests_without_target_writes(self):
+    def test_prepare_records_fixed_platforms_and_eight_generation_requests_without_target_writes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -203,7 +198,7 @@ class SetupCliTest(unittest.TestCase):
                     }
                 ],
             )
-            self.assertEqual(len(request['generation_requests']), 5)
+            self.assertEqual(len(request['generation_requests']), 8)
             self.assertEqual(
                 {item['target'] for item in request['generation_requests']},
                 {
@@ -212,8 +207,25 @@ class SetupCliTest(unittest.TestCase):
                     '.agents/rules/22-project-structure.md',
                     '.agents/skills/change-set-verification/SKILL.md',
                     '.agents/skills/worktree-environment-setup/SKILL.md',
+                    'docs/agents/issue-tracker.md',
+                    'docs/agents/triage-labels.md',
+                    'docs/agents/domain.md',
                 },
             )
+            matt_sources = {
+                item['target']: item['source']
+                for item in request['generation_requests']
+                if item['target'].startswith('docs/agents/')
+            }
+            self.assertEqual(matt_sources, {
+                'docs/agents/issue-tracker.md': (
+                    'skills/setup-matt-pocock-skills/issue-tracker-github.md'
+                ),
+                'docs/agents/triage-labels.md': (
+                    'skills/setup-matt-pocock-skills/triage-labels.md'
+                ),
+                'docs/agents/domain.md': 'skills/setup-matt-pocock-skills/domain.md',
+            })
             self.assertTrue((session / 'generated/.agents/rules').is_dir())
             self.assertTrue((session / 'generated/.agents/skills').is_dir())
             self.assertEqual(self.snapshot_tree(target), {})
@@ -637,13 +649,8 @@ class SetupEndToEndTest(unittest.TestCase):
 
     @staticmethod
     def write_generated_outputs(session: Path) -> None:
-        for relative in (
-            '.agents/rules/20-project-tools.md',
-            '.agents/rules/21-project-rules.md',
-            '.agents/rules/22-project-structure.md',
-            '.agents/skills/change-set-verification/SKILL.md',
-            '.agents/skills/worktree-environment-setup/SKILL.md',
-        ):
+        request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
+        for relative in (item['target'] for item in request['generation_requests']):
             path = session / 'generated' / PurePosixPath(relative)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f'# generated {path.name}\n', encoding='utf-8')
@@ -718,10 +725,7 @@ class SetupEndToEndTest(unittest.TestCase):
             self.assertNotIn(
                 'hooks', tomllib.loads((target / '.codex/config.toml').read_text()).get('features', {})
             )
-            self.assertNotIn(
-                'disableAllHooks',
-                json.loads((target / '.github/copilot/settings.json').read_text()),
-            )
+            self.assertFalse((target / '.github/copilot/settings.json').exists())
             self.assertFalse((target / '.agents/skills/setup-project-agents').exists())
             (target / 'unmanaged.txt').write_text('keep\n', encoding='utf-8')
             before_upgrade = self.snapshot_tree(target)

@@ -36,6 +36,13 @@ copilot plugin install smartkit@wenyue
 To update the Copilot plugin, run `copilot plugin marketplace update wenyue`, followed by
 `copilot plugin update smartkit`.
 
+## Bundled Matt Skills
+
+SmartKit distributes the complete stable Matt Pocock Skills set as part of the plugin. Do not also
+install the same Skills through skills.sh, the Matt plugin, or another local copy; duplicate names
+make invocation ambiguous. To adopt a newer bundled set, update SmartKit and start a new host
+session. A normal Skill update does not require either setup workflow to run again.
+
 ## Platform support
 
 All three hosts support Windows and Linux. Setup gives every generated Agent an explicit model;
@@ -50,19 +57,25 @@ host-specific fields remain native to that host.
 ## Set up each project
 
 In the target repository, ask the Agent to use `setup-project-agents` to initialize the project.
-Setup always configures Codex, Cursor, and Copilot.
+Setup always configures Codex, Cursor, and Copilot and also creates the Matt repository context in
+`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and `docs/agents/domain.md`.
 
-Setup writes the rules, skills, and Agent configuration required by the project into the repository.
-Run `setup-project-agents` again when you want to adopt a new version of the setup-managed snapshot.
+One maintainer runs setup for a new repository, reviews the result, and commits the managed project
+snapshot. Other developers receive it through clone or pull and do not run setup individually. Run
+`setup-project-agents` again only when the project adopts a newer setup-managed snapshot contract.
+Use `setup-matt-pocock-skills` separately only to explicitly reconfigure or repair the tracker,
+triage labels, or domain layout.
 
 SmartKit manages only the content it generates and preserves the project's existing files and user
-configuration whenever possible. All changes can be viewed and reviewed through version control.
+configuration whenever possible. Commit `AGENTS.md`, `.agents/`, managed host wrappers and config,
+and `docs/agents/`; do not add them to `.gitignore`. Session data, caches, logs, and credentials stay
+outside the repository, and generated project files must not contain secrets.
 
 ## Hooks, multi-agent, and tool maintenance
 
-The plugin automatically checks recommended tools and required capabilities, such as Superpowers,
-CodeGraph, Tokscale, and multi-agent support. These checks only detect issues; they never install
-tools or change related configuration by themselves.
+The plugin automatically checks recommended tools and required capabilities, such as CodeGraph,
+Tokscale, and multi-agent support. These checks only detect issues; they never install tools or
+change related configuration by themselves.
 
 When missing or outdated tools are detected, SmartKit first lists the affected items and asks the
 user. It runs maintenance actions only after explicit consent. If the user explicitly declines the
@@ -74,8 +87,9 @@ interactive sessions and uses the same ask-and-stop requirement as session conte
 ## Typical workflow
 
 ```text
-Install SmartKit → complete host Hook review (Codex: /hooks) → run setup-project-agents in the
-project → review generated content → start working
+Install or update SmartKit → start a new host session → complete host Hook review (Codex: /hooks)
+→ a maintainer runs setup-project-agents → review and commit the generated snapshot → other
+developers pull → start working
 ```
 
 If a check reports that tools need to be installed or upgraded, confirm the tool names and actions

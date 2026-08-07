@@ -82,6 +82,12 @@ class DesiredField:
 
 
 @dataclass(frozen=True)
+class RetiredFieldSpec:
+    path: PurePosixPath
+    key: str
+
+
+@dataclass(frozen=True)
 class Change:
     kind: ChangeKind
     path: PurePosixPath
@@ -102,3 +108,4 @@ class Catalog:
     assets: tuple[AssetSpec, ...]
     retired_assets: tuple[PurePosixPath, ...] = ()
     external_skills: tuple[ExternalSkillSpec, ...] = ()
+    retired_fields: tuple[RetiredFieldSpec, ...] = ()

@@ -72,16 +72,6 @@ _PLATFORM_RECIPES = {
             ),
             'upgrade': Recipe('Codex CLI', command=('codex', 'update')),
         },
-        'superpowers': {
-            'install': Recipe(
-                'Superpowers',
-                command=('codex', 'plugin', 'add', 'superpowers@openai-curated'),
-            ),
-            'upgrade': Recipe(
-                'Superpowers',
-                command=('codex', 'plugin', 'add', 'superpowers@openai-curated'),
-            ),
-        },
     },
     'cursor': {
         'cursor-agent': {
@@ -90,16 +80,6 @@ _PLATFORM_RECIPES = {
                 manual_guidance='Install Cursor Agent CLI from the official Cursor distribution.',
             ),
             'upgrade': Recipe('Cursor Agent CLI', command=('agent', 'update')),
-        },
-        'superpowers': {
-            'install': Recipe(
-                'Superpowers',
-                manual_guidance='Install Superpowers from the Cursor Marketplace.',
-            ),
-            'upgrade': Recipe(
-                'Superpowers',
-                manual_guidance='Update Superpowers from the Cursor Marketplace.',
-            ),
         },
     },
     'copilot': {
@@ -111,26 +91,6 @@ _PLATFORM_RECIPES = {
                 ),
             ),
             'upgrade': Recipe('GitHub Copilot CLI', command=('copilot', 'update')),
-        },
-        'superpowers': {
-            'install': Recipe(
-                'Superpowers',
-                command=(
-                    'copilot',
-                    'plugin',
-                    'install',
-                    'superpowers@superpowers-marketplace',
-                ),
-            ),
-            'upgrade': Recipe(
-                'Superpowers',
-                command=(
-                    'copilot',
-                    'plugin',
-                    'update',
-                    'superpowers@superpowers-marketplace',
-                ),
-            ),
         },
     },
 }

@@ -82,8 +82,8 @@ their locations so the user can inspect and recover the source independently.
 ## Prohibited Operations
 
 This skill has no authority to push, pull, force-update, stash, reset, clean, or create a merge
-commit. For PR, keep-branch, or discard outcomes, hand off to
-`superpowers:finishing-a-development-branch`.
+commit. For PR, keep-branch, or discard outcomes, return control to the parent Agent; it must apply
+the global Git Safety policy and the user's selected outcome.
 
 ## Result
 

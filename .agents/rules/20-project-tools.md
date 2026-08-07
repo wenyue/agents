@@ -22,6 +22,18 @@ tooling boundaries.
 - Use `python scripts/sync_plugin_version.py --check` for read-only drift detection; CI must reject
   version fields that do not match `VERSION`.
 
+## Matt Skills Upstream
+
+- Use `python scripts/sync_matt_skills_upstream.py --check` as the read-only check for the latest
+  stable Matt release, vendor lock, license, and vendored file hashes. Treat exit `1` as release or
+  local drift and exit `2` as an upstream, network, Git, or validation failure.
+- Only a repository maintainer may run `python scripts/sync_matt_skills_upstream.py --update` or
+  select a stable release with `--update --tag vMAJOR.MINOR.PATCH`. Every update must be followed by
+  review of added and removed Skills, the complete vendor diff, the lock, and the license before
+  running the repository-wide verification commands.
+- The upstream sync command changes only the Matt vendor tree, lock, and license. It must not change
+  `VERSION`, commit, push, publish the plugin, or update any user's installed plugin.
+
 ## Verification Commands
 
 Use these repository-supported checks:

@@ -301,12 +301,42 @@ class SetupRendererTest(unittest.TestCase):
             target = root / 'target'
             settings = target / '.github/copilot/settings.json'
             settings.parent.mkdir(parents=True)
-            settings.write_text(
+            original = (
                 '{\n'
                 '  // user-owned values\n'
                 '  "unmanaged": "literal,}",\n'
                 '  "items": [1, 2,],\n'
-                '}\n',
+                '}\n'
+            )
+            settings.write_text(original, encoding='utf-8')
+
+            rendered = self.render(target, self.generated_tree(root))
+
+            self.assertNotIn('.github/copilot/settings.json', rendered.files_by_path)
+            self.assertNotIn(
+                PurePosixPath('.github/copilot/settings.json'),
+                rendered.delete_paths,
+            )
+            self.assertEqual(settings.read_text(encoding='utf-8'), original)
+
+    def test_retired_structured_fields_are_removed_without_touching_user_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            settings = target / '.github/copilot/settings.json'
+            settings.parent.mkdir(parents=True)
+            settings.write_text(
+                json.dumps({
+                    'extraKnownMarketplaces': {
+                        'superpowers-marketplace': {'source': 'retired'},
+                        'team-marketplace': {'source': 'kept'},
+                    },
+                    'enabledPlugins': {
+                        'superpowers@superpowers-marketplace': True,
+                        'team-tool@team-marketplace': True,
+                    },
+                    'editor': {'theme': 'team'},
+                }),
                 encoding='utf-8',
             )
 
@@ -315,8 +345,41 @@ class SetupRendererTest(unittest.TestCase):
                 rendered.files_by_path['.github/copilot/settings.json']
             )
 
-            self.assertEqual(parsed['unmanaged'], 'literal,}')
-            self.assertEqual(parsed['items'], [1, 2])
+            self.assertEqual(parsed, {
+                'extraKnownMarketplaces': {
+                    'team-marketplace': {'source': 'kept'},
+                },
+                'enabledPlugins': {
+                    'team-tool@team-marketplace': True,
+                },
+                'editor': {'theme': 'team'},
+            })
+
+    def test_file_with_only_retired_structured_fields_is_deleted(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            settings = target / '.github/copilot/settings.json'
+            settings.parent.mkdir(parents=True)
+            settings.write_text(
+                json.dumps({
+                    'extraKnownMarketplaces': {
+                        'superpowers-marketplace': {'source': 'retired'},
+                    },
+                    'enabledPlugins': {
+                        'superpowers@superpowers-marketplace': True,
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            rendered = self.render(target, self.generated_tree(root))
+
+            self.assertNotIn('.github/copilot/settings.json', rendered.files_by_path)
+            self.assertIn(
+                PurePosixPath('.github/copilot/settings.json'),
+                rendered.delete_paths,
+            )
 
     def test_transient_skill_cache_files_are_not_rendered(self):
         with tempfile.TemporaryDirectory() as temp_dir:

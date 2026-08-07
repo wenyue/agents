@@ -220,13 +220,8 @@ class SetupWorkflowTest(unittest.TestCase):
 
     @staticmethod
     def write_generated_outputs(session: Path) -> None:
-        for relative in (
-            '.agents/rules/20-project-tools.md',
-            '.agents/rules/21-project-rules.md',
-            '.agents/rules/22-project-structure.md',
-            '.agents/skills/change-set-verification/SKILL.md',
-            '.agents/skills/worktree-environment-setup/SKILL.md',
-        ):
+        request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
+        for relative in (item['target'] for item in request['generation_requests']):
             path = session / 'generated' / PurePosixPath(relative)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f'# generated {path.name}\n', encoding='utf-8')
@@ -405,6 +400,30 @@ class SetupWorkflowTest(unittest.TestCase):
             self.assertIn('generated outputs must contain exactly', error.getvalue())
             self.assertFalse(session.exists())
             self.assertEqual(tuple(target.rglob('*')), before)
+
+    def test_finish_rejects_ignored_untracked_generated_targets(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            origin = self.make_origin(root)
+            target = root / 'target'
+            target.mkdir()
+            run_git(target, 'init', '--quiet')
+            (target / '.gitignore').write_text('docs/agents/\n', encoding='utf-8')
+            session_output = StringIO()
+            with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
+                with redirect_stdout(session_output):
+                    self.assertEqual(workflow.main(['start', '--target', str(target)]), 0)
+            session = Path(json.loads(session_output.getvalue())['session'])
+            self.fill_models(session)
+            self.write_generated_outputs(session)
+            error = StringIO()
+
+            with redirect_stderr(error):
+                self.assertEqual(workflow.main(['finish', '--session', str(session)]), 2)
+
+            self.assertIn('generated target is ignored by Git', error.getvalue())
+            self.assertFalse((target / 'docs/agents').exists())
+            self.assertFalse(session.exists())
 
     def test_finish_reports_actionable_undeclared_generated_directory_error(
         self,

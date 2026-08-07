@@ -7,9 +7,12 @@ evolution, and test contracts for this repository.
 
 ## Plugin Ownership
 
-- Treat `skills/setup-project-agents/` as the plugin-visible control plane and keep it as the only
-  Skill under root `skills/`. Treat `setup-assets/rules/`, `setup-assets/skills/`, and
-  `setup-assets/agents/` as the English sources installed into target repositories by setup.
+- Treat `skills/setup-project-agents/` as the SmartKit-owned plugin-visible control plane. Treat
+  every other root Skill directory declared by `vendor/mattpocock-skills.lock.json` as read-only
+  vendored Matt content; modify those directories only through
+  `scripts/sync_matt_skills_upstream.py`, never by hand. Treat `setup-assets/rules/`,
+  `setup-assets/skills/`, and `setup-assets/agents/` as the English sources installed into target
+  repositories by setup.
 - Treat `setup-assets/catalog/assets.json.external_skills` as setup-owned project Skills fetched
   into target `.agents/skills/`; do not expose them as plugin Skills or merge their declarations
   into target-owned `.agents/config.json`.
@@ -22,6 +25,9 @@ evolution, and test contracts for this repository.
 - Keep deterministic setup, source validation, rendering, planning, and transactional application
   in `skills/setup-project-agents/scripts/`. Target-specific policy belongs to the target
   repository's generated or user-owned content.
+- Treat `vendor/mattpocock-skills.lock.json` as the source of truth for the vendored upstream
+  version, tag, commit, promoted Skill set, source paths, and file hashes. Keep the corresponding
+  upstream MIT license bytes in `licenses/mattpocock-skills-LICENSE.txt`.
 
 ## Documentation and Local Rules
 

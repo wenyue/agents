@@ -5,6 +5,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
@@ -30,6 +31,9 @@ _BLUEPRINT_TARGETS = (
     PurePosixPath('.agents/rules/22-project-structure.md'),
     PurePosixPath('.agents/skills/change-set-verification/SKILL.md'),
     PurePosixPath('.agents/skills/worktree-environment-setup/SKILL.md'),
+    PurePosixPath('docs/agents/issue-tracker.md'),
+    PurePosixPath('docs/agents/triage-labels.md'),
+    PurePosixPath('docs/agents/domain.md'),
 )
 _MODEL_KEYS = {
     Platform.CODEX: 'codex',
@@ -303,8 +307,42 @@ def _generated_root(session: Path) -> Path:
         elif not path.is_dir():
             raise SetupError('generated output contains a non-file entry')
     if files != expected:
-        raise SetupError('generated outputs must contain exactly the five requested files')
+        raise SetupError('generated outputs must contain exactly the eight requested files')
     return root
+
+
+def _reject_ignored_generated_targets(target: Path) -> None:
+    try:
+        repository = subprocess.run(
+            ('git', '-C', str(target), 'rev-parse', '--is-inside-work-tree'),
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as error:
+        raise SetupError('cannot inspect Git tracking for generated targets') from error
+    if repository.returncode != 0:
+        return
+    for relative in _BLUEPRINT_TARGETS:
+        path = relative.as_posix()
+        tracked = subprocess.run(
+            ('git', '-C', str(target), 'ls-files', '--error-unmatch', '--', path),
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if tracked.returncode == 0:
+            continue
+        ignored = subprocess.run(
+            ('git', '-C', str(target), 'check-ignore', '--no-index', '--quiet', '--', path),
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if ignored.returncode == 0:
+            raise SetupError(f'generated target is ignored by Git: {path}')
+        if ignored.returncode != 1:
+            raise SetupError(f'cannot inspect Git ignore state for generated target: {path}')
 
 
 def _models_for_rendering(
@@ -417,6 +455,7 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
         catalog=catalog,
     )
     generated = _generated_root(session)
+    _reject_ignored_generated_targets(project.root)
     models_path = Path(args.models).absolute()
     if models_path != session / 'models.json':
         raise SetupError('models path must be SESSION/models.json')

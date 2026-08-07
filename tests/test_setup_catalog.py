@@ -18,6 +18,58 @@ from agents_setup.catalog import (  # noqa: E402
 
 
 class SetupCatalogTest(unittest.TestCase):
+    def test_catalog_parses_only_safe_unique_structured_retired_fields(self):
+        def load_with(retired_fields):
+            root = Path(self.temp_dir)
+            (root / 'setup-assets/catalog').mkdir(parents=True, exist_ok=True)
+            (root / 'VERSION').write_text('1.0.0\n', encoding='utf-8')
+            (root / 'setup-assets/catalog/assets.json').write_text(
+                json.dumps({
+                    'plugin': {
+                        'id': 'smartkit',
+                        'version': '1.0.0',
+                        'repository': 'https://example.invalid/agents.git',
+                        'ref': 'master',
+                    },
+                    'assets': [],
+                    'retired_fields': retired_fields,
+                }),
+                encoding='utf-8',
+            )
+            return load_catalog(root)
+
+        with tempfile.TemporaryDirectory() as self.temp_dir:
+            catalog = load_with([{
+                'path': '.github/copilot/settings.json',
+                'key': 'enabledPlugins.superpowers@superpowers-marketplace',
+            }])
+            self.assertEqual(
+                catalog.retired_fields[0].path.as_posix(),
+                '.github/copilot/settings.json',
+            )
+            self.assertEqual(
+                catalog.retired_fields[0].key,
+                'enabledPlugins.superpowers@superpowers-marketplace',
+            )
+
+        invalid = (
+            [{'path': '/absolute.json', 'key': 'value'}],
+            [{'path': '../escape.json', 'key': 'value'}],
+            [{'path': 'settings.json', 'key': ''}],
+            [{'path': 'settings.json', 'key': 'bad..key'}],
+            [{'path': 'settings.txt', 'key': 'value'}],
+            [{'path': 'settings.json', 'key': 'value', 'extra': True}],
+            [
+                {'path': 'settings.json', 'key': 'value'},
+                {'path': 'settings.json', 'key': 'value'},
+            ],
+        )
+        for retired_fields in invalid:
+            with self.subTest(retired_fields=retired_fields), tempfile.TemporaryDirectory() as temp_dir:
+                self.temp_dir = temp_dir
+                with self.assertRaises(ContractError):
+                    load_with(retired_fields)
+
     def test_catalog_excludes_setup_control_plane(self):
         catalog = load_catalog(REPO_ROOT)
 
@@ -28,12 +80,29 @@ class SetupCatalogTest(unittest.TestCase):
         }
 
         self.assertNotIn('.agents/skills/setup-project-agents', targets)
+        matt_blueprints = {
+            'skills/setup-matt-pocock-skills/issue-tracker-github.md',
+            'skills/setup-matt-pocock-skills/triage-labels.md',
+            'skills/setup-matt-pocock-skills/domain.md',
+        }
         for asset in catalog.assets:
             with self.subTest(asset=asset.id):
                 if asset.id == 'setup-project-agents':
                     self.assertEqual(asset.source.as_posix(), 'skills/setup-project-agents')
+                elif asset.source.as_posix() in matt_blueprints:
+                    self.assertEqual(asset.kind, 'blueprint')
+                    self.assertTrue(asset.target.as_posix().startswith('docs/agents/'))
                 elif asset.kind in {'rule', 'skill', 'agent', 'blueprint', 'template', 'wrapper'}:
                     self.assertTrue(asset.source.as_posix().startswith('setup-assets/'))
+
+        self.assertEqual(
+            {
+                asset.source.as_posix()
+                for asset in catalog.assets
+                if asset.source.as_posix().startswith('skills/setup-matt-pocock-skills/')
+            },
+            matt_blueprints,
+        )
 
     def test_project_config_loads_current_project_selections(self):
         config = load_project_config(None, catalog=load_catalog(REPO_ROOT))

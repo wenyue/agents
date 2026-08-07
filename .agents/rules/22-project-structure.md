@@ -6,8 +6,9 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
 
 ## Repository Areas
 
-- `skills/` contains only the plugin-visible `setup-project-agents` control plane. `hooks/` contains
-  the three host lifecycle entry points.
+- `skills/` contains the SmartKit-owned `setup-project-agents` control plane plus the read-only Matt
+  Skill directories declared by `vendor/mattpocock-skills.lock.json`. `hooks/` contains the three
+  host lifecycle entry points.
 - `runtime/recommended-tools/` contains private Hook executables and no discoverable Skill.
   `policies/recommended-tools/` contains the declarations shared by that runtime and setup output.
 - `setup-assets/catalog/assets.json` declares setup-owned external project Skills that are fetched
@@ -23,6 +24,9 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   `write-rule` and `write-skill`. No other `.agents/` content belongs in this repository.
 - `AGENTS.md` is the entry point for discovering `.agents/rules/`; `README.md` is public plugin
   onboarding and describes the setup boundary.
+- `vendor/mattpocock-skills.lock.json` and `licenses/mattpocock-skills-LICENSE.txt` record the exact
+  Matt release distributed by all plugin hosts; the upstream synchronizer exclusively owns the
+  lock-declared root Skill directories.
 
 ## Distribution Flow
 
@@ -43,6 +47,10 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   `policies/`. None of those areas may depend on plugin-discovered Skills.
 - Repository-local Skill wrappers depend only on their corresponding sources under
   `setup-assets/skills/` and add no workflow behavior.
+- `setup-project-agents` may read the vendored `setup-matt-pocock-skills` instructions and seed
+  templates only to author the Matt repository-context outputs declared by setup. Plugin Hooks must
+  not depend on vendored Skills, and all other vendored Skills remain independent read-only plugin
+  capabilities.
 - Plugin manifests expose only `skills/` and host Hook entry points. They do not expose
   `setup-assets/`, `runtime/`, or `policies/`.
 
