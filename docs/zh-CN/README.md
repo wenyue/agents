@@ -17,8 +17,8 @@ codex plugin add smartkit@wenyue
 也可以在 Codex 中使用 `/plugins` 完成安装。
 
 > **必须完成的 Codex Hook 审查：** 安装或启用 SmartKit 不会自动信任其内置 Hook。安装后，
-> 请打开 Codex CLI 会话，运行 `/hooks`，审查并信任 SmartKit 的 `SessionStart` Hook，然后开启
-> 新的 Codex 会话或运行 `/clear`。完成信任前，Codex 会跳过 SmartKit 的推荐工具检查。只有更新
+> 请打开 Codex CLI 会话，运行 `/hooks`，审查并信任 SmartKit 的 Hooks，然后开启
+> 新的 Codex 会话或运行 `/clear`。完成信任前，Codex 会跳过 SmartKit 的推荐工具检查和 Rule 分发。只有更新
 > 改变了 Hook 定义且 Codex 将其重新标记为待审查时，才需要再次审查。
 
 Cursor：通过 Plugin Marketplace 或 `/add-plugin` 安装；私有版本请通过团队市场或本地插件方式
@@ -34,22 +34,31 @@ copilot plugin install smartkit@wenyue
 需要更新 Copilot 插件时，先运行 `copilot plugin marketplace update wenyue`，再运行
 `copilot plugin update smartkit`。
 
-## 内置 Matt Skills
+## 插件 Skills 与 Rules
 
-SmartKit 将完整的稳定版 Matt Pocock Skills 集合作为插件的一部分分发。不要再通过 skills.sh、Matt
-插件或其他本地副本安装相同 Skills；重复名称会导致调用歧义。需要采用新版内置集合时，更新
-SmartKit 并开启新的宿主会话。普通 Skill 更新不要求重新运行任一 setup 工作流。
+`skills/registry.json` 显式声明 SmartKit 自有 Skills 和 GitHub 外部 Skills。维护者使用
+`python scripts/update_external_skills.py --update` 更新所有外部源，或用 `--source owner/repository`
+更新单个源；`--check` 只读。省略 ref 时跟随仓库默认分支，也可显式选择分支、标签或 commit。
+更新使用环境中的 Git 凭据，校验许可证，并事务化替换聚合锁文件和快照。
+
+`rules/registry.json` 定义插件 Rules 的顺序。`always` Rule 对所有任务生效；`file` Rule 根据项目根
+相对的 Git 风格 glob 激活。优先比较强度（`Mandatory` > `Default` > `Advisory`），再比较项目归属，
+最后比较更窄的文件范围。Codex 和 Copilot CLI 使用 Hook；Cursor 使用原生插件 Rules。Hook 会在
+会话内记住已激活的文件 Rule，在 compact 后恢复，并在此前未发现 Rule 时阻止首次匹配的结构化
+写入。Hook dispatcher 会输出包含响应大小的尝试交付诊断；信任、接收、spill 和截断仍以宿主为准，
+预期 Rule 未生效时应检查宿主 Hook 诊断。Cursor adapter 无法表达某个文件范围时会拒绝生成，不会
+发布语义不同的配置。Copilot cloud agent 不在此插件 Rule 契约范围内。
 
 ## 平台支持
 
 三个宿主都支持 Windows 和 Linux。初始化会为每个生成的 Agent 设置显式模型；宿主专属字段仍使用
 各自的原生形式。
 
-| 宿主 | Windows 推荐工具 Hook | Linux 推荐工具 Hook | 原生 Agent 字段 |
+| 宿主 | 插件 Rule 分发 | 推荐工具 Hook | 原生 Agent 字段 |
 | --- | --- | --- | --- |
-| Codex | PowerShell | POSIX sh | `model_reasoning_effort`、`sandbox_mode` |
-| Cursor | 通过 polyglot 分发器调用 PowerShell | 通过 polyglot 分发器调用 POSIX sh | `readonly` |
-| GitHub Copilot | `powershell` 处理器 | `bash` 处理器 | `disable-model-invocation` |
+| Codex | 会话、提示词和结构化工具 Hook | PowerShell / POSIX sh | `model_reasoning_effort`、`sandbox_mode` |
+| Cursor | 原生插件 Rules | polyglot 分发器 | `readonly` |
+| GitHub Copilot CLI | 会话、转换提示词和结构化工具 Hook | `powershell` / `bash` | `disable-model-invocation` |
 
 ## 为每个项目执行设置
 
@@ -60,6 +69,11 @@ Cursor 和 Copilot，并在 `docs/agents/issue-tracker.md`、`docs/agents/triage
 新仓库由一名维护者运行 setup、审查结果并提交受管项目快照。其他开发者通过 clone 或 pull 获取，
 无需逐人运行 setup。只有项目需要采用新版 setup 受管快照契约时，才再次运行
 `setup-project-agents`。
+
+项目可在 `.agents/config.json` 的 `skills.external_sources` 下声明 GitHub Skill 源。Setup 对每个 URL
+只拉取一次，快照其中选定的 Skills，并写入 `.agents/external-skills.lock.json`。生成式项目 Rules
+使用 `00–09`，模块 Rules 使用 `10–19`，领域 Rules 使用 `20–29`，包或项目插件 Rules 使用
+`30–39`。
 
 SmartKit 只管理自己生成的内容，并尽量保留项目原有文件和用户配置。应提交 `AGENTS.md`、
 `.agents/`、受管宿主 wrapper 和配置以及 `docs/agents/`；不要将它们加入 `.gitignore`。Session

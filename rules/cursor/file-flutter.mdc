@@ -1,0 +1,6 @@
+---
+globs: "**/*.dart,pubspec.yaml,**/pubspec.yaml"
+alwaysApply: false
+---
+
+Apply @../source/file-flutter.md

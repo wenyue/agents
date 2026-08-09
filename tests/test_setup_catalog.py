@@ -107,11 +107,11 @@ class SetupCatalogTest(unittest.TestCase):
     def test_project_config_loads_current_project_selections(self):
         config = load_project_config(None, catalog=load_catalog(REPO_ROOT))
 
-        self.assertIn('00-global-rule-config', config.selected_rules)
-        self.assertIn('refactor-code', config.selected_skills)
+        self.assertEqual(config.selected_rules, ())
+        self.assertEqual(config.selected_skills, ())
         self.assertNotIn('setup-project-agents', config.selected_skills)
         self.assertEqual(config.selected_agents, ('change-set-verifier',))
-        self.assertEqual([item.name for item in config.external_skills], ['debug-mode'])
+        self.assertEqual(config.external_skills, ())
 
     def test_catalog_rejects_escape_and_absolute_targets(self):
         for target in ('../escape', '/tmp/escape', 'C:/escape'):
@@ -418,12 +418,16 @@ class SetupCatalogTest(unittest.TestCase):
                         '$schema': 'project-config.schema.json',
                         'version': 1,
                         'skills': {
-                            'external': [
+                            'external_sources': [
                                 {
-                                    'name': 'sentry-debug-issue',
-                                    'repository': 'getsentry/plugin-codex',
+                                    'id': 'getsentry/plugin-codex',
+                                    'url': 'https://github.com/getsentry/plugin-codex',
                                     'ref': 'main',
-                                    'path': 'plugins/sentry/skills/sentry-debug-issue',
+                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
+                                    'skills': [{
+                                        'id': 'getsentry/sentry-debug-issue',
+                                        'path': 'plugins/sentry/skills/sentry-debug-issue',
+                                    }],
                                 }
                             ]
                         },
@@ -433,7 +437,7 @@ class SetupCatalogTest(unittest.TestCase):
             )
             config = load_project_config(path, catalog=load_catalog(REPO_ROOT))
             external = {item.name: item for item in config.external_skills}
-            self.assertEqual(set(external), {'debug-mode', 'sentry-debug-issue'})
+            self.assertEqual(set(external), {'sentry-debug-issue'})
             self.assertEqual(
                 external['sentry-debug-issue'].path.as_posix(),
                 'plugins/sentry/skills/sentry-debug-issue',
@@ -443,12 +447,13 @@ class SetupCatalogTest(unittest.TestCase):
                     {
                         'version': 1,
                         'skills': {
-                            'external': [
+                            'external_sources': [
                                 {
-                                    'name': 'bad',
-                                    'repository': 'https://example.invalid/repo.git',
+                                    'id': 'bad/repo',
+                                    'url': 'https://example.invalid/repo.git',
                                     'ref': 'main',
-                                    'path': 'skill',
+                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
+                                    'skills': [{'id': 'bad/skill', 'path': 'skill'}],
                                 }
                             ]
                         },
@@ -456,10 +461,10 @@ class SetupCatalogTest(unittest.TestCase):
                 ),
                 encoding='utf-8',
             )
-            with self.assertRaisesRegex(ContractError, 'owner/name'):
+            with self.assertRaisesRegex(ContractError, 'GitHub url'):
                 load_project_config(path, catalog=load_catalog(REPO_ROOT))
 
-    def test_project_config_cannot_override_setup_managed_external_skill(self):
+    def test_project_config_rejects_duplicate_external_destination(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / 'config.json'
             path.write_text(
@@ -467,13 +472,20 @@ class SetupCatalogTest(unittest.TestCase):
                     {
                         'version': 1,
                         'skills': {
-                            'external': [
+                            'external_sources': [
                                 {
-                                    'name': 'debug-mode',
-                                    'repository': 'example/debug-mode',
+                                    'id': 'example/debug-mode',
+                                    'url': 'https://github.com/example/debug-mode',
                                     'ref': 'main',
-                                    'path': 'debug-mode',
-                                }
+                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
+                                    'skills': [{'id': 'example/debug-mode', 'path': 'debug-mode'}],
+                                },
+                                {
+                                    'id': 'other/debug-mode',
+                                    'url': 'https://github.com/other/debug-mode',
+                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
+                                    'skills': [{'id': 'other/debug-mode', 'path': 'debug-mode'}],
+                                },
                             ]
                         },
                     }
@@ -481,7 +493,7 @@ class SetupCatalogTest(unittest.TestCase):
                 encoding='utf-8',
             )
 
-            with self.assertRaisesRegex(ContractError, 'setup-managed skill'):
+            with self.assertRaisesRegex(ContractError, 'duplicate names'):
                 load_project_config(path, catalog=load_catalog(REPO_ROOT))
 
 

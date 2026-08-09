@@ -1,0 +1,6 @@
+---
+globs: "**/*.c,**/*.cc,**/*.cpp,**/*.cxx,**/*.h,**/*.hh,**/*.hpp,**/*.dart,**/*.go,**/*.js,**/*.jsx,**/*.py,**/*.rs,**/*.ts,**/*.tsx"
+alwaysApply: false
+---
+
+Apply @../source/file-code.md

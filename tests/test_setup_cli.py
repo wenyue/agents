@@ -93,17 +93,21 @@ class SetupCliTest(unittest.TestCase):
         return path
 
     @staticmethod
-    def snapshot_external_skills(specs, *, session: Path):
+    def snapshot_external_skills(specs, *, session: Path, existing_lock=None):
         if not specs:
             return None
         root = session / 'external-skills'
-        for spec in specs:
-            skill = root / spec.name / 'SKILL.md'
-            skill.parent.mkdir(parents=True)
-            skill.write_text(
-                f'---\nname: {spec.name}\ndescription: Use for tests.\n---\n',
-                encoding='utf-8',
-            )
+        for source in specs:
+            for spec in source.skills:
+                skill = root / spec.name / 'SKILL.md'
+                skill.parent.mkdir(parents=True)
+                skill.write_text(
+                    f'---\nname: {spec.name}\ndescription: Use for tests.\n---\n',
+                    encoding='utf-8',
+                )
+        (root / 'external-skills.lock.json').write_text(
+            json.dumps({'version': 1, 'sources': []}) + '\n', encoding='utf-8'
+        )
         return root
 
     def prepare(self, target: Path, session: Path, *extra: str, snapshot=None) -> int:
@@ -161,15 +165,8 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(request['source_commit'], self.source_commit)
             self.assertEqual(request['platforms'], ['codex', 'cursor', 'copilot'])
             self.assertEqual(
-                request['external_skills'],
-                [
-                    {
-                        'name': 'debug-mode',
-                        'repository': 'doraemonkeys/claude-code-debug-mode',
-                        'ref': 'master',
-                        'path': 'debug-mode',
-                    }
-                ],
+                request['external_sources'],
+                [],
             )
             self.assertNotIn('hooks_enabled', request)
             self.assertEqual(
@@ -202,9 +199,9 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(
                 {item['target'] for item in request['generation_requests']},
                 {
-                    '.agents/rules/20-project-tools.md',
-                    '.agents/rules/21-project-rules.md',
-                    '.agents/rules/22-project-structure.md',
+                    '.agents/rules/00-project-tools.md',
+                    '.agents/rules/01-project-rules.md',
+                    '.agents/rules/02-project-structure.md',
                     '.agents/skills/change-set-verification/SKILL.md',
                     '.agents/skills/worktree-environment-setup/SKILL.md',
                     'docs/agents/issue-tracker.md',
@@ -283,8 +280,8 @@ class SetupCliTest(unittest.TestCase):
                 ),
                 0,
             )
-            self.assertTrue((target / '.agents/rules/00-global-rule-config.md').is_file())
-            self.assertTrue((target / '.agents/rules/20-project-tools.md').is_file())
+            self.assertTrue((target / '.agents/rules/00-project-tools.md').is_file())
+            self.assertTrue((target / '.agents/rules/00-project-tools.md').is_file())
             self.assertTrue((target / '.agents/skills/change-set-verification/SKILL.md').is_file())
             self.assertFalse((target / '.agents/lock.json').exists())
 
@@ -300,12 +297,16 @@ class SetupCliTest(unittest.TestCase):
                     {
                         'version': 1,
                         'skills': {
-                            'external': [
+                            'external_sources': [
                                 {
-                                    'name': 'external-check',
-                                    'repository': 'example/repository',
+                                    'id': 'example/repository',
+                                    'url': 'https://github.com/example/repository',
                                     'ref': 'main',
-                                    'path': 'skills/external-check',
+                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
+                                    'skills': [{
+                                        'id': 'example/external-check',
+                                        'path': 'skills/external-check',
+                                    }],
                                 }
                             ]
                         },
@@ -319,26 +320,29 @@ class SetupCliTest(unittest.TestCase):
             (installed / 'SKILL.md').write_text('locally changed\n', encoding='utf-8')
             session = self.private_session(root)
 
-            def snapshot(specs, *, session):
+            def snapshot(specs, *, session, existing_lock=None):
                 self.assertEqual(
-                    [item.name for item in specs],
-                    ['debug-mode', 'external-check'],
+                    [item.name for source in specs for item in source.skills],
+                    ['external-check'],
                 )
                 destination = session / 'external-skills'
-                for name in ('external-check', 'debug-mode'):
+                for name in ('external-check',):
                     skill = destination / name / 'SKILL.md'
                     skill.parent.mkdir(parents=True)
                     skill.write_text(
                         f'---\nname: {name}\ndescription: Use for checks.\n---\n',
                         encoding='utf-8',
                     )
+                (destination / 'external-skills.lock.json').write_text(
+                    json.dumps({'version': 1, 'sources': []}) + '\n', encoding='utf-8'
+                )
                 return destination
 
             self.assertEqual(self.prepare(target, session, snapshot=snapshot), 0)
             request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
             self.assertEqual(
-                [item['name'] for item in request['external_skills']],
-                ['debug-mode', 'external-check'],
+                [item['id'] for item in request['external_sources']],
+                ['example/repository'],
             )
             self.write_generated_outputs(session)
             models = self.write_models(session)
@@ -365,7 +369,7 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(setup_project_agents.main(apply_args), 0)
 
             self.assertEqual(setup_project_agents.main(check_args), 0)
-            (target / '.agents/rules/00-global-rule-config.md').write_text('drift\n', encoding='utf-8')
+            (target / '.agents/rules/00-project-tools.md').write_text('drift\n', encoding='utf-8')
             before = self.snapshot_tree(target)
             drift_output = StringIO()
             with redirect_stdout(drift_output):
@@ -376,10 +380,10 @@ class SetupCliTest(unittest.TestCase):
                 {
                     'kind': 'desired_state_diff',
                     'message': 'desired state differs from the target project',
-                    'paths': ['.agents/rules/00-global-rule-config.md'],
+                    'paths': ['.agents/rules/00-project-tools.md'],
                 },
             )
-            self.assertEqual(drift['changed_paths'], ['.agents/rules/00-global-rule-config.md'])
+            self.assertEqual(drift['changed_paths'], ['.agents/rules/00-project-tools.md'])
             self.assertEqual(self.snapshot_tree(target), before)
 
     def test_check_reports_managed_field_drift_without_writing(self):
@@ -419,7 +423,7 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(self.prepare(target, session), 0)
             self.write_generated_outputs(session)
             models = self.write_models(session)
-            collision = target / '.agents/rules/00-global-rule-config.md'
+            collision = target / '.agents/rules/00-project-tools.md'
             collision.parent.mkdir(parents=True)
             collision.write_text('user-owned\n', encoding='utf-8')
             before = self.snapshot_tree(target)
@@ -434,8 +438,8 @@ class SetupCliTest(unittest.TestCase):
                 )
             result = json.loads(output.getvalue())
             self.assertEqual(result['drift']['kind'], 'desired_state_diff')
-            self.assertIn('.agents/rules/00-global-rule-config.md', result['drift']['paths'])
-            self.assertIn('.agents/rules/00-global-rule-config.md', result['changed_paths'])
+            self.assertIn('.agents/rules/00-project-tools.md', result['drift']['paths'])
+            self.assertIn('.agents/rules/00-project-tools.md', result['changed_paths'])
             self.assertEqual(self.snapshot_tree(target), before)
             self.assertEqual(
                 setup_project_agents.main(
@@ -445,7 +449,7 @@ class SetupCliTest(unittest.TestCase):
             )
             self.assertEqual(
                 collision.read_bytes(),
-                (REPO_ROOT / 'setup-assets/rules/00-global-rule-config.md').read_bytes(),
+                (session / 'generated/.agents/rules/00-project-tools.md').read_bytes(),
             )
 
     def test_apply_rejects_tampered_selections_or_model_requests_without_writing(self):
@@ -524,11 +528,11 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(apply_result['source_commit'], self.source_commit)
             self.assertIsNone(apply_result['drift'])
             self.assertEqual(apply_result['changed_paths'], sorted(apply_result['changed_paths']))
-            self.assertIn('.agents/rules/00-global-rule-config.md', apply_result['changed_paths'])
+            self.assertIn('.agents/rules/00-project-tools.md', apply_result['changed_paths'])
             self.assertEqual(
                 apply_result['platforms'], ['codex', 'cursor', 'copilot']
             )
-            self.assertEqual(apply_result['external_skills'], ['debug-mode'])
+            self.assertEqual(apply_result['external_skills'], [])
             self.assertEqual(apply_result['preserved_paths'], [])
             self.assertEqual(
                 set(apply_result),
@@ -730,9 +734,9 @@ class SetupEndToEndTest(unittest.TestCase):
             (target / 'unmanaged.txt').write_text('keep\n', encoding='utf-8')
             before_upgrade = self.snapshot_tree(target)
 
-            rule = work / 'setup-assets/rules/00-global-rule-config.md'
+            rule = work / 'setup-assets/agents/change-set-verifier.md'
             rule.write_text(rule.read_text(encoding='utf-8') + '\nRemote master update.\n', encoding='utf-8')
-            run_git(work, 'add', 'setup-assets/rules/00-global-rule-config.md')
+            run_git(work, 'add', 'setup-assets/agents/change-set-verifier.md')
             run_git(work, 'commit', '--quiet', '-m', 'update managed rule')
             run_git(work, 'push', '--quiet', 'origin', 'master')
 
@@ -742,7 +746,7 @@ class SetupEndToEndTest(unittest.TestCase):
             second_result, second_output = self.apply_pinned(target, second_session)
             self.assertEqual(second_result, 0)
             assert second_output is not None
-            self.assertIn('.agents/rules/00-global-rule-config.md', second_output['changed_paths'])
+            self.assertIn('.agents/agents/change-set-verifier.md', second_output['changed_paths'])
             self.assertEqual((target / 'unmanaged.txt').read_bytes(), before_upgrade['unmanaged.txt'])
             after_upgrade = self.snapshot_tree(target)
             changed = {
@@ -751,7 +755,7 @@ class SetupEndToEndTest(unittest.TestCase):
             }
             self.assertEqual(
                 changed,
-                {'.agents/rules/00-global-rule-config.md'},
+                {'.agents/agents/change-set-verifier.md'},
             )
 
             third_session = self.private_session(root, 'third-session')
@@ -811,7 +815,7 @@ class SetupEndToEndTest(unittest.TestCase):
             original = self.snapshot_tree(target)
             collision_target = root / 'collision-target'
             collision_target.mkdir()
-            collision = collision_target / '.agents/rules/00-global-rule-config.md'
+            collision = collision_target / '.agents/rules/00-project-tools.md'
             collision.parent.mkdir(parents=True)
             collision.write_text('user collision\n', encoding='utf-8')
             collision_session = self.private_session(root, 'collision-session')
@@ -824,12 +828,12 @@ class SetupEndToEndTest(unittest.TestCase):
             self.assertEqual(self.apply_pinned(collision_target, collision_session)[0], 0)
             self.assertEqual(
                 collision.read_bytes(),
-                (source / 'setup-assets/rules/00-global-rule-config.md').read_bytes(),
+                (collision_session / 'generated/.agents/rules/00-project-tools.md').read_bytes(),
             )
 
-            source_rule = source / 'setup-assets/rules/00-global-rule-config.md'
+            source_rule = source / 'setup-assets/agents/change-set-verifier.md'
             source_rule.write_text(source_rule.read_text(encoding='utf-8') + '\nchanged once\n', encoding='utf-8')
-            second_source_rule = source / 'setup-assets/rules/01-global-personality.md'
+            second_source_rule = source / 'setup-assets/templates/platform-config/cursor.cli.json'
             second_source_rule.write_text(
                 second_source_rule.read_text(encoding='utf-8') + '\nchanged twice\n',
                 encoding='utf-8',

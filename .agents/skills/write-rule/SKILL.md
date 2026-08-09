@@ -5,4 +5,4 @@ description: Use when creating, rewriting, or materially updating repository rul
 
 # Write Rule
 
-Apply @setup-assets/skills/write-rule/SKILL.md as the complete source-of-truth workflow.
+Apply @skills/write-rule/SKILL.md as the complete source-of-truth workflow.

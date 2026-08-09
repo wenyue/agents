@@ -19,8 +19,8 @@ You can also use `/plugins` in Codex to install it.
 
 > **Required Codex Hook review:** Installing or enabling SmartKit does not automatically trust its
 > bundled Hook. After installation, open a Codex CLI session, run `/hooks`, review and trust the
-> SmartKit `SessionStart` Hook, then start a new Codex session or run `/clear`. Until it is trusted,
-> Codex skips SmartKit's recommended-tool check. Review it again only when an update changes the
+> SmartKit Hooks, then start a new Codex session or run `/clear`. Until they are trusted,
+> Codex skips SmartKit's recommended-tool check and Rule delivery. Review again only when an update changes a
 > Hook definition and Codex marks it for review.
 
 Cursor: install it through the Plugin Marketplace or `/add-plugin`; import private versions through
@@ -36,23 +36,36 @@ copilot plugin install smartkit@wenyue
 To update the Copilot plugin, run `copilot plugin marketplace update wenyue`, followed by
 `copilot plugin update smartkit`.
 
-## Bundled Matt Skills
+## Plugin Skills and Rules
 
-SmartKit distributes the complete stable Matt Pocock Skills set as part of the plugin. Do not also
-install the same Skills through skills.sh, the Matt plugin, or another local copy; duplicate names
-make invocation ambiguous. To adopt a newer bundled set, update SmartKit and start a new host
-session. A normal Skill update does not require either setup workflow to run again.
+`skills/registry.json` explicitly declares SmartKit-owned Skills and GitHub-hosted external Skills.
+Maintainers update all external sources with `python scripts/update_external_skills.py --update`,
+or one source with `--source owner/repository`; `--check` is read-only. Omitted refs follow the
+repository default branch, while a branch, tag, or commit may be selected explicitly. Updates use
+ambient Git credentials, validate licenses, and transactionally replace the aggregate lock and
+snapshots.
+
+`rules/registry.json` orders plugin Rules. `always` Rules load for every task; `file` Rules activate
+for matching project-relative Git-style globs. Strength wins first (`Mandatory` > `Default` >
+`Advisory`), then project ownership, then narrower file scope. Codex and Copilot CLI use Hooks;
+Cursor uses native plugin Rules. Hook delivery remembers activated file Rules for the session,
+restores them after compaction, and gates the first matching structured write when a Rule was not
+discovered earlier. Hook dispatch writes an attempted-delivery diagnostic with the response size;
+the host remains authoritative for trust, acceptance, spill, and truncation, so inspect its Hook
+diagnostics when expected behavior is absent. Cursor adapter generation fails instead of publishing
+a file scope the native glob format cannot represent. Copilot cloud agents are outside this
+plugin-Rule contract.
 
 ## Platform support
 
 All three hosts support Windows and Linux. Setup gives every generated Agent an explicit model;
 host-specific fields remain native to that host.
 
-| Host | Windows recommended-tool Hook | Linux recommended-tool Hook | Native Agent fields |
+| Host | Plugin Rule delivery | Recommended-tool Hook | Native Agent fields |
 | --- | --- | --- | --- |
-| Codex | PowerShell | POSIX sh | `model_reasoning_effort`, `sandbox_mode` |
-| Cursor | Polyglot dispatcher to PowerShell | Polyglot dispatcher to POSIX sh | `readonly` |
-| GitHub Copilot | `powershell` handler | `bash` handler | `disable-model-invocation` |
+| Codex | Session, prompt, and structured-tool Hooks | PowerShell / POSIX sh | `model_reasoning_effort`, `sandbox_mode` |
+| Cursor | Native plugin Rules | Polyglot dispatcher | `readonly` |
+| GitHub Copilot CLI | Session, transformed-prompt, and structured-tool Hooks | `powershell` / `bash` | `disable-model-invocation` |
 
 ## Set up each project
 
@@ -63,6 +76,11 @@ Setup always configures Codex, Cursor, and Copilot and also creates the Matt rep
 One maintainer runs setup for a new repository, reviews the result, and commits the managed project
 snapshot. Other developers receive it through clone or pull and do not run setup individually. Run
 `setup-project-agents` again only when the project adopts a newer setup-managed snapshot contract.
+
+Projects may declare GitHub Skill sources in `.agents/config.json` under
+`skills.external_sources`. Setup fetches each source URL once, snapshots its selected Skills, and
+writes `.agents/external-skills.lock.json`. Generated project Rules use `00–09`; module Rules use
+`10–19`, domain Rules use `20–29`, and package or project-plugin Rules use `30–39`.
 
 SmartKit manages only the content it generates and preserves the project's existing files and user
 configuration whenever possible. Commit `AGENTS.md`, `.agents/`, managed host wrappers and config,

@@ -1,0 +1,6 @@
+---
+globs: "**/*.arb"
+alwaysApply: false
+---
+
+Apply @../source/file-arb.md

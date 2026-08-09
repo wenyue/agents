@@ -7,15 +7,12 @@ evolution, and test contracts for this repository.
 
 ## Plugin Ownership
 
-- Treat `skills/setup-project-agents/` as the SmartKit-owned plugin-visible control plane. Treat
-  every other root Skill directory declared by `vendor/mattpocock-skills.lock.json` as read-only
-  vendored Matt content; modify those directories only through
-  `scripts/sync_matt_skills_upstream.py`, never by hand. Treat `setup-assets/rules/`,
-  `setup-assets/skills/`, and `setup-assets/agents/` as the English sources installed into target
-  repositories by setup.
-- Treat `setup-assets/catalog/assets.json.external_skills` as setup-owned project Skills fetched
-  into target `.agents/skills/`; do not expose them as plugin Skills or merge their declarations
-  into target-owned `.agents/config.json`.
+- Treat custom entries in `skills/registry.json` as SmartKit-owned plugin Skills and external
+  entries as read-only snapshots owned by `scripts/update_external_skills.py`.
+- Treat `rules/registry.json` and `rules/source/` as plugin Rule ownership. Cursor wrappers under
+  `rules/cursor/` and command Hooks are delivery adapters, not policy owners.
+- Treat project `skills.external_sources` as GitHub sources fetched once per source and snapshotted
+  with `.agents/external-skills.lock.json` by setup.
 - Keep recommended-tool Hook executables in `runtime/recommended-tools/` without a `SKILL.md`, and
   keep their authoritative declarations in `policies/recommended-tools/`. They remain plugin-private
   and setup must not copy them into target repositories.
@@ -25,9 +22,8 @@ evolution, and test contracts for this repository.
 - Keep deterministic setup, source validation, rendering, planning, and transactional application
   in `skills/setup-project-agents/scripts/`. Target-specific policy belongs to the target
   repository's generated or user-owned content.
-- Treat `vendor/mattpocock-skills.lock.json` as the source of truth for the vendored upstream
-  version, tag, commit, promoted Skill set, source paths, and file hashes. Keep the corresponding
-  upstream MIT license bytes in `licenses/mattpocock-skills-LICENSE.txt`.
+- Treat `vendor/external-skills.lock.json` as the source of truth for every plugin external source,
+  resolved commit, selected Skill, license, and file hash.
 
 ## Documentation and Local Rules
 
@@ -42,7 +38,7 @@ evolution, and test contracts for this repository.
   do not add translation-only explanations or omit source content.
 - Treat `.agents/rules/` as the source of truth for this repository's development rules. Keep
   `.agents/skills/write-rule/` and `.agents/skills/write-skill/` as local discovery wrappers that
-  apply their corresponding English sources under `setup-assets/skills/`. Keep `.agents/` limited
+  apply their corresponding English sources under `skills/`. Keep `.agents/` limited
   to `plugins/`, `rules/`, and those Skill wrappers; it is not a generated project snapshot.
 
 ## Installation and Tests

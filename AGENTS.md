@@ -19,9 +19,9 @@ Then read the project-local rules that apply:
 
 | Read when | Rule | Strength |
 | --- | --- | --- |
-| Project tooling, MCP, runtime, or verification | `.agents/rules/20-project-tools.md` | `Mandatory` |
-| Plugin assets, documentation, generated files, ownership, or contract evolution | `.agents/rules/21-project-rules.md` | `Mandatory` |
-| Making structure, module, or dependency-boundary decisions | `.agents/rules/22-project-structure.md` | `Advisory` |
+| Project tooling, MCP, runtime, or verification | `.agents/rules/00-project-tools.md` | `Mandatory` |
+| Plugin assets, documentation, generated files, ownership, or contract evolution | `.agents/rules/01-project-rules.md` | `Mandatory` |
+| Making structure, module, or dependency-boundary decisions | `.agents/rules/02-project-structure.md` | `Advisory` |
 
 The meaning of `Mandatory`, `Default`, and `Advisory` is defined in
 `.agents/rules/00-global-rule-config.md`.
@@ -33,3 +33,17 @@ The meaning of `Mandatory`, `Default`, and `Advisory` is defined in
   rule applies.
 - When multiple referenced rule files apply, prefer the more specific file-type or project-local
   rule over the general rule.
+
+## Agent skills
+
+### Issue tracker
+
+Publish and manage this repository's work as GitHub issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the repository's canonical triage label mapping. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use the repository's single-context domain documentation layout. See `docs/agents/domain.md`.

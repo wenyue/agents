@@ -90,15 +90,14 @@ class PluginManifestTest(unittest.TestCase):
                 self.assertIn(f'name: {name}', wrapper)
                 self.assertEqual(wrapper.count('Apply @'), 1)
                 self.assertIn(
-                    f'Apply @setup-assets/skills/{name}/SKILL.md', wrapper
+                    f'Apply @skills/{name}/SKILL.md', wrapper
                 )
 
     def test_chinese_documentation_has_one_to_one_english_mirrors(self):
         chinese_root = REPO_ROOT / 'docs' / 'zh-CN'
         source_paths = {Path('README.md')}
         for root_name in (
-            'setup-assets/rules',
-            'setup-assets/skills',
+            'rules/source',
             'setup-assets/agents',
             'setup-assets/blueprints',
             'skills/setup-project-agents',
@@ -106,6 +105,14 @@ class PluginManifestTest(unittest.TestCase):
             source_paths.update(
                 path.relative_to(REPO_ROOT)
                 for path in (REPO_ROOT / root_name).rglob('*.md')
+            )
+        for name in (
+            'refactor-code', 'rename', 'report-session-usage', 'worktree-integrate',
+            'write-comment', 'write-rule', 'write-skill',
+        ):
+            source_paths.update(
+                path.relative_to(REPO_ROOT)
+                for path in (REPO_ROOT / 'skills' / name).rglob('*.md')
             )
 
         translated_paths = {
@@ -180,41 +187,38 @@ class PluginManifestTest(unittest.TestCase):
         cursor = load_json('.cursor-plugin/plugin.json')
         copilot = load_json('plugin.json')
 
-        self.assertNotIn('hooks', codex)
+        self.assertEqual(codex['hooks'], './hooks/hooks.json')
         self.assertEqual(cursor['hooks'], './hooks/cursor.json')
+        self.assertEqual(cursor['rules'], './rules/cursor/')
         self.assertEqual(copilot['hooks'], './hooks/copilot.json')
         for manifest in (codex, cursor, copilot):
             self.assertTrue((REPO_ROOT / manifest['skills']).is_dir())
             self.assertNotIn('agents', manifest)
-            self.assertNotIn('rules', manifest)
+        self.assertNotIn('rules', codex)
+        self.assertNotIn('rules', copilot)
 
         plugin_skills = {
             path.name
             for path in (REPO_ROOT / 'skills').iterdir()
             if path.is_dir()
         }
-        self.assertEqual(plugin_skills, {'setup-project-agents', *MATT_PROMOTED})
-        lock = load_json('vendor/mattpocock-skills.lock.json')
-        self.assertEqual(lock['schema_version'], 1)
-        self.assertEqual(lock['repository'], 'mattpocock/skills')
-        self.assertEqual(lock['upstream_version'], '1.2.3')
-        self.assertEqual(lock['tag'], 'v1.2.3')
+        custom = {
+            'setup-project-agents', 'refactor-code', 'rename', 'report-session-usage',
+            'worktree-integrate', 'write-comment', 'write-rule', 'write-skill',
+        }
+        self.assertEqual(plugin_skills, { *custom, *MATT_PROMOTED})
+        lock = load_json('vendor/external-skills.lock.json')
+        self.assertEqual(lock['version'], 1)
+        matt = lock['sources'][0]
+        self.assertEqual(matt['id'], 'mattpocock/skills')
+        self.assertEqual(matt['requested_ref'], 'v1.2.3')
         self.assertEqual(
-            lock['commit'],
+            matt['commit'],
             '6acc160e4e0cd062dbbbd7a1b26ae92855edf07e',
         )
         self.assertEqual(
-            {skill['name']: skill['source_path'] for skill in lock['skills']},
+            {skill['id'].split('/', 1)[1]: skill['source_path'] for skill in matt['skills']},
             MATT_PROMOTED,
-        )
-        self.assertEqual(
-            set(lock['files']),
-            {
-                path.relative_to(REPO_ROOT).as_posix()
-                for name in MATT_PROMOTED
-                for path in (REPO_ROOT / 'skills' / name).rglob('*')
-                if path.is_file()
-            },
         )
         for name in MATT_PROMOTED:
             with self.subTest(skill=name):
@@ -230,11 +234,11 @@ class PluginManifestTest(unittest.TestCase):
             ).is_file()
         )
         self.assertFalse((REPO_ROOT / 'agents').exists())
-        self.assertFalse((REPO_ROOT / 'rules').exists())
+        self.assertTrue((REPO_ROOT / 'rules/registry.json').is_file())
         self.assertFalse(any((REPO_ROOT / 'runtime').rglob('SKILL.md')))
         self.assertEqual(
             {path.name for path in (REPO_ROOT / 'setup-assets').iterdir() if path.is_dir()},
-            {'agents', 'blueprints', 'catalog', 'rules', 'skills', 'templates'},
+            {'agents', 'blueprints', 'catalog', 'templates'},
         )
         for retired_root in ('project', 'blueprints', 'catalog', 'config', 'templates'):
             self.assertFalse((REPO_ROOT / retired_root).exists())
@@ -263,7 +267,7 @@ class PluginManifestTest(unittest.TestCase):
 
         self.assertEqual(
             set(load_json('hooks/hooks.json')['hooks']),
-            {'SessionStart'},
+            {'SessionStart', 'UserPromptSubmit', 'PreToolUse'},
         )
         self.assertEqual(
             set(load_json('hooks/cursor.json')['hooks']),
@@ -280,7 +284,7 @@ class PluginManifestTest(unittest.TestCase):
         )
         self.assertEqual(
             set(load_json('hooks/copilot.json')['hooks']),
-            {'sessionStart'},
+            {'sessionStart', 'userPromptTransformed', 'preToolUse'},
         )
 
     def test_cursor_hook_uses_cross_platform_dispatcher(self):

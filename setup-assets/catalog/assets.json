@@ -21,200 +21,7 @@
       "key": "enabledPlugins.superpowers@superpowers-marketplace"
     }
   ],
-  "external_skills": [
-    {
-      "name": "debug-mode",
-      "repository": "doraemonkeys/claude-code-debug-mode",
-      "ref": "master",
-      "path": "debug-mode"
-    }
-  ],
   "assets": [
-    {
-      "id": "00-global-rule-config",
-      "kind": "rule",
-      "source": "setup-assets/rules/00-global-rule-config.md",
-      "target": ".agents/rules/00-global-rule-config.md",
-      "metadata": {
-        "section": "global",
-        "read_when": "Starting any repository task",
-        "strength": "Mandatory",
-        "cursor": {
-          "description": "[mandatory] Rule strength, conflict precedence, and shared config policy",
-          "alwaysApply": true
-        },
-        "github": {
-          "applyTo": "**"
-        }
-      }
-    },
-    {
-      "id": "01-global-personality",
-      "kind": "rule",
-      "source": "setup-assets/rules/01-global-personality.md",
-      "target": ".agents/rules/01-global-personality.md",
-      "metadata": {
-        "section": "global",
-        "read_when": "Starting any repository task",
-        "strength": "Default",
-        "cursor": {
-          "description": "[default] Agent reasoning, judgment, collaboration, and temperament",
-          "alwaysApply": true
-        },
-        "github": {
-          "applyTo": "**"
-        }
-      }
-    },
-    {
-      "id": "02-global-response-format",
-      "kind": "rule",
-      "source": "setup-assets/rules/02-global-response-format.md",
-      "target": ".agents/rules/02-global-response-format.md",
-      "metadata": {
-        "section": "global",
-        "read_when": "Starting any repository task",
-        "strength": "Default",
-        "cursor": {
-          "description": "[default] Response format and tag protocol for agent replies",
-          "alwaysApply": true
-        },
-        "github": {
-          "applyTo": "**"
-        }
-      }
-    },
-    {
-      "id": "03-global-reasoning-workflow",
-      "kind": "rule",
-      "source": "setup-assets/rules/03-global-reasoning-workflow.md",
-      "target": ".agents/rules/03-global-reasoning-workflow.md",
-      "metadata": {
-        "section": "global",
-        "read_when": "Starting any repository task",
-        "strength": "Mandatory",
-        "cursor": {
-          "description": "[mandatory] Objective understanding, professional judgment, action, and verification",
-          "alwaysApply": true
-        },
-        "github": {
-          "applyTo": "**"
-        }
-      }
-    },
-    {
-      "id": "04-global-skill-config",
-      "kind": "rule",
-      "source": "setup-assets/rules/04-global-skill-config.md",
-      "target": ".agents/rules/04-global-skill-config.md",
-      "metadata": {
-        "section": "global",
-        "read_when": "Starting any repository task",
-        "strength": "Mandatory",
-        "cursor": {
-          "description": "[mandatory] Skill and automation constraints",
-          "alwaysApply": true
-        },
-        "github": {
-          "applyTo": "**"
-        }
-      }
-    },
-    {
-      "id": "10-base-code",
-      "kind": "rule",
-      "source": "setup-assets/rules/10-base-code.md",
-      "target": ".agents/rules/10-base-code.md",
-      "metadata": {
-        "section": "base",
-        "read_when": "Working with code, reviews, or implementation design",
-        "strength": "Default",
-        "cursor": {
-          "description": "[default] Cross-language code goals for ownership, clarity, state, and boundaries",
-          "globs": "**/*.{dart,cpp,c,h,hpp,cc,py,js,jsx,ts,tsx,sh}",
-          "alwaysApply": false
-        },
-        "github": {
-          "applyTo": "**/*.{dart,cpp,c,h,hpp,cc,py,js,jsx,ts,tsx,sh}"
-        }
-      }
-    },
-    {
-      "id": "11-base-cpp",
-      "kind": "rule",
-      "source": "setup-assets/rules/11-base-cpp.md",
-      "target": ".agents/rules/11-base-cpp.md",
-      "metadata": {
-        "section": "base",
-        "read_when": "Working with C++ files",
-        "strength": "Default",
-        "cursor": {
-          "description": "[default] C++ ownership, interfaces, failure contracts, and concurrency",
-          "globs": "**/*.cc,**/*.h",
-          "alwaysApply": false
-        },
-        "github": {
-          "applyTo": "**/*.cc,**/*.h"
-        }
-      }
-    },
-    {
-      "id": "11-base-flutter",
-      "kind": "rule",
-      "source": "setup-assets/rules/11-base-flutter.md",
-      "target": ".agents/rules/11-base-flutter.md",
-      "metadata": {
-        "section": "base",
-        "read_when": "Working with Dart or Flutter code",
-        "strength": "Default",
-        "cursor": {
-          "description": "[default] Dart and Flutter ownership, state, lifecycle, UI, and analysis",
-          "globs": "**/*.dart",
-          "alwaysApply": false
-        },
-        "github": {
-          "applyTo": "**/*.dart"
-        }
-      }
-    },
-    {
-      "id": "11-base-go",
-      "kind": "rule",
-      "source": "setup-assets/rules/11-base-go.md",
-      "target": ".agents/rules/11-base-go.md",
-      "metadata": {
-        "section": "base",
-        "read_when": "Working with Go code",
-        "strength": "Default",
-        "cursor": {
-          "description": "[default] Go package ownership, errors, context, concurrency, and logging",
-          "globs": "**/*.go",
-          "alwaysApply": false
-        },
-        "github": {
-          "applyTo": "**/*.go"
-        }
-      }
-    },
-    {
-      "id": "12-base-arb",
-      "kind": "rule",
-      "source": "setup-assets/rules/12-base-arb.md",
-      "target": ".agents/rules/12-base-arb.md",
-      "metadata": {
-        "section": "base",
-        "read_when": "Working with ARB localization files",
-        "strength": "Mandatory",
-        "cursor": {
-          "description": "[mandatory] ARB localization, key naming, and metadata conventions",
-          "globs": "**/*.arb",
-          "alwaysApply": false
-        },
-        "github": {
-          "applyTo": "**/*.arb"
-        }
-      }
-    },
     {
       "id": "change-set-verifier",
       "kind": "agent",
@@ -231,48 +38,6 @@
       }
     },
     {
-      "id": "refactor-code",
-      "kind": "skill",
-      "source": "setup-assets/skills/refactor-code",
-      "target": ".agents/skills/refactor-code"
-    },
-    {
-      "id": "rename",
-      "kind": "skill",
-      "source": "setup-assets/skills/rename",
-      "target": ".agents/skills/rename"
-    },
-    {
-      "id": "report-session-usage",
-      "kind": "skill",
-      "source": "setup-assets/skills/report-session-usage",
-      "target": ".agents/skills/report-session-usage"
-    },
-    {
-      "id": "worktree-integrate",
-      "kind": "skill",
-      "source": "setup-assets/skills/worktree-integrate",
-      "target": ".agents/skills/worktree-integrate"
-    },
-    {
-      "id": "write-comment",
-      "kind": "skill",
-      "source": "setup-assets/skills/write-comment",
-      "target": ".agents/skills/write-comment"
-    },
-    {
-      "id": "write-rule",
-      "kind": "skill",
-      "source": "setup-assets/skills/write-rule",
-      "target": ".agents/skills/write-rule"
-    },
-    {
-      "id": "write-skill",
-      "kind": "skill",
-      "source": "setup-assets/skills/write-skill",
-      "target": ".agents/skills/write-skill"
-    },
-    {
       "id": "setup-project-agents",
       "kind": "skill",
       "source": "skills/setup-project-agents",
@@ -281,8 +46,8 @@
     {
       "id": "blueprint-project-tools",
       "kind": "blueprint",
-      "source": "setup-assets/blueprints/rules/20-project-tools.md",
-      "target": ".agents/rules/20-project-tools.md",
+      "source": "setup-assets/blueprints/rules/00-project-tools.md",
+      "target": ".agents/rules/00-project-tools.md",
       "mode": "generate",
       "metadata": {
         "section": "project",
@@ -299,8 +64,8 @@
     {
       "id": "blueprint-project-rules",
       "kind": "blueprint",
-      "source": "setup-assets/blueprints/rules/21-project-rules.md",
-      "target": ".agents/rules/21-project-rules.md",
+      "source": "setup-assets/blueprints/rules/01-project-rules.md",
+      "target": ".agents/rules/01-project-rules.md",
       "mode": "generate",
       "metadata": {
         "section": "project",
@@ -317,8 +82,8 @@
     {
       "id": "blueprint-project-structure",
       "kind": "blueprint",
-      "source": "setup-assets/blueprints/rules/22-project-structure.md",
-      "target": ".agents/rules/22-project-structure.md",
+      "source": "setup-assets/blueprints/rules/02-project-structure.md",
+      "target": ".agents/rules/02-project-structure.md",
       "mode": "generate",
       "metadata": {
         "section": "project",
@@ -461,5 +226,6 @@
       ],
       "mode": "render"
     }
-  ]
+  ],
+  "external_skill_sources": []
 }

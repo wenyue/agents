@@ -28,8 +28,8 @@ The Agent may edit only these workflow inputs:
   `docs/agents/domain.md`.
 
 Write every repository-relative `target` unchanged under the reported `generated` directory. For
-example, `.agents/rules/20-project-tools.md` belongs at
-`GENERATED/.agents/rules/20-project-tools.md`, and `docs/agents/domain.md` belongs at
+example, `.agents/rules/00-project-tools.md` belongs at
+`GENERATED/.agents/rules/00-project-tools.md`, and `docs/agents/domain.md` belongs at
 `GENERATED/docs/agents/domain.md`. Do not edit `request.json` or create another models or generated
 root.
 
@@ -63,14 +63,19 @@ reconfiguration; they are not disposable generated cache files.
    Cursor optional `readonly` is Boolean.
 
 3. Resolve the reported `source_root` as `SOURCE_ROOT`. Read the complete authoring contracts at
-   `SOURCE_ROOT/setup-assets/skills/write-rule/SKILL.md`,
-   `SOURCE_ROOT/setup-assets/skills/write-skill/SKILL.md`, and
+   `SOURCE_ROOT/skills/write-rule/SKILL.md`,
+   `SOURCE_ROOT/skills/write-skill/SKILL.md`, and
    `SOURCE_ROOT/skills/setup-matt-pocock-skills/SKILL.md`. Apply the Rule and Skill Blueprints, then
    configure the three Matt documents inside this same setup workflow; do not invoke
    `setup-matt-pocock-skills` as a second Skill.
 
 4. Explore the target using the Matt setup contract. Preserve any complete existing
    `docs/agents/*.md` document unless the user requests a change. Otherwise:
+
+   Read any existing generated Rule or Skill target as project evidence before regenerating it.
+   Resolve disagreements in this order: current Blueprint contract, current repository evidence,
+   then prior generated content. Always regenerate the requested target; do not copy the prior
+   output unchanged merely because it exists.
 
    - select the GitHub, GitLab, or local issue-tracker seed that matches the unambiguous Git remote;
      when remotes disagree or an existing document conflicts with the remote, present the evidence

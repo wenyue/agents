@@ -1,0 +1,6 @@
+---
+globs: "**/*.c,**/*.cc,**/*.cpp,**/*.cxx,**/*.h,**/*.hh,**/*.hpp"
+alwaysApply: false
+---
+
+Apply @../source/file-cpp.md

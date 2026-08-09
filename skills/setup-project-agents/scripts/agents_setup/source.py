@@ -44,7 +44,7 @@ _VENDORED_TOMLI_FILES = tuple(
 )
 _MANIFESTS = (
     (PurePosixPath('.codex-plugin/plugin.json'), {'skills': './skills/'}),
-    (PurePosixPath('.cursor-plugin/plugin.json'), {'skills': './skills/'}),
+    (PurePosixPath('.cursor-plugin/plugin.json'), {'skills': './skills/', 'rules': './rules/cursor/'}),
     (PurePosixPath('plugin.json'), {'skills': './skills/'}),
 )
 _ROOT_FIELDS = frozenset({'skills', 'rules', 'agents'})

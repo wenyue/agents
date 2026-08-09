@@ -67,6 +67,7 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
         },
         '.cursor-plugin/plugin.json': {
             'name': 'smartkit', 'version': version, 'skills': './skills/',
+            'rules': './rules/cursor/',
         },
         'plugin.json': {
             'name': 'smartkit', 'version': version, 'skills': './skills/',

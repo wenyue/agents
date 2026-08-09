@@ -26,9 +26,9 @@ _COMMIT = re.compile(r'^[0-9a-fA-F]{40}$')
 _REQUEST_NAME = 'request.json'
 _GENERATED_NAME = 'generated'
 _BLUEPRINT_TARGETS = (
-    PurePosixPath('.agents/rules/20-project-tools.md'),
-    PurePosixPath('.agents/rules/21-project-rules.md'),
-    PurePosixPath('.agents/rules/22-project-structure.md'),
+    PurePosixPath('.agents/rules/00-project-tools.md'),
+    PurePosixPath('.agents/rules/01-project-rules.md'),
+    PurePosixPath('.agents/rules/02-project-structure.md'),
     PurePosixPath('.agents/skills/change-set-verification/SKILL.md'),
     PurePosixPath('.agents/skills/worktree-environment-setup/SKILL.md'),
     PurePosixPath('docs/agents/issue-tracker.md'),
@@ -147,14 +147,21 @@ def _request(
         'selected_rules': list(config.selected_rules),
         'selected_skills': list(config.selected_skills),
         'selected_agents': list(config.selected_agents),
-        'external_skills': [
+        'external_sources': [
             {
-                'name': item.name,
-                'repository': item.repository,
-                'ref': item.ref,
-                'path': item.path.as_posix(),
+                'id': source.id,
+                'url': source.url,
+                **({'ref': source.ref} if source.ref is not None else {}),
+                'license': {
+                    'spdx': source.license.spdx,
+                    'path': source.license.path.as_posix(),
+                },
+                'skills': [
+                    {'id': item.id, 'path': item.path.as_posix()}
+                    for item in source.skills
+                ],
             }
-            for item in config.external_skills
+            for source in config.external_sources
         ],
         'model_requests': model_requests,
         'generation_requests': generation_requests,
@@ -218,7 +225,7 @@ def _request_config(
 ) -> ProjectConfig:
     required = {
         'version', 'target', 'source_root', 'source_commit', 'platforms', 'selected_rules',
-        'selected_skills', 'selected_agents', 'external_skills', 'model_requests',
+        'selected_skills', 'selected_agents', 'external_sources', 'model_requests',
         'generation_requests',
     }
     if set(request) != required or request.get('version') != 1:
@@ -261,10 +268,10 @@ def _request_config(
             )
         ):
             raise ValueError
-        external_skills = parse_external_skills(
-            {'external': request['external_skills']}, catalog
+        external_sources = parse_external_skills(
+            {'external_sources': request['external_sources']}, catalog
         )
-        config = ProjectConfig(1, *selections, external_skills)
+        config = ProjectConfig(1, *selections, external_sources)
         if request['model_requests'] != _model_requests(config, catalog):
             raise ValueError
     except (KeyError, TypeError, ValueError, SetupError) as error:
@@ -430,7 +437,11 @@ def _prepare(args: argparse.Namespace, session: Path, source_commit: str | None)
         generated_skills.mkdir(parents=True, exist_ok=False)
     except OSError as error:
         raise SetupError('cannot create generated output directories') from error
-    snapshot_external_skills(config.external_skills, session=session)
+    snapshot_external_skills(
+        config.external_sources,
+        session=session,
+        existing_lock=project.root / '.agents/external-skills.lock.json',
+    )
     _write_json(
         session / _REQUEST_NAME,
         _request(
@@ -471,7 +482,7 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
         config,
         generated,
         models,
-        session / 'external-skills' if config.external_skills else None,
+        session / 'external-skills' if config.external_sources else None,
     )
     validate_rendered_state(rendered)
     plan = build_plan(

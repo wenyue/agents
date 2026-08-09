@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -102,6 +103,8 @@ def _copy_file(files: dict[PurePosixPath, bytes], path: PurePosixPath, content: 
 _TRANSIENT_NAMES = frozenset({
     '__pycache__', '.DS_Store', 'Thumbs.db', '.pytest_cache', '.mypy_cache', '.ruff_cache'
 })
+_EXTERNAL_ID = re.compile(r'^[A-Za-z0-9_.-]+/[a-z0-9][a-z0-9-]*$')
+_EXTERNAL_LOCK = PurePosixPath('.agents/external-skills.lock.json')
 
 
 def _is_transient(path: Path) -> bool:
@@ -109,6 +112,39 @@ def _is_transient(path: Path) -> bool:
         any(part in _TRANSIENT_NAMES for part in path.parts)
         or path.suffix in {'.pyc', '.pyo'}
     )
+
+
+def _existing_external_names(target_root: Path) -> frozenset[str]:
+    try:
+        lock = confined_target(target_root, _EXTERNAL_LOCK)
+    except ProjectError as error:
+        raise RenderError(str(error)) from error
+    if not lock.exists():
+        return frozenset()
+    if lock.is_symlink() or not lock.is_file():
+        raise RenderError('existing external Skill lock is unsafe')
+    try:
+        document = json.loads(lock.read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RenderError('existing external Skill lock is invalid') from error
+    if not isinstance(document, dict) or document.get('version') != 1:
+        raise RenderError('existing external Skill lock is invalid')
+    sources = document.get('sources')
+    if not isinstance(sources, list):
+        raise RenderError('existing external Skill lock is invalid')
+    names: set[str] = set()
+    for source in sources:
+        if not isinstance(source, dict) or not isinstance(source.get('skills'), list):
+            raise RenderError('existing external Skill lock is invalid')
+        for skill in source['skills']:
+            skill_id = skill.get('id') if isinstance(skill, dict) else None
+            if not isinstance(skill_id, str) or _EXTERNAL_ID.fullmatch(skill_id) is None:
+                raise RenderError('existing external Skill lock is invalid')
+            name = skill_id.rsplit('/', 1)[1]
+            if name in names:
+                raise RenderError('existing external Skill lock has duplicate destinations')
+            names.add(name)
+    return frozenset(names)
 
 
 def _copy_asset(files: dict[PurePosixPath, bytes], source: Path, target: PurePosixPath) -> None:
@@ -240,6 +276,7 @@ def render_desired_state(
     replace_roots: set[PurePosixPath] = set()
     delete_paths: set[PurePosixPath] = set(catalog.retired_assets)
     known_file_targets = _known_wrapper_targets(catalog)
+    known_file_targets.add(_EXTERNAL_LOCK)
     assets_by_id = {asset.id: asset for asset in catalog.assets}
     for asset in catalog.assets:
         if asset.control_plane or asset.target is None:
@@ -251,12 +288,17 @@ def render_desired_state(
             asset.kind == 'template' and _format_for(asset.target) is None
         ):
             known_file_targets.add(asset.target)
+    existing_external_names = _existing_external_names(target_root)
+    replace_roots.update(
+        PurePosixPath('.agents/skills') / name for name in existing_external_names
+    )
     try:
         project_rules = discover_project_rules(target_root, catalog)
         project_skills = discover_project_skills(
             target_root,
             catalog,
-            external_names=frozenset(item.name for item in config.external_skills),
+            external_names=frozenset(item.name for item in config.external_skills)
+            | existing_external_names,
         )
         generated_skill_resources = discover_generated_skill_resources(target_root, catalog)
     except DiscoveryError as error:
@@ -306,8 +348,6 @@ def render_desired_state(
             content = (source_root / asset.source).read_bytes()
             if asset.id == 'entry-agents':
                 content = _render_text(content.decode(), {
-                    'global_rule_rows': _rule_rows(catalog, config, 'global', project_rules),
-                    'base_rule_rows': _rule_rows(catalog, config, 'base', project_rules),
                     'project_rule_rows': _rule_rows(catalog, config, 'project', project_rules),
                 })
             _copy_file(files, asset.target, content)
@@ -374,6 +414,10 @@ def render_desired_state(
                 raise RenderError(f'external Skill is missing SKILL.md: {skill.name}')
             _copy_asset(files, source, PurePosixPath('.agents/skills') / skill.name)
             replace_roots.add(PurePosixPath('.agents/skills') / skill.name)
+        lock = external_root / 'external-skills.lock.json'
+        if not lock.is_file() or lock.is_symlink():
+            raise RenderError('external Skill lock is missing or unsafe')
+        files[_EXTERNAL_LOCK] = lock.read_bytes()
 
     for retired in catalog.retired_fields:
         format_name = _format_for(retired.path)

@@ -24,7 +24,7 @@ Agent 只能编辑以下工作流输入：
   `docs/agents/domain.md`。
 
 将每个仓库相对 `target` 原样写入报告的 `generated` 目录。例如，
-`.agents/rules/20-project-tools.md` 应写入 `GENERATED/.agents/rules/20-project-tools.md`，
+`.agents/rules/00-project-tools.md` 应写入 `GENERATED/.agents/rules/00-project-tools.md`，
 `docs/agents/domain.md` 应写入 `GENERATED/docs/agents/domain.md`。不要编辑 `request.json`，也不要
 创建另一份 models 或 generated 根目录。
 
@@ -55,14 +55,18 @@ Agent 只能编辑以下工作流输入：
    `readonly` 值为 Boolean。
 
 3. 将报告的 `source_root` 解析为 `SOURCE_ROOT`。完整读取
-   `SOURCE_ROOT/setup-assets/skills/write-rule/SKILL.md`、
-   `SOURCE_ROOT/setup-assets/skills/write-skill/SKILL.md` 和
+   `SOURCE_ROOT/skills/write-rule/SKILL.md`、
+   `SOURCE_ROOT/skills/write-skill/SKILL.md` 和
    `SOURCE_ROOT/skills/setup-matt-pocock-skills/SKILL.md` 的编写契约。应用 Rule 和 Skill Blueprints，
    然后在同一 setup 工作流中配置三个 Matt 文档；不要再把 `setup-matt-pocock-skills` 作为第二个
    Skill 调用。
 
 4. 按 Matt setup 契约探索目标仓库。除非用户要求更改，否则保留任何完整的现有
    `docs/agents/*.md` 文档。否则：
+
+   重新生成前，将任何现有生成式 Rule 或 Skill 目标作为项目证据读取。出现分歧时依次采用：当前
+   Blueprint 契约、当前仓库证据、之前生成的内容。始终重新生成请求的目标；不要仅因为旧输出已
+   存在就原样复制。
 
    - 根据无歧义的 Git remote 选择对应的 GitHub、GitLab 或本地 issue-tracker seed；当多个 remote
      不一致，或现有文档与 remote 冲突时，展示证据并等待确认；

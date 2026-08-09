@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "custom": [
+    {"id": "smartkit/setup-project-agents", "path": "setup-project-agents"},
+    {"id": "smartkit/refactor-code", "path": "refactor-code"},
+    {"id": "smartkit/rename", "path": "rename"},
+    {"id": "smartkit/report-session-usage", "path": "report-session-usage"},
+    {"id": "smartkit/worktree-integrate", "path": "worktree-integrate"},
+    {"id": "smartkit/write-comment", "path": "write-comment"},
+    {"id": "smartkit/write-rule", "path": "write-rule"},
+    {"id": "smartkit/write-skill", "path": "write-skill"}
+  ],
+  "external_sources": [
+    {
+      "id": "mattpocock/skills",
+      "url": "https://github.com/mattpocock/skills",
+      "ref": "v1.2.3",
+      "license": {"spdx": "MIT", "path": "LICENSE"},
+      "skills": [
+        {"id": "mattpocock/ask-matt", "path": "skills/engineering/ask-matt"},
+        {"id": "mattpocock/diagnosing-bugs", "path": "skills/engineering/diagnosing-bugs"},
+        {"id": "mattpocock/grill-with-docs", "path": "skills/engineering/grill-with-docs"},
+        {"id": "mattpocock/triage", "path": "skills/engineering/triage"},
+        {"id": "mattpocock/improve-codebase-architecture", "path": "skills/engineering/improve-codebase-architecture"},
+        {"id": "mattpocock/setup-matt-pocock-skills", "path": "skills/engineering/setup-matt-pocock-skills"},
+        {"id": "mattpocock/tdd", "path": "skills/engineering/tdd"},
+        {"id": "mattpocock/to-spec", "path": "skills/engineering/to-spec"},
+        {"id": "mattpocock/to-tickets", "path": "skills/engineering/to-tickets"},
+        {"id": "mattpocock/wayfinder", "path": "skills/engineering/wayfinder"},
+        {"id": "mattpocock/implement", "path": "skills/engineering/implement"},
+        {"id": "mattpocock/prototype", "path": "skills/engineering/prototype"},
+        {"id": "mattpocock/research", "path": "skills/engineering/research"},
+        {"id": "mattpocock/domain-modeling", "path": "skills/engineering/domain-modeling"},
+        {"id": "mattpocock/codebase-design", "path": "skills/engineering/codebase-design"},
+        {"id": "mattpocock/code-review", "path": "skills/engineering/code-review"},
+        {"id": "mattpocock/resolving-merge-conflicts", "path": "skills/engineering/resolving-merge-conflicts"},
+        {"id": "mattpocock/wizard", "path": "skills/engineering/wizard"},
+        {"id": "mattpocock/grill-me", "path": "skills/productivity/grill-me"},
+        {"id": "mattpocock/grilling", "path": "skills/productivity/grilling"},
+        {"id": "mattpocock/handoff", "path": "skills/productivity/handoff"},
+        {"id": "mattpocock/teach", "path": "skills/productivity/teach"},
+        {"id": "mattpocock/to-questionnaire", "path": "skills/productivity/to-questionnaire"},
+        {"id": "mattpocock/wait-what", "path": "skills/productivity/wait-what"},
+        {"id": "mattpocock/writing-for-agents", "path": "skills/productivity/writing-for-agents"}
+      ]
+    }
+  ]
+}

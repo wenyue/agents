@@ -5,4 +5,4 @@ description: Use when creating, rewriting, or materially updating agent skills, 
 
 # Write Skill
 
-Apply @setup-assets/skills/write-skill/SKILL.md as the complete source-of-truth workflow.
+Apply @skills/write-skill/SKILL.md as the complete source-of-truth workflow.

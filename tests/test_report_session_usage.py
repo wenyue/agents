@@ -11,7 +11,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 TIMING_SCRIPT = (
     REPO_ROOT
-    / 'setup-assets'
     / 'skills'
     / 'report-session-usage'
     / 'scripts'

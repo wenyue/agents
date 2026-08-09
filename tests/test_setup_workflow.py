@@ -303,7 +303,7 @@ class SetupWorkflowTest(unittest.TestCase):
             finish = json.loads(finish_output.getvalue())
             self.assertEqual(finish['phase'], 'finish')
             self.assertEqual(finish['check'], 'clean')
-            self.assertEqual(finish['external_skills'], ['debug-mode'])
+            self.assertEqual(finish['external_skills'], [])
             self.assertEqual(
                 finish['preserved_paths'],
                 [
@@ -313,7 +313,7 @@ class SetupWorkflowTest(unittest.TestCase):
                 ],
             )
             self.assertIn(
-                '.agents/rules/00-global-rule-config.md', finish['changed_paths']
+                '.agents/rules/00-project-tools.md', finish['changed_paths']
             )
             self.assertFalse(session.exists())
             self.assertTrue((target / 'AGENTS.md').is_file())

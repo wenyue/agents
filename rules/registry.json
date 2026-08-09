@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "rules": [
+    {"id": "smartkit/core-rule-config", "source": "source/core-rule-config.md", "strength": "Mandatory", "trigger": {"type": "always"}},
+    {"id": "smartkit/core-personality", "source": "source/core-personality.md", "strength": "Default", "trigger": {"type": "always"}},
+    {"id": "smartkit/core-response-format", "source": "source/core-response-format.md", "strength": "Default", "trigger": {"type": "always"}},
+    {"id": "smartkit/core-reasoning-workflow", "source": "source/core-reasoning-workflow.md", "strength": "Mandatory", "trigger": {"type": "always"}},
+    {"id": "smartkit/core-skill-config", "source": "source/core-skill-config.md", "strength": "Mandatory", "trigger": {"type": "always"}},
+    {"id": "smartkit/file-code", "source": "source/file-code.md", "strength": "Default", "trigger": {"type": "file", "include_globs": ["**/*.c", "**/*.cc", "**/*.cpp", "**/*.cxx", "**/*.h", "**/*.hh", "**/*.hpp", "**/*.dart", "**/*.go", "**/*.js", "**/*.jsx", "**/*.py", "**/*.rs", "**/*.ts", "**/*.tsx"]}},
+    {"id": "smartkit/file-cpp", "source": "source/file-cpp.md", "strength": "Default", "trigger": {"type": "file", "include_globs": ["**/*.c", "**/*.cc", "**/*.cpp", "**/*.cxx", "**/*.h", "**/*.hh", "**/*.hpp"]}},
+    {"id": "smartkit/file-flutter", "source": "source/file-flutter.md", "strength": "Default", "trigger": {"type": "file", "include_globs": ["**/*.dart", "pubspec.yaml", "**/pubspec.yaml"]}},
+    {"id": "smartkit/file-go", "source": "source/file-go.md", "strength": "Default", "trigger": {"type": "file", "include_globs": ["**/*.go", "go.mod", "go.work", "**/go.mod"]}},
+    {"id": "smartkit/file-arb", "source": "source/file-arb.md", "strength": "Mandatory", "trigger": {"type": "file", "include_globs": ["**/*.arb"]}}
+  ]
+}

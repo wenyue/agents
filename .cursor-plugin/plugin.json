@@ -15,5 +15,6 @@
   ],
   "category": "developer-tools",
   "skills": "./skills/",
+  "rules": "./rules/cursor/",
   "hooks": "./hooks/cursor.json"
 }

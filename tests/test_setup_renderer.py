@@ -52,14 +52,14 @@ class SetupRendererTest(unittest.TestCase):
     def config(self) -> ProjectConfig:
         return ProjectConfig(
             1,
-            ('00-global-rule-config',),
-            ('refactor-code',),
+            (),
+            (),
             ('change-set-verifier',),
         )
 
     def generated_tree(self, root: Path) -> Path:
         generated = root / 'generated'
-        rule = generated / '.agents/rules/20-project-tools.md'
+        rule = generated / '.agents/rules/00-project-tools.md'
         rule.parent.mkdir(parents=True, exist_ok=True)
         rule.write_text('# generated tooling rule\n', encoding='utf-8')
         skill = generated / '.agents/skills/change-set-verification/SKILL.md'
@@ -93,19 +93,15 @@ class SetupRendererTest(unittest.TestCase):
             self.assertNotIn(
                 ('.github/copilot/settings.json', 'disableAllHooks'), rendered.fields_by_key
             )
-            self.assertIn(
+            self.assertNotIn(
                 '.agents/skills/refactor-code/SKILL.md', rendered.files_by_path
             )
             self.assertNotIn(
                 '.agents/skills/setup-project-agents/SKILL.md', rendered.files_by_path
             )
 
-            cursor_wrapper = rendered.files_by_path['.cursor/rules/00-global-rule-config.mdc']
-            copilot_wrapper = rendered.files_by_path[
-                '.github/instructions/00-global-rule-config.instructions.md'
-            ]
-            self.assertIn('.agents/rules/00-global-rule-config.md', cursor_wrapper.decode())
-            self.assertIn('.agents/rules/00-global-rule-config.md', copilot_wrapper.decode())
+            self.assertFalse(any(path.startswith('.cursor/rules/') for path in rendered.files_by_path))
+            self.assertFalse(any(path.startswith('.github/instructions/') for path in rendered.files_by_path))
             validate_rendered_state(rendered)
 
     def test_rendered_project_config_includes_schema_and_round_trips(self):
@@ -136,33 +132,18 @@ class SetupRendererTest(unittest.TestCase):
                 {'$schema', 'version'},
             )
 
-    def test_project_defaults_include_debug_mode_as_an_external_skill(self):
+    def test_project_defaults_have_no_external_skill(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             target = Path(temp_dir) / 'target'
 
             project = inspect_project(target, catalog=self.catalog)
 
             self.assertEqual(
-                [
-                    (
-                        item.name,
-                        item.repository,
-                        item.ref,
-                        item.path.as_posix(),
-                    )
-                    for item in project.config.external_skills
-                ],
-                [
-                    (
-                        'debug-mode',
-                        'doraemonkeys/claude-code-debug-mode',
-                        'master',
-                        'debug-mode',
-                    )
-                ],
+                project.config.external_sources,
+                (),
             )
 
-    def test_setup_manages_debug_mode_without_adding_it_to_project_config(self):
+    def test_setup_snapshots_project_external_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -173,12 +154,13 @@ class SetupRendererTest(unittest.TestCase):
                     {
                         'version': 1,
                         'skills': {
-                            'external': [
+                            'external_sources': [
                                 {
-                                    'name': 'local-check',
-                                    'repository': 'example/local-check',
+                                    'id': 'example/local-check',
+                                    'url': 'https://github.com/example/local-check',
                                     'ref': 'main',
-                                    'path': 'skills/local-check',
+                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
+                                    'skills': [{'id': 'example/local-check', 'path': 'skills/local-check'}],
                                 }
                             ]
                         },
@@ -189,16 +171,19 @@ class SetupRendererTest(unittest.TestCase):
             project = inspect_project(target, catalog=self.catalog)
             self.assertEqual(
                 [item.name for item in project.config.external_skills],
-                ['debug-mode', 'local-check'],
+                ['local-check'],
             )
             external_root = root / 'external'
-            for name in ('local-check', 'debug-mode'):
+            for name in ('local-check',):
                 skill = external_root / name / 'SKILL.md'
                 skill.parent.mkdir(parents=True)
                 skill.write_text(
                     f'---\nname: {name}\ndescription: Use for tests.\n---\n',
                     encoding='utf-8',
                 )
+            (external_root / 'external-skills.lock.json').write_text(
+                json.dumps({'version': 1, 'sources': []}) + '\n', encoding='utf-8'
+            )
 
             rendered = render_desired_state(
                 REPO_ROOT,
@@ -214,23 +199,68 @@ class SetupRendererTest(unittest.TestCase):
             )
 
             self.assertEqual(
-                rendered_config['skills']['external'],
+                rendered_config['skills']['external_sources'],
                 [
                     {
-                        'name': 'local-check',
-                        'repository': 'example/local-check',
+                        'id': 'example/local-check',
+                        'url': 'https://github.com/example/local-check',
                         'ref': 'main',
-                        'path': 'skills/local-check',
+                        'license': {'spdx': 'MIT', 'path': 'LICENSE'},
+                        'skills': [{'id': 'example/local-check', 'path': 'skills/local-check'}],
                     }
                 ],
             )
             self.assertIn(
-                '.agents/skills/debug-mode/SKILL.md',
+                '.agents/skills/local-check/SKILL.md',
                 rendered.files_by_path,
             )
             self.assertIn(
-                PurePosixPath('.agents/skills/debug-mode'),
+                PurePosixPath('.agents/skills/local-check'),
                 rendered.replace_roots,
+            )
+
+    def test_removed_external_source_is_deleted_not_rediscovered_as_project_owned(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            external = target / '.agents/skills/retired-external'
+            external.mkdir(parents=True)
+            (external / 'SKILL.md').write_text(
+                '---\nname: retired-external\ndescription: Retired.\n---\n',
+                encoding='utf-8',
+            )
+            project_owned = target / '.agents/skills/project-owned'
+            project_owned.mkdir(parents=True)
+            (project_owned / 'SKILL.md').write_text(
+                '---\nname: project-owned\ndescription: Keep.\n---\n',
+                encoding='utf-8',
+            )
+            lock = target / '.agents/external-skills.lock.json'
+            lock.write_text(json.dumps({
+                'version': 1,
+                'sources': [{
+                    'id': 'example/repository',
+                    'skills': [{'id': 'example/retired-external'}],
+                }],
+            }), encoding='utf-8')
+
+            rendered = self.render(target, self.generated_tree(root))
+
+            self.assertIn(
+                PurePosixPath('.agents/skills/retired-external'),
+                rendered.replace_roots,
+            )
+            self.assertIn(
+                PurePosixPath('.agents/external-skills.lock.json'),
+                rendered.delete_paths,
+            )
+            self.assertIn(
+                PurePosixPath('.agents/skills/project-owned/SKILL.md'),
+                rendered.preserved_paths,
+            )
+            self.assertNotIn(
+                PurePosixPath('.agents/skills/retired-external/SKILL.md'),
+                rendered.preserved_paths,
             )
 
     def test_unsafe_structured_template_field_is_rejected(self):
@@ -490,7 +520,7 @@ class SetupRendererTest(unittest.TestCase):
             )
 
             self.assertIn('AGENTS.md', rendered.files_by_path)
-            self.assertIn('.cursor/rules/00-global-rule-config.mdc', rendered.files_by_path)
+            self.assertNotIn('.cursor/rules/00-global-rule-config.mdc', rendered.files_by_path)
 
     def test_renderer_rejects_symlinked_target_reads(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -566,9 +596,7 @@ class SetupRendererTest(unittest.TestCase):
             root = Path(temp_dir)
             target = root / 'target'
             stale_paths = (
-                '.agents/rules/01-global-personality.md',
                 '.agents/agents/change-set-verifier.md',
-                '.cursor/rules/01-global-personality.mdc',
                 '.github/agents/change-set-verifier.agent.md',
             )
             for relative in stale_paths:
@@ -578,8 +606,8 @@ class SetupRendererTest(unittest.TestCase):
 
             config = ProjectConfig(
                 1,
-                ('00-global-rule-config',),
-                ('refactor-code',),
+                (),
+                (),
                 (),
             )
             rendered = render_desired_state(

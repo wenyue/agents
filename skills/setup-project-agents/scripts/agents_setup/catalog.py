@@ -10,10 +10,18 @@ from .models import (
     AssetSpec,
     Catalog,
     ContractError,
+    ExternalLicenseSpec,
+    ExternalSourceSpec,
     ExternalSkillSpec,
     Platform,
     ProjectConfig,
     RetiredFieldSpec,
+)
+from .external_contract import (
+    LICENSE_MARKERS,
+    ExternalContractError,
+    validate_ref,
+    validate_source_identity,
 )
 
 
@@ -24,8 +32,7 @@ _SEMVER = re.compile(
     r'(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'
 )
 _NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')
-_REPOSITORY = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
-_GIT_REF = re.compile(r'^[A-Za-z0-9._/-]+$')
+_STABLE_ID = re.compile(r'^[A-Za-z0-9_.-]+/[a-z0-9][a-z0-9-]*$')
 _FIELD_NAME = re.compile(r'^[A-Za-z][A-Za-z0-9_@-]*$')
 _WINDOWS_RESERVED_CHARACTERS = frozenset('<>:"\\|?*')
 _WINDOWS_RESERVED_NAMES = frozenset(
@@ -35,14 +42,16 @@ _WINDOWS_RESERVED_NAMES = frozenset(
 )
 _ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode', 'control_plane', 'metadata'})
 _CATALOG_FIELDS = frozenset(
-    {'plugin', 'assets', 'retired_assets', 'retired_fields', 'external_skills'}
+    {'plugin', 'assets', 'retired_assets', 'retired_fields', 'external_skill_sources'}
 )
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
 _PROJECT_CONFIG_FIELDS = frozenset(
     {'$schema', 'version', 'selected_rules', 'selected_skills', 'selected_agents', 'skills'}
 )
-_SKILLS_FIELDS = frozenset({'external'})
-_EXTERNAL_SKILL_FIELDS = frozenset({'name', 'repository', 'ref', 'path'})
+_SKILLS_FIELDS = frozenset({'external_sources'})
+_EXTERNAL_SOURCE_FIELDS = frozenset({'id', 'url', 'ref', 'license', 'skills'})
+_EXTERNAL_SKILL_FIELDS = frozenset({'id', 'path'})
+_LICENSE_FIELDS = frozenset({'spdx', 'path'})
 _RETIRED_FIELD_FIELDS = frozenset({'path', 'key'})
 _STRUCTURED_SUFFIXES = frozenset({'.json', '.jsonc', '.toml'})
 _MATT_BLUEPRINTS = {
@@ -326,8 +335,8 @@ def load_catalog(source_root: Path) -> Catalog:
         retired_assets=retired_assets,
         retired_fields=retired_fields,
     )
-    external_skills = parse_external_skills(
-        {'external': document.get('external_skills', [])},
+    external_sources = parse_external_skills(
+        {'external_sources': document.get('external_skill_sources', [])},
         catalog,
     )
     return Catalog(
@@ -337,7 +346,7 @@ def load_catalog(source_root: Path) -> Catalog:
         ref,
         assets,
         retired_assets=retired_assets,
-        external_skills=external_skills,
+        external_sources=external_sources,
         retired_fields=retired_fields,
     )
 
@@ -364,39 +373,63 @@ def _selected(value: object, label: str, catalog: Catalog, kind: str) -> tuple[s
     return selected
 
 
-def parse_external_skills(value: object, catalog: Catalog) -> tuple[ExternalSkillSpec, ...]:
+def parse_external_skills(value: object, catalog: Catalog) -> tuple[ExternalSourceSpec, ...]:
     if value is None:
         return ()
     skills = _object(value, 'project config skills')
     _fields(skills, _SKILLS_FIELDS, 'project config skills')
-    external = skills.get('external', [])
+    external = skills.get('external_sources', [])
     if not isinstance(external, list):
-        raise ContractError('project config skills.external must be an array')
+        raise ContractError('project config skills.external_sources must be an array')
     reserved = {asset.id for asset in catalog.assets if asset.kind == 'skill'}
-    result: list[ExternalSkillSpec] = []
+    result: list[ExternalSourceSpec] = []
     for index, item in enumerate(external):
-        document = _object(item, f'project config skills.external[{index}]')
-        _fields(document, _EXTERNAL_SKILL_FIELDS, 'external skill')
-        name = _name(_required(document, 'name', 'external skill'), 'external skill name')
-        repository = _nonempty_string(
-            _required(document, 'repository', 'external skill'),
-            'external skill repository',
+        document = _object(item, f'project config skills.external_sources[{index}]')
+        _fields(document, _EXTERNAL_SOURCE_FIELDS, 'external source')
+        source_id = _nonempty_string(_required(document, 'id', 'external source'), 'external source id')
+        url = _nonempty_string(_required(document, 'url', 'external source'), 'external source url')
+        try:
+            validate_source_identity(source_id, url)
+        except ExternalContractError as error:
+            raise ContractError('external source id and GitHub url must match') from error
+        ref_value = document.get('ref')
+        ref = None if ref_value is None else _nonempty_string(ref_value, 'external source ref')
+        try:
+            validate_ref(ref)
+        except ExternalContractError as error:
+            raise ContractError('external source ref must be a safe Git argument') from error
+        license_doc = _object(_required(document, 'license', 'external source'), 'external license')
+        _fields(license_doc, _LICENSE_FIELDS, 'external license')
+        spdx = _nonempty_string(
+            _required(license_doc, 'spdx', 'external license'), 'external license spdx'
         )
-        if not _REPOSITORY.fullmatch(repository):
-            raise ContractError('external skill repository must be owner/name')
-        ref = _nonempty_string(_required(document, 'ref', 'external skill'), 'external skill ref')
-        if ref.startswith('-') or not _GIT_REF.fullmatch(ref):
-            raise ContractError('external skill ref must be a safe Git argument')
-        path_value = _required(document, 'path', 'external skill')
-        if not isinstance(path_value, str):
-            raise ContractError('external skill path must be a relative path')
-        path = safe_relative(path_value, 'external skill path')
-        if name in reserved:
-            raise ContractError(f'external skill conflicts with shared skill: {name}')
-        result.append(ExternalSkillSpec(name, repository, ref, path))
-    names = [item.name for item in result]
+        if spdx not in LICENSE_MARKERS:
+            raise ContractError('external license spdx is not supported')
+        license_spec = ExternalLicenseSpec(
+            spdx,
+            safe_relative(_required(license_doc, 'path', 'external license'), 'external license path'),
+        )
+        source_skills: list[ExternalSkillSpec] = []
+        raw_skills = _required(document, 'skills', 'external source')
+        if not isinstance(raw_skills, list) or not raw_skills:
+            raise ContractError('external source skills must be a non-empty array')
+        for raw_skill in raw_skills:
+            skill_doc = _object(raw_skill, 'external skill')
+            _fields(skill_doc, _EXTERNAL_SKILL_FIELDS, 'external skill')
+            skill_id = _nonempty_string(_required(skill_doc, 'id', 'external skill'), 'external skill id')
+            if not _STABLE_ID.fullmatch(skill_id):
+                raise ContractError('external skill id must use owner/name form')
+            path = safe_relative(_required(skill_doc, 'path', 'external skill'), 'external skill path')
+            name = skill_id.rsplit('/', 1)[1]
+            if path.name != name:
+                raise ContractError('external skill id and path basename must match')
+            if name in reserved:
+                raise ContractError(f'external skill conflicts with shared skill: {name}')
+            source_skills.append(ExternalSkillSpec(skill_id, name, path))
+        result.append(ExternalSourceSpec(source_id, url, ref, license_spec, tuple(source_skills)))
+    names = [item.name for source in result for item in source.skills]
     if len(set(names)) != len(names):
-        raise ContractError('project config skills.external has duplicate names')
+        raise ContractError('project config skills.external_sources has duplicate names')
     return tuple(result)
 
 
@@ -417,7 +450,7 @@ def load_project_config(
     project_external_skills = parse_external_skills(document.get('skills'), catalog)
     managed_names = {item.name for item in catalog.external_skills}
     conflicts = sorted(
-        item.name for item in project_external_skills if item.name in managed_names
+        item.name for source in project_external_skills for item in source.skills if item.name in managed_names
     )
     if conflicts:
         raise ContractError(
@@ -429,5 +462,5 @@ def load_project_config(
         _selected(document.get('selected_rules'), 'selected_rules', catalog, 'rule'),
         _selected(document.get('selected_skills'), 'selected_skills', catalog, 'skill'),
         _selected(document.get('selected_agents'), 'selected_agents', catalog, 'agent'),
-        (*catalog.external_skills, *project_external_skills),
+        (*catalog.external_sources, *project_external_skills),
     )

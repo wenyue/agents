@@ -10,6 +10,37 @@
             "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}\\runtime\\recommended-tools\\check_recommended_tools.ps1\" hook --platform codex",
             "timeout": 30,
             "statusMessage": "Checking recommended tools"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform codex --event session",
+            "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform codex --event session",
+            "timeout": 30,
+            "statusMessage": "Loading SmartKit plugin rules"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform codex --event prompt",
+            "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform codex --event prompt",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform codex --event tool",
+            "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform codex --event tool",
+            "timeout": 30
           }
         ]
       }

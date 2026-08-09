@@ -6,15 +6,15 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
 
 ## Repository Areas
 
-- `skills/` contains the SmartKit-owned `setup-project-agents` control plane plus the read-only Matt
-  Skill directories declared by `vendor/mattpocock-skills.lock.json`. `hooks/` contains the three
-  host lifecycle entry points.
+- `skills/` contains registry-declared SmartKit custom Skills and read-only external Skill
+  snapshots. `hooks/` contains the host lifecycle entry points.
+- `rules/source/` owns plugin Rule policy, `rules/registry.json` owns order and activation, and
+  `rules/cursor/` contains Cursor-native adapters.
 - `runtime/recommended-tools/` contains private Hook executables and no discoverable Skill.
   `policies/recommended-tools/` contains the declarations shared by that runtime and setup output.
-- `setup-assets/catalog/assets.json` declares setup-owned external project Skills that are fetched
-  into target `.agents/skills/` without becoming plugin Skills or target config entries.
-- `setup-assets/rules/`, `setup-assets/skills/`, and `setup-assets/agents/` contain content that
-  becomes runtime capability only after setup installs it. `setup-assets/blueprints/` and
+- Project configuration declares external GitHub Skill sources that setup snapshots into target
+  `.agents/skills/` with an aggregate project lock.
+- `setup-assets/agents/` contains content installed by setup. `setup-assets/blueprints/` and
   `setup-assets/templates/` contain generation and rendering inputs, while `setup-assets/catalog/`
   owns asset selection, retired paths, and project-configuration contracts.
 - `docs/` contains design material and `docs/zh-CN/` contains Simplified-Chinese documentation.
@@ -24,9 +24,8 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   `write-rule` and `write-skill`. No other `.agents/` content belongs in this repository.
 - `AGENTS.md` is the entry point for discovering `.agents/rules/`; `README.md` is public plugin
   onboarding and describes the setup boundary.
-- `vendor/mattpocock-skills.lock.json` and `licenses/mattpocock-skills-LICENSE.txt` record the exact
-  Matt release distributed by all plugin hosts; the upstream synchronizer exclusively owns the
-  lock-declared root Skill directories.
+- `vendor/external-skills.lock.json` and `licenses/` record all external plugin Skill snapshots;
+  the generic updater exclusively owns the lock-declared root Skill directories.
 
 ## Distribution Flow
 
@@ -45,14 +44,14 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   `policies/recommended-tools/` and the Python standard library.
 - The setup control plane may read `setup-assets/`; plugin Hooks alone read `runtime/` and
   `policies/`. None of those areas may depend on plugin-discovered Skills.
-- Repository-local Skill wrappers depend only on their corresponding sources under
-  `setup-assets/skills/` and add no workflow behavior.
+- Repository-local Skill wrappers depend only on their corresponding custom sources under
+  `skills/` and add no workflow behavior.
 - `setup-project-agents` may read the vendored `setup-matt-pocock-skills` instructions and seed
   templates only to author the Matt repository-context outputs declared by setup. Plugin Hooks must
   not depend on vendored Skills, and all other vendored Skills remain independent read-only plugin
   capabilities.
-- Plugin manifests expose only `skills/` and host Hook entry points. They do not expose
-  `setup-assets/`, `runtime/`, or `policies/`.
+- Plugin manifests expose `skills/`, host Hook entry points, and Cursor-native Rule adapters. They
+  do not expose `setup-assets/`, private runtime implementation, or policies directly.
 
 ## Script and Test Ownership
 

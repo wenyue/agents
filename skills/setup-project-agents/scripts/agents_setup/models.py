@@ -34,15 +34,33 @@ class ProjectConfig:
     selected_rules: tuple[str, ...]
     selected_skills: tuple[str, ...]
     selected_agents: tuple[str, ...]
-    external_skills: tuple[ExternalSkillSpec, ...] = ()
+    external_sources: tuple[ExternalSourceSpec, ...] = ()
+
+    @property
+    def external_skills(self) -> tuple[ExternalSkillSpec, ...]:
+        return tuple(skill for source in self.external_sources for skill in source.skills)
 
 
 @dataclass(frozen=True)
 class ExternalSkillSpec:
+    id: str
     name: str
-    repository: str
-    ref: str
     path: PurePosixPath
+
+
+@dataclass(frozen=True)
+class ExternalLicenseSpec:
+    spdx: str
+    path: PurePosixPath
+
+
+@dataclass(frozen=True)
+class ExternalSourceSpec:
+    id: str
+    url: str
+    ref: str | None
+    license: ExternalLicenseSpec
+    skills: tuple[ExternalSkillSpec, ...]
 
 
 @dataclass(frozen=True)
@@ -107,5 +125,9 @@ class Catalog:
     ref: str
     assets: tuple[AssetSpec, ...]
     retired_assets: tuple[PurePosixPath, ...] = ()
-    external_skills: tuple[ExternalSkillSpec, ...] = ()
+    external_sources: tuple[ExternalSourceSpec, ...] = ()
+
+    @property
+    def external_skills(self) -> tuple[ExternalSkillSpec, ...]:
+        return tuple(skill for source in self.external_sources for skill in source.skills)
     retired_fields: tuple[RetiredFieldSpec, ...] = ()
