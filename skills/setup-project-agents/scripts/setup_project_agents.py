@@ -173,16 +173,36 @@ def _request(
                 **({'env': list(server.env)} if server.env else {}),
                 **({'url': server.url} if server.url is not None else {}),
                 **({
-                    'overrides': {
-                        platform.value: {
-                            **({'command': override.command} if override.command is not None else {}),
-                            **({'args': list(override.args)} if override.args is not None else {}),
-                            **({'cwd': override.cwd} if override.cwd is not None else {}),
-                            **({'env': list(override.env)} if override.env is not None else {}),
-                            **({'url': override.url} if override.url is not None else {}),
+                    'overrides': [
+                        {
+                            'when': {
+                                **({
+                                    'platforms': [
+                                        platform.value for platform in override.platforms
+                                    ]
+                                } if override.platforms is not None else {}),
+                                **({
+                                    'operatingSystems': [
+                                        item.value for item in override.operating_systems
+                                    ]
+                                } if override.operating_systems is not None else {}),
+                            },
+                            'set': {
+                                **({
+                                    'command': override.command
+                                } if override.command is not None else {}),
+                                **({
+                                    'args': list(override.args)
+                                } if override.args is not None else {}),
+                                **({'cwd': override.cwd} if override.cwd is not None else {}),
+                                **({
+                                    'env': list(override.env)
+                                } if override.env is not None else {}),
+                                **({'url': override.url} if override.url is not None else {}),
+                            },
                         }
-                        for platform, override in server.overrides.items()
-                    }
+                        for override in server.overrides
+                    ]
                 } if server.overrides else {}),
             }
             for server in config.mcp_servers

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -17,9 +18,9 @@ from .models import (
     Catalog,
     DesiredField,
     DesiredFile,
-    McpOverride,
     McpServerSpec,
     McpTransport,
+    OperatingSystem,
     Platform,
     ProjectConfig,
 )
@@ -249,19 +250,35 @@ def _set_dotted_field(document: dict[str, object], key: str, value: object) -> N
 def _effective_mcp_server(
     server: McpServerSpec,
     platform: Platform,
+    operating_system: OperatingSystem | None,
 ) -> tuple[str | None, tuple[str, ...], str | None, tuple[str, ...], str | None]:
-    override = server.overrides.get(platform, McpOverride())
-    return (
-        override.command if override.command is not None else server.command,
-        override.args if override.args is not None else server.args,
-        override.cwd if override.cwd is not None else server.cwd,
-        override.env if override.env is not None else server.env,
-        override.url if override.url is not None else server.url,
+    command, args, cwd, env, url = (
+        server.command, server.args, server.cwd, server.env, server.url,
     )
+    for override in server.overrides:
+        if override.platforms is not None and platform not in override.platforms:
+            continue
+        if (
+            override.operating_systems is not None
+            and operating_system not in override.operating_systems
+        ):
+            continue
+        command = override.command if override.command is not None else command
+        args = override.args if override.args is not None else args
+        cwd = override.cwd if override.cwd is not None else cwd
+        env = override.env if override.env is not None else env
+        url = override.url if override.url is not None else url
+    return command, args, cwd, env, url
 
 
-def _render_mcp_entry(server: McpServerSpec, platform: Platform) -> dict[str, object]:
-    command, args, cwd, env, url = _effective_mcp_server(server, platform)
+def _render_mcp_entry(
+    server: McpServerSpec,
+    platform: Platform,
+    operating_system: OperatingSystem | None,
+) -> dict[str, object]:
+    command, args, cwd, env, url = _effective_mcp_server(
+        server, platform, operating_system
+    )
     if server.transport is McpTransport.HTTP:
         assert url is not None
         return {
@@ -291,7 +308,23 @@ def _render_project_mcp(
     native_templates: dict[PurePosixPath, dict[str, object]],
     delete_paths: set[PurePosixPath],
     previous_owned_fields: frozenset[tuple[PurePosixPath, str]],
+    operating_system: OperatingSystem | None,
 ) -> None:
+    if not config.mcp_servers:
+        return
+    if operating_system is None and any(
+        override.operating_systems is not None
+        for server in config.mcp_servers
+        for override in server.overrides
+    ):
+        if sys.platform == 'win32':
+            operating_system = OperatingSystem.WINDOWS
+        elif sys.platform.startswith('linux'):
+            operating_system = OperatingSystem.LINUX
+        else:
+            raise RenderError(
+                f'unsupported operating system for MCP overrides: {sys.platform}'
+            )
 
     def native_document(path: PurePosixPath) -> dict[str, object]:
         if path in native_documents:
@@ -311,7 +344,7 @@ def _render_project_mcp(
         for platform in server.platforms:
             path, root = _MCP_NATIVE[platform]
             key = f'{root}.{server.id}'
-            desired = _render_mcp_entry(server, platform)
+            desired = _render_mcp_entry(server, platform, operating_system)
             document = native_document(path)
             desired_fields = dict(_safe_leaves(desired, key))
             for owned_path, owned_key in previous_owned_fields:
@@ -352,6 +385,7 @@ def render_desired_state(
     generated_root: Path,
     models: Mapping[str, object],
     external_root: Path | None = None,
+    operating_system: OperatingSystem | None = None,
 ) -> RenderedState:
     """Render only catalog-owned project assets without mutating the target."""
     try:
@@ -549,6 +583,7 @@ def render_desired_state(
         native_templates,
         delete_paths,
         previous_owned_fields,
+        operating_system,
     )
 
     for path, document in native_documents.items():

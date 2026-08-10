@@ -15,6 +15,7 @@ from .models import (
     McpOverride,
     McpServerSpec,
     McpTransport,
+    OperatingSystem,
     Platform,
     ProjectConfig,
 )
@@ -47,7 +48,9 @@ _EXTERNAL_SOURCE_FIELDS = frozenset({'source', 'ref', 'include'})
 _MCP_SERVER_FIELDS = frozenset({
     'id', 'platforms', 'command', 'args', 'cwd', 'env', 'url', 'overrides',
 })
-_MCP_OVERRIDE_FIELDS = frozenset({'command', 'args', 'cwd', 'env', 'url'})
+_MCP_OVERRIDE_FIELDS = frozenset({'when', 'set'})
+_MCP_OVERRIDE_SELECTOR_FIELDS = frozenset({'platforms', 'operatingSystems'})
+_MCP_OVERRIDE_VALUE_FIELDS = frozenset({'command', 'args', 'cwd', 'env', 'url'})
 _ENVIRONMENT_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 _MATT_BLUEPRINTS = {
     PurePosixPath('docs/agents/issue-tracker.md'): PurePosixPath(
@@ -155,22 +158,46 @@ def _mcp_override(
     *,
     label: str,
     transport: McpTransport,
+    enabled_platforms: tuple[Platform, ...],
 ) -> McpOverride:
     document = _object(value, label)
     _fields(document, _MCP_OVERRIDE_FIELDS, label)
+    selector = _object(_required(document, 'when', label), f'{label}.when')
+    _fields(selector, _MCP_OVERRIDE_SELECTOR_FIELDS, f'{label}.when')
+    if not selector:
+        raise ContractError(f'{label}.when must select platforms or operatingSystems')
+    platforms = None
+    if 'platforms' in selector:
+        platforms = _platforms(selector['platforms'], f'{label}.when.platforms', ())
+        if not platforms:
+            raise ContractError(f'{label}.when.platforms must not be empty')
+        if set(platforms) - set(enabled_platforms):
+            raise ContractError(
+                f'{label}.when.platforms includes a platform not enabled by the server'
+            )
+    operating_systems = None
+    if 'operatingSystems' in selector:
+        operating_systems = _operating_systems(
+            selector['operatingSystems'], f'{label}.when.operatingSystems'
+        )
+
+    values = _object(_required(document, 'set', label), f'{label}.set')
+    _fields(values, _MCP_OVERRIDE_VALUE_FIELDS, f'{label}.set')
+    if not values:
+        raise ContractError(f'{label}.set must override at least one field')
     if transport is McpTransport.HTTP:
-        if set(document) - {'url'}:
+        if set(values) - {'url'}:
             raise ContractError(f'{label} HTTP override may declare only url')
-    elif 'url' in document:
+    elif 'url' in values:
         raise ContractError(f'{label} stdio override cannot declare url')
-    command = _mcp_text(document['command'], f'{label}.command') if 'command' in document else None
-    args = _string_array(document['args'], f'{label}.args') if 'args' in document else None
-    cwd = _mcp_text(document['cwd'], f'{label}.cwd') if 'cwd' in document else None
-    env = _mcp_env(document['env'], f'{label}.env') if 'env' in document else None
-    url = _mcp_text(document['url'], f'{label}.url') if 'url' in document else None
+    command = _mcp_text(values['command'], f'{label}.set.command') if 'command' in values else None
+    args = _string_array(values['args'], f'{label}.set.args') if 'args' in values else None
+    cwd = _mcp_text(values['cwd'], f'{label}.set.cwd') if 'cwd' in values else None
+    env = _mcp_env(values['env'], f'{label}.set.env') if 'env' in values else None
+    url = _mcp_text(values['url'], f'{label}.set.url') if 'url' in values else None
     if url is not None and not url.startswith(('https://', 'http://')):
-        raise ContractError(f'{label}.url must be an HTTP URL')
-    return McpOverride(command, args, cwd, env, url)
+        raise ContractError(f'{label}.set.url must be an HTTP URL')
+    return McpOverride(platforms, operating_systems, command, args, cwd, env, url)
 
 
 def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
@@ -207,19 +234,18 @@ def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
             url = _mcp_text(_required(document, 'url', label), f'{label}.url')
             if not url.startswith(('https://', 'http://')):
                 raise ContractError(f'{label}.url must be an HTTP URL')
-        raw_overrides = document.get('overrides', {})
-        overrides_doc = _object(raw_overrides, f'{label}.overrides')
-        overrides: dict[Platform, McpOverride] = {}
-        for key, raw_override in overrides_doc.items():
-            try:
-                platform = Platform(key)
-            except (TypeError, ValueError) as error:
-                raise ContractError(f'{label}.overrides has an unsupported platform') from error
-            if platform not in platforms:
-                raise ContractError(f'{label}.overrides platform is not enabled')
-            overrides[platform] = _mcp_override(
-                raw_override, label=f'{label}.overrides.{platform.value}', transport=transport
+        raw_overrides = document.get('overrides', [])
+        if not isinstance(raw_overrides, list):
+            raise ContractError(f'{label}.overrides must be an array')
+        overrides = tuple(
+            _mcp_override(
+                raw_override,
+                label=f'{label}.overrides[{override_index}]',
+                transport=transport,
+                enabled_platforms=platforms,
             )
+            for override_index, raw_override in enumerate(raw_overrides)
+        )
         result.append(McpServerSpec(
             server_id,
             transport,
@@ -314,6 +340,23 @@ def _platforms(value: object, label: str, default: tuple[Platform, ...]) -> tupl
         if platform in result:
             raise ContractError(f'{label} has duplicate platforms')
         result.append(platform)
+    return tuple(result)
+
+
+def _operating_systems(value: object, label: str) -> tuple[OperatingSystem, ...]:
+    if not isinstance(value, list):
+        raise ContractError(f'{label} must be an array')
+    result: list[OperatingSystem] = []
+    for item in value:
+        try:
+            operating_system = OperatingSystem(item)
+        except (TypeError, ValueError) as error:
+            raise ContractError(f'{label} has an unsupported operating system') from error
+        if operating_system in result:
+            raise ContractError(f'{label} has duplicate operating systems')
+        result.append(operating_system)
+    if not result:
+        raise ContractError(f'{label} must not be empty')
     return tuple(result)
 
 

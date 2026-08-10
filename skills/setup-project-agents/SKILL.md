@@ -40,7 +40,8 @@ reconfiguration; they are not disposable generated cache files.
 The target's `.agents/config.json` is the sole canonical input for external Skills and Project MCP.
 It must use the current version 1 schema before `start`: `skills` is an array of
 `source`/optional `ref`/`include` declarations, and `mcp` is an array whose entries declare exactly
-one of `url` or `command`. Do not edit captured choices in `request.json`. Setup records all managed
+one of `url` or `command`. MCP overrides are ordered `when`/`set` rules selected by host platform
+and operating system. Do not edit captured choices in `request.json`. Setup records all managed
 files, trees, and structured fields in `.agents/smartkit.lock.json`; it never records secret values.
 
 ## Preconditions

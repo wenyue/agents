@@ -597,7 +597,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 [('inspector MCP', 'mcp-prerequisite-missing')],
             )
 
-    def test_project_mcp_readiness_uses_effective_host_override(self):
+    def test_project_mcp_readiness_uses_effective_host_and_os_overrides(self):
         checker = self.checker
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -610,14 +610,21 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 'mcp': [{
                     'id': 'inspector',
                     'command': 'python3',
-                    'overrides': {'cursor': {
-                        'command': '${workspaceFolder}/cache/inspector.exe',
-                        'env': ['INSPECTOR_TOKEN'],
-                    }},
+                    'overrides': [{
+                        'when': {
+                            'platforms': ['cursor'],
+                            'operatingSystems': ['windows'],
+                        },
+                        'set': {
+                            'command': '${workspaceFolder}/cache/inspector.exe',
+                            'env': ['INSPECTOR_TOKEN'],
+                        },
+                    }],
                 }],
             }), encoding='utf-8')
 
             with mock.patch.object(checker.shutil, 'which', return_value='/usr/bin/python3'), \
+                    mock.patch.object(checker, '_current_operating_system', return_value='windows'), \
                     mock.patch.dict(checker.os.environ, {}, clear=True):
                 codex = checker.check_mcp_readiness('codex', root, registry)
                 cursor = checker.check_mcp_readiness('cursor', root, registry)
@@ -627,6 +634,9 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 [finding.code for finding in cursor],
                 ['mcp-prerequisite-missing', 'mcp-prerequisite-missing'],
             )
+            with mock.patch.object(checker.shutil, 'which', return_value='/usr/bin/python3'), \
+                    mock.patch.object(checker, '_current_operating_system', return_value='linux'):
+                self.assertEqual(checker.check_mcp_readiness('cursor', root, registry), [])
 
     def test_default_daily_runner_combines_tool_and_mcp_findings_once(self):
         checker = self.checker

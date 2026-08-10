@@ -473,6 +473,60 @@ def _mcp_servers_from_registry(path: Path, platform: str) -> list[dict[str, Any]
     return servers
 
 
+def _current_operating_system() -> str:
+    if sys.platform == 'win32':
+        return 'windows'
+    if sys.platform.startswith('linux'):
+        return 'linux'
+    raise PolicyError(f'MCP operating system is unsupported: {sys.platform}')
+
+
+def _override_selector_values(
+    value: object,
+    *,
+    allowed: set[str],
+) -> list[str]:
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) for item in value)
+        or len(value) != len(set(value))
+        or set(value) - allowed
+    ):
+        raise PolicyError('project MCP configuration is invalid')
+    return value
+
+
+def _validate_override_values(values: dict[str, Any], transport: str) -> None:
+    if transport == 'http' and set(values) - {'url'}:
+        raise PolicyError('project MCP configuration is invalid')
+    if transport == 'stdio' and 'url' in values:
+        raise PolicyError('project MCP configuration is invalid')
+    for key in ('command', 'cwd'):
+        if key in values and (not isinstance(values[key], str) or not values[key]):
+            raise PolicyError('project MCP configuration is invalid')
+    if 'args' in values and (
+        not isinstance(values['args'], list)
+        or not all(isinstance(item, str) and item for item in values['args'])
+    ):
+        raise PolicyError('project MCP configuration is invalid')
+    if 'env' in values and (
+        not isinstance(values['env'], list)
+        or not all(
+            isinstance(item, str)
+            and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', item) is not None
+            for item in values['env']
+        )
+        or len(values['env']) != len(set(values['env']))
+    ):
+        raise PolicyError('project MCP configuration is invalid')
+    if 'url' in values and (
+        not isinstance(values['url'], str)
+        or not values['url'].startswith(('https://', 'http://'))
+    ):
+        raise PolicyError('project MCP configuration is invalid')
+
+
 def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[str, Any]]:
     if platform not in {'codex', 'cursor', 'copilot'}:
         raise PolicyError('MCP platform is invalid')
@@ -499,14 +553,59 @@ def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[st
         ):
             raise PolicyError('project MCP configuration is invalid')
         if platform in platforms:
-            overrides = raw_server.get('overrides', {})
-            if not isinstance(overrides, dict):
+            base_command = raw_server.get('command')
+            base_url = raw_server.get('url')
+            has_base_command = isinstance(base_command, str) and bool(base_command)
+            has_base_url = isinstance(base_url, str) and bool(base_url)
+            if has_base_command == has_base_url:
                 raise PolicyError('project MCP configuration is invalid')
-            override = overrides.get(platform, {})
-            if not isinstance(override, dict):
+            transport = 'stdio' if has_base_command else 'http'
+            effective = dict(raw_server)
+            overrides = raw_server.get('overrides', [])
+            if not isinstance(overrides, list):
                 raise PolicyError('project MCP configuration is invalid')
-            command = override.get('command', raw_server.get('command'))
-            url = override.get('url', raw_server.get('url'))
+            operating_system = None
+            for override in overrides:
+                if not isinstance(override, dict) or set(override) != {'when', 'set'}:
+                    raise PolicyError('project MCP configuration is invalid')
+                selector = override['when']
+                values = override['set']
+                if (
+                    not isinstance(selector, dict)
+                    or not selector
+                    or set(selector) - {'platforms', 'operatingSystems'}
+                    or not isinstance(values, dict)
+                    or not values
+                    or set(values) - {'command', 'args', 'cwd', 'env', 'url'}
+                ):
+                    raise PolicyError('project MCP configuration is invalid')
+                selected_platforms = (
+                    _override_selector_values(
+                        selector['platforms'], allowed={'codex', 'cursor', 'copilot'}
+                    )
+                    if 'platforms' in selector else platforms
+                )
+                if set(selected_platforms) - set(platforms):
+                    raise PolicyError('project MCP configuration is invalid')
+                selected_operating_systems = (
+                    _override_selector_values(
+                        selector['operatingSystems'], allowed={'windows', 'linux'}
+                    )
+                    if 'operatingSystems' in selector else None
+                )
+                _validate_override_values(values, transport)
+                if selected_operating_systems is not None and operating_system is None:
+                    operating_system = _current_operating_system()
+                if (
+                    platform in selected_platforms
+                    and (
+                        selected_operating_systems is None
+                        or operating_system in selected_operating_systems
+                    )
+                ):
+                    effective.update(values)
+            command = effective.get('command')
+            url = effective.get('url')
             has_command = isinstance(command, str) and bool(command)
             has_url = isinstance(url, str) and bool(url)
             if has_command == has_url:
@@ -525,7 +624,7 @@ def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[st
                     })
                 else:
                     checks.append({'kind': 'command-exists', 'command': command})
-            env = override.get('env', raw_server.get('env', []))
+            env = effective.get('env', [])
             if not isinstance(env, list):
                 raise PolicyError('project MCP configuration is invalid')
             checks.extend({'kind': 'environment-variable', 'name': name} for name in env)

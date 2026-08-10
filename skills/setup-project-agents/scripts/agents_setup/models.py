@@ -16,6 +16,11 @@ class Platform(str, Enum):
     COPILOT = 'copilot'
 
 
+class OperatingSystem(str, Enum):
+    WINDOWS = 'windows'
+    LINUX = 'linux'
+
+
 class McpTransport(str, Enum):
     STDIO = 'stdio'
     HTTP = 'http'
@@ -23,6 +28,8 @@ class McpTransport(str, Enum):
 
 @dataclass(frozen=True)
 class McpOverride:
+    platforms: tuple[Platform, ...] | None = None
+    operating_systems: tuple[OperatingSystem, ...] | None = None
     command: str | None = None
     args: tuple[str, ...] | None = None
     cwd: str | None = None
@@ -40,7 +47,7 @@ class McpServerSpec:
     cwd: str | None = None
     env: tuple[str, ...] = ()
     url: str | None = None
-    overrides: Mapping[Platform, McpOverride] = field(default_factory=dict)
+    overrides: tuple[McpOverride, ...] = ()
 
 
 @dataclass(frozen=True)

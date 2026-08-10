@@ -85,10 +85,31 @@ tracker。
 后续更新。
 
 项目也可声明可选的 `mcp` 数组。每个 server 具有稳定 ID，并且只能声明 `url`（HTTP）或
-`command`（stdio）之一，可以限定宿主范围，并使用小范围的类型化宿主 override。Setup 会生成
+`command`（stdio）之一，可以限定宿主范围，并使用按顺序执行的类型化 override。Setup 会生成
 Codex `.codex/config.toml`、Cursor `.cursor/mcp.json` 和 Copilot `.vscode/mcp.json`，并保留不由
 SmartKit 管理的条目。受管条目发生冲突或被本地修改时，setup 会在写入前停止。环境变量仅按名称
 引用，不存储 secret 值。
+
+每条 override 都包含 `when` selector 和 `set` 对象。省略 `when.platforms` 时匹配该 server 启用的
+全部宿主，省略 `when.operatingSystems` 时匹配全部受支持的操作系统（`windows` 和 `linux`）。两者
+同时提供时必须都匹配。匹配的规则按数组顺序应用，后面的规则只覆盖其声明的字段：
+
+```json
+{
+  "id": "inspector",
+  "command": "python3",
+  "overrides": [
+    {
+      "when": {"operatingSystems": ["windows"]},
+      "set": {"command": "py"}
+    },
+    {
+      "when": {"platforms": ["cursor", "copilot"]},
+      "set": {"cwd": "tools/inspector"}
+    }
+  ]
+}
+```
 
 SmartKit 只管理自己生成的内容，并尽量保留项目原有文件和用户配置。应提交 `AGENTS.md`、
 `.agents/`、受管宿主 wrapper 和配置以及 `docs/agents/`；不要将它们加入 `.gitignore`。Session

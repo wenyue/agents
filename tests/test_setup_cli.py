@@ -262,6 +262,10 @@ class SetupCliTest(unittest.TestCase):
                 'mcp': [{
                     'id': 'sentry',
                     'url': 'https://mcp.sentry.dev/mcp',
+                    'overrides': [{
+                        'when': {'platforms': ['cursor']},
+                        'set': {'url': 'https://cursor.sentry.dev/mcp'},
+                    }],
                 }],
             }), encoding='utf-8')
             session = self.private_session(root)
@@ -272,6 +276,10 @@ class SetupCliTest(unittest.TestCase):
                 'id': 'sentry',
                 'platforms': ['codex', 'cursor', 'copilot'],
                 'url': 'https://mcp.sentry.dev/mcp',
+                'overrides': [{
+                    'when': {'platforms': ['cursor']},
+                    'set': {'url': 'https://cursor.sentry.dev/mcp'},
+                }],
             }])
             self.write_generated_outputs(session)
             models = self.write_models(session)
@@ -290,7 +298,7 @@ class SetupCliTest(unittest.TestCase):
                 json.loads((target / '.cursor/mcp.json').read_text())[
                     'mcpServers'
                 ]['sentry'],
-                {'type': 'http', 'url': 'https://mcp.sentry.dev/mcp'},
+                {'type': 'http', 'url': 'https://cursor.sentry.dev/mcp'},
             )
             self.assertEqual(
                 json.loads((target / '.vscode/mcp.json').read_text())[

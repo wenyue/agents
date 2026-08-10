@@ -94,11 +94,33 @@ uses `source`, optional `ref`, and non-empty `include`. Setup installs the selec
 `.agents/skills/` and manages subsequent updates through the project snapshot.
 
 Projects may also declare an optional `mcp` array. Every server has a stable ID and exactly one of
-`url` (HTTP) or `command` (stdio), may target a host subset, and may use small typed host overrides.
+`url` (HTTP) or `command` (stdio), may target a host subset, and may use ordered typed overrides.
 Setup renders Codex `.codex/config.toml`, Cursor `.cursor/mcp.json`, and Copilot
 `.vscode/mcp.json` while preserving entries it does not manage. Conflicting or locally modified
 managed entries stop setup before writes. Environment variables are referenced by name, never
 stored with their secret values.
+
+Each override has a `when` selector and a `set` object. Omit `when.platforms` to match every host
+enabled for the server, or omit `when.operatingSystems` to match every supported operating system
+(`windows` and `linux`). When both are present, both must match. Matching rules apply in array order,
+and a later rule wins only for fields it declares:
+
+```json
+{
+  "id": "inspector",
+  "command": "python3",
+  "overrides": [
+    {
+      "when": {"operatingSystems": ["windows"]},
+      "set": {"command": "py"}
+    },
+    {
+      "when": {"platforms": ["cursor", "copilot"]},
+      "set": {"cwd": "tools/inspector"}
+    }
+  ]
+}
+```
 
 SmartKit manages only the content it generates and preserves the project's existing files and user
 configuration whenever possible. Commit `AGENTS.md`, `.agents/`, managed host wrappers and config,

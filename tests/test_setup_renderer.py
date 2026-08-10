@@ -25,6 +25,7 @@ from agents_setup.models import (  # noqa: E402
     AssetSpec,
     Catalog,
     ChangeKind,
+    OperatingSystem,
     Platform,
     ProjectConfig,
 )
@@ -96,7 +97,13 @@ class SetupRendererTest(unittest.TestCase):
         )
         return load_project_config(path, catalog=self.catalog)
 
-    def render_with_config(self, target: Path, generated: Path, config: ProjectConfig):
+    def render_with_config(
+        self,
+        target: Path,
+        generated: Path,
+        config: ProjectConfig,
+        operating_system: OperatingSystem | None = None,
+    ):
         return render_desired_state(
             REPO_ROOT,
             target,
@@ -104,6 +111,7 @@ class SetupRendererTest(unittest.TestCase):
             config,
             generated,
             self.models,
+            operating_system=operating_system,
         )
 
     def test_project_mcp_renders_three_native_adapters_and_ownership_lock(self):
@@ -121,14 +129,25 @@ class SetupRendererTest(unittest.TestCase):
                     'args': ['--port', '8181', '--flag', '--flag'],
                     'cwd': 'cache',
                     'env': ['INSPECTOR_TOKEN'],
-                    'overrides': {
-                        'cursor': {'command': '${workspaceFolder}/cache/inspector.exe'},
-                        'copilot': {'command': '${workspaceFolder}/cache/inspector.exe'},
-                    },
+                    'overrides': [
+                        {
+                            'when': {'operatingSystems': ['windows']},
+                            'set': {
+                                'command': '${workspaceFolder}/cache/inspector.exe',
+                            },
+                        },
+                        {
+                            'when': {'platforms': ['codex']},
+                            'set': {'command': 'cache/inspector.exe'},
+                        },
+                    ],
                 },
             ])
 
-            rendered = self.render_with_config(target, self.generated_tree(root), config)
+            generated = self.generated_tree(root)
+            rendered = self.render_with_config(
+                target, generated, config, OperatingSystem.WINDOWS
+            )
             codex = tomllib.loads(rendered.files_by_path['.codex/config.toml'].decode())
             cursor = json.loads(rendered.files_by_path['.cursor/mcp.json'])
             copilot = json.loads(rendered.files_by_path['.vscode/mcp.json'])
@@ -156,11 +175,27 @@ class SetupRendererTest(unittest.TestCase):
                 ['INSPECTOR_TOKEN'],
             )
             self.assertEqual(codex['mcp_servers']['inspector']['cwd'], 'cache')
+            self.assertEqual(
+                codex['mcp_servers']['inspector']['command'],
+                'cache/inspector.exe',
+            )
             self.assertNotIn('type', codex['mcp_servers']['inspector'])
             self.assertEqual(copilot['servers']['inspector']['type'], 'stdio')
             self.assertEqual(
                 copilot['servers']['inspector']['env'],
                 {'INSPECTOR_TOKEN': '${env:INSPECTOR_TOKEN}'},
+            )
+            self.assertEqual(
+                copilot['servers']['inspector']['command'],
+                '${workspaceFolder}/cache/inspector.exe',
+            )
+            linux_rendered = self.render_with_config(
+                target, generated, config, OperatingSystem.LINUX
+            )
+            linux_cursor = json.loads(linux_rendered.files_by_path['.cursor/mcp.json'])
+            self.assertEqual(
+                linux_cursor['mcpServers']['inspector']['command'],
+                'cache/inspector.exe',
             )
             mcp_assets = [asset for asset in lock['assets'] if asset['role'] == 'mcp']
             for path, prefix in (

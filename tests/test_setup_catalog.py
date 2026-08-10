@@ -29,11 +29,21 @@ class SetupCatalogTest(unittest.TestCase):
                             'command': 'cache/inspector.exe',
                             'args': ['--port', '8181'],
                             'env': ['INSPECTOR_TOKEN'],
-                            'overrides': {
-                                'cursor': {
-                                    'command': '${workspaceFolder}/cache/inspector.exe'
-                                }
-                            },
+                            'overrides': [
+                                {
+                                    'when': {
+                                        'platforms': ['cursor'],
+                                        'operatingSystems': ['windows'],
+                                    },
+                                    'set': {
+                                        'command': '${workspaceFolder}/cache/inspector.exe'
+                                    },
+                                },
+                                {
+                                    'when': {'operatingSystems': ['linux']},
+                                    'set': {'command': 'cache/inspector'},
+                                },
+                            ],
                         },
                         {
                             'id': 'sentry',
@@ -48,11 +58,18 @@ class SetupCatalogTest(unittest.TestCase):
             inspector = config.mcp_servers[0]
             self.assertEqual(inspector.env, ('INSPECTOR_TOKEN',))
             self.assertEqual(
-                inspector.overrides[next(
-                    platform for platform in inspector.overrides if platform.value == 'cursor'
-                )].command,
+                inspector.overrides[0].command,
                 '${workspaceFolder}/cache/inspector.exe',
             )
+            self.assertEqual(
+                [platform.value for platform in inspector.overrides[0].platforms or ()],
+                ['cursor'],
+            )
+            self.assertEqual(
+                [item.value for item in inspector.overrides[0].operating_systems or ()],
+                ['windows'],
+            )
+            self.assertIsNone(inspector.overrides[1].platforms)
             self.assertEqual(inspector.transport.value, 'stdio')
 
     def test_project_config_rejects_untyped_or_inconsistent_mcp_contracts(self):
@@ -63,7 +80,10 @@ class SetupCatalogTest(unittest.TestCase):
             {'id': 'bad'},
             {
                 'id': 'bad', 'url': 'https://example.invalid',
-                'overrides': {'codex': {'command': 'bridge'}},
+                'overrides': [{
+                    'when': {'platforms': ['codex']},
+                    'set': {'command': 'bridge'},
+                }],
             },
             {
                 'id': 'bad', 'command': 'x',
@@ -75,11 +95,37 @@ class SetupCatalogTest(unittest.TestCase):
             },
             {
                 'id': 'bad', 'command': 'x',
-                'platforms': ['codex'], 'overrides': {'cursor': {'command': 'y'}},
+                'platforms': ['codex'],
+                'overrides': [{
+                    'when': {'platforms': ['cursor']},
+                    'set': {'command': 'y'},
+                }],
             },
             {
                 'id': 'bad', 'command': 'x',
-                'overrides': {'vscode': {'command': 'y'}},
+                'overrides': [{
+                    'when': {'platforms': ['vscode']},
+                    'set': {'command': 'y'},
+                }],
+            },
+            {'id': 'bad', 'command': 'x', 'overrides': {'codex': {'command': 'y'}}},
+            {
+                'id': 'bad', 'command': 'x',
+                'overrides': [{'when': {}, 'set': {'command': 'y'}}],
+            },
+            {
+                'id': 'bad', 'command': 'x',
+                'overrides': [{
+                    'when': {'operatingSystems': ['macos']},
+                    'set': {'command': 'y'},
+                }],
+            },
+            {
+                'id': 'bad', 'command': 'x',
+                'overrides': [{
+                    'when': {'operatingSystems': ['windows']},
+                    'set': {},
+                }],
             },
         )
         for server in invalid_servers:
