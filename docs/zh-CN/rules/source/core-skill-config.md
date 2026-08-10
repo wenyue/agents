@@ -2,7 +2,7 @@
 
 强度：`Mandatory`
 
-适用范围：Subagent 委派、Skill 优先级、worktree 工作流归属和 Git 安全。
+适用范围：Subagent 委派、Skill 优先级、规划产物、worktree 工作流归属和 Git 安全。
 
 ## 委派
 
@@ -20,24 +20,26 @@
 - 根据 Skill 声明的用户和模型调用元数据使用它。在职责重叠的范围内，项目本地 Skill 和更具体的
   项目 Rule 优先于内置 Skill。
 
+## 规划产物
+
+- 开始会改变状态的实施前，判断已接受的对话、issue、Spec 或其他来源是否已经定义稳定的范围、决策和
+  验收标准。
+- 当重要行为、契约、测试 seam 或范围决策仍是隐含信息，或需要持久且可审查的单一事实来源时，建议
+  用户调用 `to-spec`。
+- 当已接受的工作包含多个可独立验证的切片、阻塞关系、并行工作，或工作量超出一个全新实施上下文
+  应承担的范围时，建议用户调用 `to-tickets`。Tickets 可以从已接受的 Spec 或当前对话开始。
+- 当一个已接受的来源已经使单一范围任务可实施且可验证时，无需 Spec 或 Tickets 即可继续。worktree
+  隔离与规划产物应独立决策。
+
 ## Worktree 工作流
 
-- 对于会改变状态的实现工作，当用户要求隔离、宿主或适用 Skill 要求隔离，或者必须通过隔离保护
-  checkout 中原有状态时，使用关联 worktree。不得为只读工作创建 worktree，也不得仅因任务涉及仓库
-  就创建 worktree。
-- 选择使用关联 worktree 时，如果宿主已经提供，应复用它；否则使用宿主的原生 worktree 能力，或在
-  取得所需授权后，使用位置安全且已被忽略的 Git worktree。
-- 创建 worktree 后，如果目标仓库提供 `worktree-environment-setup` Skill，应先使用它，再在实现前
-  运行仓库的基线验证。
-- 具名关联 worktree 中的实现完成并通过验证时，提供四种结果：在本地合并到已记录的基准分支；
-  推送并创建 pull request；保留任务分支和 worktree；或集成到当前 checkout。
-- 只有集成到当前 checkout 才使用 `worktree-integrate`。父 Agent 根据本 Rule 的 Git 安全约束负责
-  本地合并、pull request、保留分支和用户明确要求的丢弃结果。
-- 即使当前 checkout 位于已记录的基准分支，也要将本地合并和集成到当前 checkout 视为不同结果。
-  本地合并会推进基准分支；`worktree-integrate` 的 review mode 保持当前 `HEAD` 和 index 不变，
-  将任务改动作为 unstaged 或 untracked 内容交回，并保留无关本地改动。
-- 只有用户明确要求整合后创建本地提交时，才使用 `worktree-integrate` 的 commit mode，并将所有
-  业务改动放在一个提交中。
+- 对会改变状态的实施，当用户要求隔离、宿主或适用 Skill 要求隔离、并行工作需要独立状态，或必须
+  通过隔离保护 checkout 中原有状态时，应用 `create-worktree`。不得为只读工作创建 worktree，也不得
+  仅因任务涉及仓库就创建 worktree。
+- 由 `create-worktree` 负责复用或创建、已被忽略的 `.worktrees` 位置、环境准备交接，以及实施前的
+  基线验证。
+- 具名关联 worktree 中的实施完成并通过验证时，应用 `finish-worktree`。由其根据本 Rule 的 Git
+  安全策略负责结果选择、准确授权、任务与 base 准备、执行、验证、恢复和生命周期清理。
 
 ## Git 安全
 

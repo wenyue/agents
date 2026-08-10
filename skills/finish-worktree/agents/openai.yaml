@@ -1,0 +1,4 @@
+interface:
+  display_name: "Finish Worktree"
+  short_description: "Choose and safely complete a linked worktree"
+  default_prompt: "Use $finish-worktree to choose and safely complete this linked Git worktree."

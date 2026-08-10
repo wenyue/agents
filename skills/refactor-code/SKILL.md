@@ -1,78 +1,47 @@
 ---
 name: refactor-code
-description: Use when refactoring, restructuring, cleaning up, simplifying, or rewriting existing code, including readability improvements, internal logic replacement, legacy removal, and deliberate public-interface simplification.
+description: Use when restructuring internal code while preserving observable behavior and external contracts.
 ---
 
 # Refactor Code
 
-Choose the smallest refactor mode that can achieve the requested outcome. Preserve project rules
-and observable contracts unless the selected mode and the user explicitly allow changing them.
+Restructure internal code without changing observable behavior or external contracts.
 
-## Select the Mode
+## Preconditions
 
-| Mode | Use when | Contract changes |
-| --- | --- | --- |
-| Format | Improving names, readability, local structure, duplication, or control flow | None |
-| Logic | Replacing internal logic or state flow while preserving the external contract | Private implementation only |
-| Deep | Simplifying public interfaces, persistence, protocols, or user-visible behavior | Allowed only after explicit confirmation |
+- Identify the concrete target and structural problem.
+- Read the applicable repository rules, target code, nearby patterns, and affected callers.
+- Establish tests or observable examples that protect the behavior being preserved.
 
-Infer the mode when the request uniquely identifies it. Ask only when two modes would produce
-materially different scope or behavior.
+## Workflow
 
-## Shared Workflow
+1. Define the observable behavior and external contracts that must remain unchanged.
+2. Identify the smallest coherent internal structure that removes the stated problem.
+3. Update the implementation and any tests coupled to retired internals.
+4. Remove obsolete internal branches, adapters, and helpers inside the approved scope.
+5. Run the relevant formatter, static checks, and tests supported by the project.
+6. Confirm the preserved behavior still passes through the same external interface.
 
-1. Read the applicable repository rules, target code, nearby patterns, and affected callers.
-2. State the selected mode, behavior boundary, and concrete design problem.
-3. Identify existing tests or observable examples that protect the preserved contract.
-4. Make the smallest coherent refactor within the selected mode.
-5. Remove code made obsolete by the new structure when it is inside the approved scope and no
-   supported path depends on it.
-6. Run the minimum relevant formatter, static checks, and tests before reporting completion.
+Introduce a framework, extension point, compatibility layer, or test-only interface only when the
+approved behavior-preserving outcome requires it.
 
-Introduce frameworks, configuration layers, test-only APIs, or extension points only when the
-approved current outcome requires them.
+## Architecture Boundary
 
-## Format Refactor
-
-- Preserve logic, public interfaces, persistence formats, state semantics, and user-visible
-  behavior.
-- Improve names, ordering, branching, duplication, and helper boundaries only where they address
-  the stated readability problem.
-- Keep a local cleanup inside its current callers and module unless the stated problem requires a
-  broader owner change.
-- Extract a helper when it names a real responsibility or removes meaningful complexity, rather
-  than merely reducing line count.
-
-## Logic Refactor
-
-- Preserve public interfaces, external contracts, persistence formats, and observable behavior.
-- Define the target responsibilities, data flow, state ownership, error handling, and caller
-  interaction before replacing internals.
-- Protect complex or risky boundary behavior with tests before the rewrite.
-- Replace obsolete internal branches and adapters instead of wrapping the old implementation in a
-  second architecture.
-- Update tests that depended on retired internals so they assert the preserved external behavior.
-
-## Deep Refactor
-
-Before editing an external surface:
-
-1. List the public APIs, cross-module contracts, persistence shapes, protocols, integrations, or
-   user-visible behavior that would change.
-2. Explain the benefit, impact, compatibility cost, migration options, and narrower alternatives.
-3. Obtain explicit confirmation for the breaking scope and compatibility policy.
-
-After confirmation, update callers, tests, migrations, and documented contracts together. Remove
-the old surface, compatibility paths, and dormant entry points the user agreed to retire.
+- When the user requests a codebase-wide search for architectural opportunities, stop and tell them
+  to invoke `improve-codebase-architecture`.
+- When the change requires choosing an interface, seam, adapter relationship, or test surface, apply
+  `codebase-design` before implementation.
+- When the selected design changes a public interface, persistence format, protocol, integration, or
+  user-visible behavior, stop and tell the user to invoke `implement` with the confirmed design or
+  its specification.
 
 ## Stop Conditions
 
-- Stop when the requested result requires a deeper mode than the one approved.
-- Stop before an unapproved public, persistence, protocol, or user-visible change.
-- Treat an unclear compatibility requirement as a decision point, not permission to preserve or
-  break everything by default.
+- Stop when the concrete target or preserved behavior cannot be established.
+- Stop when the requested result requires an external contract or observable behavior change.
+- Stop when available verification cannot distinguish the refactor from a behavior regression.
 
 ## Result
 
-Report the selected mode, the problem removed, any deliberate contract change, files affected, and
-the exact verification performed.
+Report the structural problem removed, preserved behavior and contracts, changed internal surfaces,
+obsolete code removed, and exact verification performed.

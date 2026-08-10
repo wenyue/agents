@@ -107,7 +107,7 @@ class PluginManifestTest(unittest.TestCase):
             {'plugins', 'rules', 'skills'},
         )
 
-        for name in ('write-rule', 'write-skill'):
+        for name in ('write-agent-rule', 'write-agent-skill'):
             with self.subTest(skill=name):
                 wrapper = (
                     REPO_ROOT / '.agents' / 'skills' / name / 'SKILL.md'
@@ -132,8 +132,8 @@ class PluginManifestTest(unittest.TestCase):
                 for path in (REPO_ROOT / root_name).rglob('*.md')
             )
         for name in (
-            'refactor-code', 'rename', 'report-session-usage', 'worktree-integrate',
-            'write-comment', 'write-rule', 'write-skill',
+            'create-worktree', 'refactor-code', 'rename-code', 'report-session-usage',
+            'finish-worktree', 'write-code-comment', 'write-agent-rule', 'write-agent-skill',
         ):
             source_paths.update(
                 path.relative_to(REPO_ROOT)
@@ -228,8 +228,9 @@ class PluginManifestTest(unittest.TestCase):
             if path.is_dir()
         }
         custom = {
-            'setup-project-agents', 'refactor-code', 'rename', 'report-session-usage',
-            'worktree-integrate', 'write-comment', 'write-rule', 'write-skill',
+            'setup-project-agents', 'create-worktree', 'refactor-code', 'rename-code',
+            'report-session-usage', 'finish-worktree', 'write-code-comment',
+            'write-agent-rule', 'write-agent-skill',
         }
         self.assertEqual(plugin_skills, { *custom, *MATT_PROMOTED})
         lock = load_json('vendor/external-skills.lock.json')

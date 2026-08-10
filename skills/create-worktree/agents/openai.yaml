@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Worktree"
+  short_description: "Create an isolated linked Git worktree safely"
+  default_prompt: "Use $create-worktree to create and prepare an isolated linked Git worktree for this task."

@@ -2,17 +2,18 @@
 
 Strength: `Mandatory`
 
-Scope: Subagent delegation, Skill precedence, worktree workflow ownership, and Git safety.
+Scope: Subagent delegation, Skill precedence, planning artifacts, worktree workflow ownership, and
+Git safety.
 
 ## Delegation
 
-- Automatically authorize the agent to use subagents when needed.
-- Choose each subagent's model and reasoning effort for its task: prefer faster, lower-cost options
+- Automatically authorize the Agent to use Subagents when needed.
+- Choose each Subagent's model and reasoning effort for its task: prefer faster, lower-cost options
   for bounded supporting work and stronger options for ambiguous, cross-cutting, or high-risk work.
 - Preserve settings required by the user, an applicable Rule or Skill, or the selected named Agent;
   otherwise choose task-appropriate settings instead of inheriting the parent's by default.
 - When using a different model, inherit no history or only the smallest sufficient history and give
-  the subagent a self-contained brief. Use a full-history fork, which inherits the parent model,
+  the Subagent a self-contained brief. Use a full-history fork, which inherits the parent model,
   only when the task requires the complete parent conversation.
 - If no suitable alternate model is available, delegate only when isolation or independent
   execution still helps; otherwise keep the work in the parent Agent.
@@ -22,28 +23,30 @@ Scope: Subagent delegation, Skill precedence, worktree workflow ownership, and G
 - Apply Skills according to their declared user and model invocation metadata. Within overlapping
   scope, project-local Skills and more-specific project Rules take precedence over bundled Skills.
 
+## Planning Artifacts
+
+- Before state-changing implementation, determine whether the accepted conversation, issue, Spec,
+  or other source already defines stable scope, decisions, and acceptance criteria.
+- Recommend that the user invoke `to-spec` when material behavior, contracts, testing seams, or
+  scope decisions remain implicit or need a durable reviewable source of truth.
+- Recommend that the user invoke `to-tickets` when the accepted work contains multiple independently
+  verifiable slices, blocking relationships, parallel work, or more work than one fresh
+  implementation context should own. Tickets may start from an accepted Spec or the current
+  conversation.
+- Proceed without a Spec or Tickets when one accepted source already makes a single-scope task
+  implementable and verifiable. Decide worktree isolation independently from planning artifacts.
+
 ## Worktree Workflow
 
-- For state-changing implementation, use a linked worktree when the user requests isolation, the
-  host or an applicable Skill requires it, or isolation is needed to protect pre-existing checkout
-  state. Do not create a worktree for read-only work or solely because a repository task exists.
-- When a linked worktree is selected, reuse a host-provided worktree when one exists. Otherwise, use
-  the host's native worktree capability or a safely located and ignored Git worktree after obtaining
-  any required consent.
-- After creating a worktree, use the target repository's `worktree-environment-setup` Skill when it
-  exists, then run the repository's baseline verification before implementation.
-- When implementation in a named linked worktree is complete and verified, present four outcomes:
-  merge locally into the recorded base branch; push and create a pull request; keep the task branch
-  and worktree; or integrate into the current checkout.
-- Use `worktree-integrate` only for current-checkout integration. The parent Agent owns local merge,
-  pull-request, keep-branch, and explicitly requested discard outcomes under this Rule's Git Safety
-  constraints.
-- Treat local merge and current-checkout integration as different outcomes even when the current
-  checkout is on the recorded base branch. Local merge advances the base branch;
-  `worktree-integrate` review mode keeps the current `HEAD` and index unchanged and returns task
-  changes as unstaged or untracked while preserving unrelated local changes.
-- Use `worktree-integrate` commit mode only when the user explicitly requests local integration with
-  a commit, and keep all business changes in one commit.
+- For state-changing implementation, apply `create-worktree` when the user requests isolation, the
+  host or an applicable Skill requires it, parallel work needs separate state, or isolation is
+  needed to protect pre-existing checkout state. Do not create a worktree for read-only work or
+  solely because a repository task exists.
+- Let `create-worktree` own reuse or creation, the ignored `.worktrees` location, environment setup
+  handoff, and baseline verification before implementation.
+- When implementation in a named linked worktree is complete and verified, apply
+  `finish-worktree`. Let it own outcome selection, exact authorization, task and base preparation,
+  execution, verification, recovery, and lifecycle cleanup under this Rule's Git Safety policy.
 
 ## Git Safety
 

@@ -63,8 +63,8 @@ reconfiguration; they are not disposable generated cache files.
    Cursor optional `readonly` is Boolean.
 
 3. Resolve the reported `source_root` as `SOURCE_ROOT`. Read the complete authoring contracts at
-   `SOURCE_ROOT/skills/write-rule/SKILL.md`,
-   `SOURCE_ROOT/skills/write-skill/SKILL.md`, and
+   `SOURCE_ROOT/skills/write-agent-rule/SKILL.md`,
+   `SOURCE_ROOT/skills/write-agent-skill/SKILL.md`, and
    `SOURCE_ROOT/skills/setup-matt-pocock-skills/SKILL.md`. Apply the Rule and Skill Blueprints, then
    configure the three Matt documents inside this same setup workflow; do not invoke
    `setup-matt-pocock-skills` as a second Skill. For issue-tracker selection, apply this workflow's

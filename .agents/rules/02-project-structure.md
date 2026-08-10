@@ -21,7 +21,7 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   Documentation is outside runtime loading and target installation.
 - `.agents/rules/` owns this repository's development instructions, `.agents/plugins/` owns its
   local marketplace configuration, and `.agents/skills/` contains only thin discovery wrappers for
-  `write-rule` and `write-skill`. No other `.agents/` content belongs in this repository.
+  `write-agent-rule` and `write-agent-skill`. No other `.agents/` content belongs in this repository.
 - `AGENTS.md` is the entry point for discovering `.agents/rules/`; `README.md` is public plugin
   onboarding and describes the setup boundary.
 - `vendor/external-skills.lock.json` and `licenses/` record all external plugin Skill snapshots;

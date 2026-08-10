@@ -55,8 +55,8 @@ Agent 只能编辑以下工作流输入：
    `readonly` 值为 Boolean。
 
 3. 将报告的 `source_root` 解析为 `SOURCE_ROOT`。完整读取
-   `SOURCE_ROOT/skills/write-rule/SKILL.md`、
-   `SOURCE_ROOT/skills/write-skill/SKILL.md` 和
+   `SOURCE_ROOT/skills/write-agent-rule/SKILL.md`、
+   `SOURCE_ROOT/skills/write-agent-skill/SKILL.md` 和
    `SOURCE_ROOT/skills/setup-matt-pocock-skills/SKILL.md` 的编写契约。应用 Rule 和 Skill Blueprints，
    然后在同一 setup 工作流中配置三个 Matt 文档；不要再把 `setup-matt-pocock-skills` 作为第二个
    Skill 调用。选择 issue tracker 时，使用本工作流下述默认值，而不是 vendored Skill 的上游

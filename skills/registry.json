@@ -2,13 +2,14 @@
   "version": 1,
   "custom": [
     {"id": "smartkit/setup-project-agents", "path": "setup-project-agents"},
+    {"id": "smartkit/create-worktree", "path": "create-worktree"},
     {"id": "smartkit/refactor-code", "path": "refactor-code"},
-    {"id": "smartkit/rename", "path": "rename"},
+    {"id": "smartkit/rename-code", "path": "rename-code"},
     {"id": "smartkit/report-session-usage", "path": "report-session-usage"},
-    {"id": "smartkit/worktree-integrate", "path": "worktree-integrate"},
-    {"id": "smartkit/write-comment", "path": "write-comment"},
-    {"id": "smartkit/write-rule", "path": "write-rule"},
-    {"id": "smartkit/write-skill", "path": "write-skill"}
+    {"id": "smartkit/finish-worktree", "path": "finish-worktree"},
+    {"id": "smartkit/write-code-comment", "path": "write-code-comment"},
+    {"id": "smartkit/write-agent-rule", "path": "write-agent-rule"},
+    {"id": "smartkit/write-agent-skill", "path": "write-agent-skill"}
   ],
   "external_sources": [
     {
