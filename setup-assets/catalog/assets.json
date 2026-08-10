@@ -114,7 +114,7 @@
     {
       "id": "blueprint-matt-issue-tracker",
       "kind": "blueprint",
-      "source": "skills/setup-matt-pocock-skills/issue-tracker-github.md",
+      "source": "skills/setup-matt-pocock-skills/issue-tracker-local.md",
       "target": "docs/agents/issue-tracker.md",
       "mode": "generate"
     },

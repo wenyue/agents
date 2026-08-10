@@ -1,33 +1,22 @@
 # Project Agent Entry
 
-The source of truth for project instructions is `.agents/rules/`.
-Do not duplicate or reinterpret those rules unless the user explicitly asks.
+## Project rules
 
-## How To Apply Rules
-
-Read the project-local rules that apply. Plugin Rules are delivered by the installed SmartKit
-plugin and own the shared strength and precedence protocol.
+Read every project Rule whose `Read when` condition matches the current task.
 
 | Read when | Rule | Strength |
 | --- | --- | --- |
 {{project_rule_rows}}
 
-## Precedence
-
-- Direct system, developer, and user instructions override everything in this file.
-- Apply the plugin-owned precedence contract: strength first, then owner, then specificity.
-- At equal strength, project Rules take precedence over plugin Rules.
+Apply SmartKit plugin Rules for shared strength and precedence. Keep project Rule policy in the
+files listed above.
 
 ## Agent skills
 
-### Issue tracker
+Load the context required by the current task or Skill.
 
-See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-See `docs/agents/domain.md`.
+| Read when | Context |
+| --- | --- |
+| Working with tracked work, specifications, tickets, or repository navigation | `docs/agents/issue-tracker.md` |
+| Assigning or interpreting Matt triage roles | `docs/agents/triage-labels.md` |
+| Using domain language or recording architecture decisions | `docs/agents/domain.md` |

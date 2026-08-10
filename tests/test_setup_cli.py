@@ -216,7 +216,7 @@ class SetupCliTest(unittest.TestCase):
             }
             self.assertEqual(matt_sources, {
                 'docs/agents/issue-tracker.md': (
-                    'skills/setup-matt-pocock-skills/issue-tracker-github.md'
+                    'skills/setup-matt-pocock-skills/issue-tracker-local.md'
                 ),
                 'docs/agents/triage-labels.md': (
                     'skills/setup-matt-pocock-skills/triage-labels.md'

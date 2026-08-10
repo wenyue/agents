@@ -59,7 +59,8 @@ Agent 只能编辑以下工作流输入：
    `SOURCE_ROOT/skills/write-skill/SKILL.md` 和
    `SOURCE_ROOT/skills/setup-matt-pocock-skills/SKILL.md` 的编写契约。应用 Rule 和 Skill Blueprints，
    然后在同一 setup 工作流中配置三个 Matt 文档；不要再把 `setup-matt-pocock-skills` 作为第二个
-   Skill 调用。
+   Skill 调用。选择 issue tracker 时，使用本工作流下述默认值，而不是 vendored Skill 的上游
+   默认值。
 
 4. 按 Matt setup 契约探索目标仓库。除非用户要求更改，否则保留任何完整的现有
    `docs/agents/*.md` 文档。否则：
@@ -68,15 +69,16 @@ Agent 只能编辑以下工作流输入：
    Blueprint 契约、当前仓库证据、之前生成的内容。始终重新生成请求的目标；不要仅因为旧输出已
    存在就原样复制。
 
-   - 根据无歧义的 Git remote 选择对应的 GitHub、GitLab 或本地 issue-tracker seed；当多个 remote
-     不一致，或现有文档与 remote 冲突时，展示证据并等待确认；
+   - 对缺失或不完整的 issue-tracker 配置默认使用 Local Markdown，不受 Git remote 影响。只有用户
+     明确要求时才使用 GitHub、GitLab 或其他 tracker；读取对应的同级 seed，或编写已确认的自定义
+     工作流。Git remote 是仓库证据，不代表允许使用它的 issue tracker；
    - 存在 triage-label mapping 时沿用；不存在时使用内置的五角色默认值；
    - 没有 monorepo 信号时使用 single-context domain layout；当 workspace 文件或多个源 package
      表明确实存在不同上下文时，展示 single-context 和 multi-context 选择并等待确认。
 
    将全部八个 `generation_requests` 目标原样写入 `GENERATED/<target>`，保留目标的每一段路径。
-   issue-tracker 请求在 catalog 中以 GitHub seed 作为 blueprint；如果已确认的证据选择 GitLab 或本地
-   Markdown，则读取 vendored Matt setup Skill 中对应的同级 seed，并写入相同的请求目标。
+   issue-tracker 请求在 catalog 中以 Local Markdown seed 作为 blueprint。用户明确选择 GitHub、
+   GitLab 或其他 tracker 时，读取对应的同级 seed 或已确认的自定义工作流，并写入相同的请求目标。
 
 5. Review Gate 通过后，只使用 session 路径调用同一个 wrapper 的 `finish`：
 
@@ -93,14 +95,14 @@ Agent 只能编辑以下工作流输入：
 ## 停止条件
 
 任何 start、finish 或 cancel 错误都应立即停止并原样报告。finish 出错后不要调用 cancel，也不要
-复用该 session；解决报告的原因后重新 start。tracker 冲突或 monorepo layout 选择尚未解决时，
+复用该 session；解决报告的原因后重新 start。显式 tracker 选择或 monorepo layout 选择尚未解决时，
 应在 finish 前停止。不要修复脚本拥有的状态、选择逐文件覆盖范围、更改 request、向 finish 传入
 未请求路径或手动删除 session。
 
 ## Review Gate
 
 - [ ] 完整读取每个生成的 Rule 和 Skill；确认其遵循编写契约并使用目标仓库的当前证据。
-- [ ] 读取全部三个 Matt 文档；确认它们符合已确认的 tracker、label 和 domain-layout 决策，并保留
+- [ ] 读取全部三个 Matt 文档；确认它们符合已选择的 tracker、label 和 domain-layout 决策，并保留
       现有用户拥有的内容。
 - [ ] 确认 `AGENTS.md` 将只包含一个指向全部三个文档的 `## Agent skills` 区块。
 - [ ] 读取已填写的 models 文件；确认每个请求的 Agent/platform 都有非空 model。

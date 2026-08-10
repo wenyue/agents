@@ -56,7 +56,7 @@ _RETIRED_FIELD_FIELDS = frozenset({'path', 'key'})
 _STRUCTURED_SUFFIXES = frozenset({'.json', '.jsonc', '.toml'})
 _MATT_BLUEPRINTS = {
     PurePosixPath('docs/agents/issue-tracker.md'): PurePosixPath(
-        'skills/setup-matt-pocock-skills/issue-tracker-github.md'
+        'skills/setup-matt-pocock-skills/issue-tracker-local.md'
     ),
     PurePosixPath('docs/agents/triage-labels.md'): PurePosixPath(
         'skills/setup-matt-pocock-skills/triage-labels.md'

@@ -67,7 +67,8 @@ reconfiguration; they are not disposable generated cache files.
    `SOURCE_ROOT/skills/write-skill/SKILL.md`, and
    `SOURCE_ROOT/skills/setup-matt-pocock-skills/SKILL.md`. Apply the Rule and Skill Blueprints, then
    configure the three Matt documents inside this same setup workflow; do not invoke
-   `setup-matt-pocock-skills` as a second Skill.
+   `setup-matt-pocock-skills` as a second Skill. For issue-tracker selection, apply this workflow's
+   default below instead of the vendored Skill's upstream default.
 
 4. Explore the target using the Matt setup contract. Preserve any complete existing
    `docs/agents/*.md` document unless the user requests a change. Otherwise:
@@ -77,9 +78,10 @@ reconfiguration; they are not disposable generated cache files.
    then prior generated content. Always regenerate the requested target; do not copy the prior
    output unchanged merely because it exists.
 
-   - select the GitHub, GitLab, or local issue-tracker seed that matches the unambiguous Git remote;
-     when remotes disagree or an existing document conflicts with the remote, present the evidence
-     and wait for confirmation;
+   - Default a missing or incomplete issue-tracker configuration to Local Markdown, regardless of
+     Git remotes. Use GitHub, GitLab, or another tracker only when the user explicitly requests it;
+     read the corresponding sibling seed or author the confirmed custom workflow. A Git remote is
+     repository evidence, not permission to use its issue tracker;
    - use the existing triage-label mapping when present, or the bundled five-role default when it is
      absent;
    - use the single-context domain layout when no monorepo signal exists; when workspace files or
@@ -87,9 +89,9 @@ reconfiguration; they are not disposable generated cache files.
      multi-context choices and wait for confirmation.
 
    Write exactly all eight `generation_requests` targets to `GENERATED/<target>`, preserving every
-   target path segment. The issue-tracker request names the GitHub seed as its catalog blueprint;
-   when confirmed evidence selects GitLab or local markdown, read the corresponding sibling seed
-   from the vendored Matt setup Skill and write the same requested target.
+   target path segment. The issue-tracker request names the Local Markdown seed as its catalog
+   blueprint. When the user explicitly selects GitHub, GitLab, or another tracker, read the
+   corresponding sibling seed or confirmed custom workflow and write the same requested target.
 
 5. After the Review Gate passes, invoke the same wrapper with `finish` and only the session path:
 
@@ -108,15 +110,15 @@ reconfiguration; they are not disposable generated cache files.
 
 Stop on any start, finish, or cancel error and report it exactly. After a finish error, do not invoke
 cancel or reuse that session; resolve the reported cause and restart with start. Stop for unresolved
-tracker conflicts or monorepo layout choices before finish. Do not repair script-owned state, choose
-per-file coverage, change the request, pass unrequested paths to finish, or manually remove the
-session.
+explicit tracker choices or monorepo layout choices before finish. Do not repair script-owned
+state, choose per-file coverage, change the request, pass unrequested paths to finish, or manually
+remove the session.
 
 ## Review Gate
 
 - [ ] Read each complete generated Rule and Skill; confirm it follows its authoring contract and
       uses current target evidence.
-- [ ] Read all three Matt documents; confirm they match confirmed tracker, label, and domain-layout
+- [ ] Read all three Matt documents; confirm they match the selected tracker, label, and domain-layout
       decisions and preserve existing user-owned content.
 - [ ] Confirm `AGENTS.md` will contain one `## Agent skills` block pointing to all three documents.
 - [ ] Read the completed models file; confirm every requested Agent/platform has a non-empty model.

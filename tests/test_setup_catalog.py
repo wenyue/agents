@@ -81,7 +81,7 @@ class SetupCatalogTest(unittest.TestCase):
 
         self.assertNotIn('.agents/skills/setup-project-agents', targets)
         matt_blueprints = {
-            'skills/setup-matt-pocock-skills/issue-tracker-github.md',
+            'skills/setup-matt-pocock-skills/issue-tracker-local.md',
             'skills/setup-matt-pocock-skills/triage-labels.md',
             'skills/setup-matt-pocock-skills/domain.md',
         }

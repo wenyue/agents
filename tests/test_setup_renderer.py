@@ -433,7 +433,6 @@ class SetupRendererTest(unittest.TestCase):
             '.agents/lock.json',
             '.agents/config.json',
             '.agents/rules/undeclared.md',
-            '.agents/rules/00-global-rule-config.md',
         )
         for rejected in rejected_paths:
             with self.subTest(path=rejected), tempfile.TemporaryDirectory() as temp_dir:
@@ -520,7 +519,6 @@ class SetupRendererTest(unittest.TestCase):
             )
 
             self.assertIn('AGENTS.md', rendered.files_by_path)
-            self.assertNotIn('.cursor/rules/00-global-rule-config.mdc', rendered.files_by_path)
 
     def test_renderer_rejects_symlinked_target_reads(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -550,7 +548,7 @@ class SetupRendererTest(unittest.TestCase):
             config_path.write_text(
                 json.dumps({
                     'version': 1,
-                    'selected_rules': ['00-global-rule-config'],
+                    'selected_rules': ['project-owned-rule'],
                 }),
                 encoding='utf-8',
             )

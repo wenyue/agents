@@ -69,6 +69,31 @@ def markdown_structure(text: str) -> tuple[str, ...]:
 
 
 class PluginManifestTest(unittest.TestCase):
+    def test_repository_agents_entry_matches_public_template_around_rule_rows(self):
+        template = (
+            REPO_ROOT / 'setup-assets/templates/entry-files/AGENTS.md'
+        ).read_text(encoding='utf-8')
+        entry = (REPO_ROOT / 'AGENTS.md').read_text(encoding='utf-8')
+        prefix, suffix = template.split('{{project_rule_rows}}')
+
+        self.assertTrue(entry.startswith(prefix))
+        self.assertTrue(entry.endswith(suffix))
+        rule_rows = entry[len(prefix) : len(entry) - len(suffix)]
+        self.assertRegex(rule_rows, r'^(?:\|.*\|\n?)+$')
+
+    def test_repository_local_rules_use_only_the_project_numbering_contract(self):
+        self.assertEqual(
+            {
+                path.name
+                for path in (REPO_ROOT / '.agents/rules').glob('*.md')
+            },
+            {
+                '00-project-tools.md',
+                '01-project-rules.md',
+                '02-project-structure.md',
+            },
+        )
+
     def test_documentation_and_local_runtime_boundaries(self):
         self.assertFalse((REPO_ROOT / 'agents-zh').exists())
 

@@ -73,6 +73,10 @@ In the target repository, ask the Agent to use `setup-project-agents` to initial
 Setup always configures Codex, Cursor, and Copilot and also creates the Matt repository context in
 `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and `docs/agents/domain.md`.
 
+New projects default to a Local Markdown issue tracker under `.scratch/`, regardless of their Git
+remote. Setup preserves a complete existing tracker configuration. Ask explicitly for GitHub,
+GitLab, or another tracker when that project should publish work remotely.
+
 One maintainer runs setup for a new repository, reviews the result, and commits the managed project
 snapshot. Other developers receive it through clone or pull and do not run setup individually. Run
 `setup-project-agents` again only when the project adopts a newer setup-managed snapshot contract.

@@ -66,6 +66,10 @@ copilot plugin install smartkit@wenyue
 Cursor 和 Copilot，并在 `docs/agents/issue-tracker.md`、`docs/agents/triage-labels.md` 和
 `docs/agents/domain.md` 中创建 Matt 仓库上下文。
 
+新项目默认使用 `.scratch/` 下的 Local Markdown issue tracker，不受 Git remote 影响。Setup 会保留
+完整的现有 tracker 配置。项目需要将工作发布到远端时，应明确要求使用 GitHub、GitLab 或其他
+tracker。
+
 新仓库由一名维护者运行 setup、审查结果并提交受管项目快照。其他开发者通过 clone 或 pull 获取，
 无需逐人运行 setup。只有项目需要采用新版 setup 受管快照契约时，才再次运行
 `setup-project-agents`。

@@ -1,21 +1,8 @@
 # Project Agent Entry
 
-The source of truth for this repository's development instructions is `.agents/rules/`.
-Do not duplicate or reinterpret those rules unless the user explicitly asks.
+## Project rules
 
-## How To Apply Rules
-
-Always read the global rules first:
-
-| Read when | Rule | Strength |
-| --- | --- | --- |
-| Starting any repository task | `.agents/rules/00-global-rule-config.md` | `Mandatory` |
-| Starting any repository task | `.agents/rules/01-global-personality.md` | `Default` |
-| Starting any repository task | `.agents/rules/02-global-response-format.md` | `Default` |
-| Starting any repository task | `.agents/rules/03-global-reasoning-workflow.md` | `Mandatory` |
-| Starting any repository task | `.agents/rules/04-global-skill-config.md` | `Mandatory` |
-
-Then read the project-local rules that apply:
+Read every project Rule whose `Read when` condition matches the current task.
 
 | Read when | Rule | Strength |
 | --- | --- | --- |
@@ -23,27 +10,15 @@ Then read the project-local rules that apply:
 | Plugin assets, documentation, generated files, ownership, or contract evolution | `.agents/rules/01-project-rules.md` | `Mandatory` |
 | Making structure, module, or dependency-boundary decisions | `.agents/rules/02-project-structure.md` | `Advisory` |
 
-The meaning of `Mandatory`, `Default`, and `Advisory` is defined in
-`.agents/rules/00-global-rule-config.md`.
-
-## Precedence
-
-- Direct system, developer, and user instructions override everything in this file.
-- Always finish reading applicable `00–09` global rules before deciding whether any later numbered
-  rule applies.
-- When multiple referenced rule files apply, prefer the more specific file-type or project-local
-  rule over the general rule.
+Apply SmartKit plugin Rules for shared strength and precedence. Keep project Rule policy in the
+files listed above.
 
 ## Agent skills
 
-### Issue tracker
+Load the context required by the current task or Skill.
 
-Publish and manage this repository's work as GitHub issues. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Use the repository's canonical triage label mapping. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Use the repository's single-context domain documentation layout. See `docs/agents/domain.md`.
+| Read when | Context |
+| --- | --- |
+| Working with tracked work, specifications, tickets, or repository navigation | `docs/agents/issue-tracker.md` |
+| Assigning or interpreting Matt triage roles | `docs/agents/triage-labels.md` |
+| Using domain language or recording architecture decisions | `docs/agents/domain.md` |
