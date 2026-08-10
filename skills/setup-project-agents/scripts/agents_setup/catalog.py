@@ -13,17 +13,14 @@ from .models import (
     ExternalSourceSpec,
     ExternalSkillSpec,
     McpOverride,
-    McpReadinessCheck,
     McpServerSpec,
     McpTransport,
     Platform,
     ProjectConfig,
-    RetiredFieldSpec,
 )
 from .external_contract import (
     ExternalContractError,
     validate_ref,
-    validate_source_identity,
 )
 
 
@@ -34,7 +31,7 @@ _SEMVER = re.compile(
     r'(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'
 )
 _NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')
-_STABLE_ID = re.compile(r'^[A-Za-z0-9_.-]+/[a-z0-9][a-z0-9-]*$')
+_GITHUB_SOURCE = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 _FIELD_NAME = re.compile(r'^[A-Za-z][A-Za-z0-9_@-]*$')
 _WINDOWS_RESERVED_CHARACTERS = frozenset('<>:"\\|?*')
 _WINDOWS_RESERVED_NAMES = frozenset(
@@ -43,33 +40,15 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     | {f'LPT{number}' for number in range(1, 10)}
 )
 _ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode', 'control_plane', 'metadata'})
-_CATALOG_FIELDS = frozenset(
-    {'plugin', 'assets', 'retired_assets', 'retired_fields', 'external_skill_sources'}
-)
+_CATALOG_FIELDS = frozenset({'plugin', 'assets'})
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
-_PROJECT_CONFIG_FIELDS = frozenset(
-    {'$schema', 'version', 'selected_rules', 'selected_skills', 'selected_agents', 'skills', 'mcp'}
-)
-_SKILLS_FIELDS = frozenset({'external_sources'})
-_EXTERNAL_SOURCE_FIELDS = frozenset({'id', 'url', 'ref', 'skills'})
-_EXTERNAL_SKILL_FIELDS = frozenset({'id', 'path'})
-_MCP_FIELDS = frozenset({'servers'})
+_PROJECT_CONFIG_FIELDS = frozenset({'$schema', 'version', 'skills', 'mcp'})
+_EXTERNAL_SOURCE_FIELDS = frozenset({'source', 'ref', 'include'})
 _MCP_SERVER_FIELDS = frozenset({
-    'id', 'transport', 'platforms', 'command', 'args', 'cwd', 'env', 'url',
-    'overrides', 'readiness',
+    'id', 'platforms', 'command', 'args', 'cwd', 'env', 'url', 'overrides',
 })
 _MCP_OVERRIDE_FIELDS = frozenset({'command', 'args', 'cwd', 'env', 'url'})
-_MCP_READINESS_FIELDS = frozenset({'checks'})
-_MCP_CHECK_FIELDS = {
-    'command-exists': frozenset({'kind', 'command'}),
-    'runtime-version': frozenset({'kind', 'runtime', 'minimum'}),
-    'workspace-path': frozenset({'kind', 'path', 'executable'}),
-    'environment-variable': frozenset({'kind', 'name'}),
-}
 _ENVIRONMENT_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
-_NUMERIC_VERSION = re.compile(r'^(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*)){2}$')
-_RETIRED_FIELD_FIELDS = frozenset({'path', 'key'})
-_STRUCTURED_SUFFIXES = frozenset({'.json', '.jsonc', '.toml'})
 _MATT_BLUEPRINTS = {
     PurePosixPath('docs/agents/issue-tracker.md'): PurePosixPath(
         'skills/setup-matt-pocock-skills/issue-tracker-local.md'
@@ -194,81 +173,26 @@ def _mcp_override(
     return McpOverride(command, args, cwd, env, url)
 
 
-def _mcp_readiness(value: object, label: str) -> tuple[McpReadinessCheck, ...]:
-    if value is None:
-        return ()
-    document = _object(value, label)
-    _fields(document, _MCP_READINESS_FIELDS, label)
-    raw_checks = _required(document, 'checks', label)
-    if not isinstance(raw_checks, list):
-        raise ContractError(f'{label}.checks must be an array')
-    result: list[McpReadinessCheck] = []
-    for index, raw_check in enumerate(raw_checks):
-        check_label = f'{label}.checks[{index}]'
-        check = _object(raw_check, check_label)
-        kind = check.get('kind')
-        if not isinstance(kind, str) or kind not in _MCP_CHECK_FIELDS:
-            raise ContractError(f'{check_label}.kind is unsupported')
-        _fields(check, _MCP_CHECK_FIELDS[kind], check_label)
-        if kind == 'command-exists':
-            result.append(McpReadinessCheck(
-                kind,
-                command=_mcp_text(_required(check, 'command', check_label), f'{check_label}.command'),
-            ))
-        elif kind == 'runtime-version':
-            minimum = _mcp_text(
-                _required(check, 'minimum', check_label), f'{check_label}.minimum'
-            )
-            if _NUMERIC_VERSION.fullmatch(minimum) is None:
-                raise ContractError(f'{check_label}.minimum must be a numeric version')
-            runtime = _mcp_text(
-                _required(check, 'runtime', check_label), f'{check_label}.runtime'
-            )
-            if runtime != 'node':
-                raise ContractError(f'{check_label}.runtime is unsupported')
-            result.append(McpReadinessCheck(
-                kind,
-                runtime=runtime,
-                minimum=minimum,
-            ))
-        elif kind == 'workspace-path':
-            executable = check.get('executable', False)
-            if type(executable) is not bool:
-                raise ContractError(f'{check_label}.executable must be a boolean')
-            result.append(McpReadinessCheck(
-                kind,
-                path=safe_relative(_required(check, 'path', check_label), f'{check_label}.path'),
-                executable=executable,
-            ))
-        else:
-            name = _mcp_text(_required(check, 'name', check_label), f'{check_label}.name')
-            if _ENVIRONMENT_NAME.fullmatch(name) is None:
-                raise ContractError(f'{check_label}.name must be an environment variable name')
-            result.append(McpReadinessCheck(kind, name=name))
-    return tuple(result)
-
-
 def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
     if value is None:
         return ()
-    root = _object(value, 'project config mcp')
-    _fields(root, _MCP_FIELDS, 'project config mcp')
-    raw_servers = root.get('servers', [])
-    if not isinstance(raw_servers, list):
-        raise ContractError('project config mcp.servers must be an array')
+    if not isinstance(value, list):
+        raise ContractError('project config mcp must be an array')
+    raw_servers = value
     result: list[McpServerSpec] = []
     for index, raw_server in enumerate(raw_servers):
-        label = f'project config mcp.servers[{index}]'
+        label = f'project config mcp[{index}]'
         document = _object(raw_server, label)
         _fields(document, _MCP_SERVER_FIELDS, label)
         server_id = _name(_required(document, 'id', label), f'{label}.id')
-        try:
-            transport = McpTransport(_required(document, 'transport', label))
-        except (TypeError, ValueError) as error:
-            raise ContractError(f'{label}.transport is unsupported') from error
         platforms = _platforms(document.get('platforms'), f'{label}.platforms', tuple(Platform))
         if not platforms:
             raise ContractError(f'{label}.platforms must not be empty')
+        has_command = 'command' in document
+        has_url = 'url' in document
+        if has_command == has_url:
+            raise ContractError(f'{label} requires exactly one of command or url')
+        transport = McpTransport.STDIO if has_command else McpTransport.HTTP
         command = args = cwd = env = url = None
         if transport is McpTransport.STDIO:
             if 'url' in document:
@@ -306,11 +230,10 @@ def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
             env=env or (),
             url=url,
             overrides=overrides,
-            readiness=_mcp_readiness(document.get('readiness'), f'{label}.readiness'),
         ))
     ids = [server.id for server in result]
     if len(ids) != len(set(ids)):
-        raise ContractError('project config mcp.servers has duplicate ids')
+        raise ContractError('project config mcp has duplicate ids')
     return tuple(result)
 
 
@@ -420,19 +343,6 @@ def parse_asset(value: Mapping[str, object]) -> AssetSpec:
     )
 
 
-def parse_retired_field(value: object) -> RetiredFieldSpec:
-    item = _object(value, 'retired field')
-    _fields(item, _RETIRED_FIELD_FIELDS, 'retired field')
-    path_value = _required(item, 'path', 'retired field')
-    if not isinstance(path_value, str):
-        raise ContractError('retired field path must be a relative path')
-    path = safe_relative(path_value, 'retired field path')
-    if path.suffix.lower() not in _STRUCTURED_SUFFIXES:
-        raise ContractError('retired field path must use a structured format')
-    key = safe_field_key(_required(item, 'key', 'retired field'), 'retired field key')
-    return RetiredFieldSpec(path, key)
-
-
 def _load_json(path: Path, label: str) -> Mapping[str, object]:
     try:
         value = json.loads(path.read_text(encoding='utf-8'))
@@ -490,47 +400,12 @@ def load_catalog(source_root: Path) -> Catalog:
         raise ContractError(
             f'catalog asset source is outside an allowed ownership root: {asset.source}'
         )
-    retired_value = document.get('retired_assets', [])
-    if not isinstance(retired_value, list) or not all(
-        isinstance(item, str) for item in retired_value
-    ):
-        raise ContractError('catalog retired_assets must be an array of paths')
-    retired_assets = tuple(
-        safe_relative(item, 'catalog retired asset') for item in retired_value
-    )
-    if len(set(retired_assets)) != len(retired_assets):
-        raise ContractError('catalog has duplicate retired assets')
-    if set(retired_assets).intersection(targets):
-        raise ContractError('catalog asset cannot be active and retired')
-    retired_fields_value = document.get('retired_fields', [])
-    if not isinstance(retired_fields_value, list):
-        raise ContractError('catalog retired_fields must be an array')
-    retired_fields = tuple(parse_retired_field(item) for item in retired_fields_value)
-    retired_field_keys = {(item.path, item.key) for item in retired_fields}
-    if len(retired_field_keys) != len(retired_fields):
-        raise ContractError('catalog has duplicate retired fields')
-    catalog = Catalog(
-        plugin_id,
-        plugin_version,
-        repository,
-        ref,
-        assets,
-        retired_assets=retired_assets,
-        retired_fields=retired_fields,
-    )
-    external_sources = parse_external_skills(
-        {'external_sources': document.get('external_skill_sources', [])},
-        catalog,
-    )
     return Catalog(
         plugin_id,
         plugin_version,
         repository,
         ref,
         assets,
-        retired_assets=retired_assets,
-        external_sources=external_sources,
-        retired_fields=retired_fields,
     )
 
 
@@ -559,22 +434,20 @@ def _selected(value: object, label: str, catalog: Catalog, kind: str) -> tuple[s
 def parse_external_skills(value: object, catalog: Catalog) -> tuple[ExternalSourceSpec, ...]:
     if value is None:
         return ()
-    skills = _object(value, 'project config skills')
-    _fields(skills, _SKILLS_FIELDS, 'project config skills')
-    external = skills.get('external_sources', [])
-    if not isinstance(external, list):
-        raise ContractError('project config skills.external_sources must be an array')
+    if not isinstance(value, list):
+        raise ContractError('project config skills must be an array')
+    external = value
     reserved = {asset.id for asset in catalog.assets if asset.kind == 'skill'}
     result: list[ExternalSourceSpec] = []
     for index, item in enumerate(external):
-        document = _object(item, f'project config skills.external_sources[{index}]')
+        document = _object(item, f'project config skills[{index}]')
         _fields(document, _EXTERNAL_SOURCE_FIELDS, 'external source')
-        source_id = _nonempty_string(_required(document, 'id', 'external source'), 'external source id')
-        url = _nonempty_string(_required(document, 'url', 'external source'), 'external source url')
-        try:
-            validate_source_identity(source_id, url)
-        except ExternalContractError as error:
-            raise ContractError('external source id and GitHub url must match') from error
+        source_id = _nonempty_string(
+            _required(document, 'source', 'external source'), 'external source source'
+        )
+        if _GITHUB_SOURCE.fullmatch(source_id) is None:
+            raise ContractError('external source must use owner/repository form')
+        url = f'https://github.com/{source_id}'
         ref_value = document.get('ref')
         ref = None if ref_value is None else _nonempty_string(ref_value, 'external source ref')
         try:
@@ -582,26 +455,28 @@ def parse_external_skills(value: object, catalog: Catalog) -> tuple[ExternalSour
         except ExternalContractError as error:
             raise ContractError('external source ref must be a safe Git argument') from error
         source_skills: list[ExternalSkillSpec] = []
-        raw_skills = _required(document, 'skills', 'external source')
+        raw_skills = document.get('include')
         if not isinstance(raw_skills, list) or not raw_skills:
-            raise ContractError('external source skills must be a non-empty array')
+            raise ContractError('external source include must be a non-empty array')
+        if not all(isinstance(item, str) for item in raw_skills):
+            raise ContractError('external source include must contain paths')
+        if len(raw_skills) != len(set(raw_skills)):
+            raise ContractError('external source include has duplicate paths')
+        owner = source_id.split('/', 1)[0]
         for raw_skill in raw_skills:
-            skill_doc = _object(raw_skill, 'external skill')
-            _fields(skill_doc, _EXTERNAL_SKILL_FIELDS, 'external skill')
-            skill_id = _nonempty_string(_required(skill_doc, 'id', 'external skill'), 'external skill id')
-            if not _STABLE_ID.fullmatch(skill_id):
-                raise ContractError('external skill id must use owner/name form')
-            path = safe_relative(_required(skill_doc, 'path', 'external skill'), 'external skill path')
-            name = skill_id.rsplit('/', 1)[1]
-            if path.name != name:
-                raise ContractError('external skill id and path basename must match')
+            path = safe_relative(raw_skill, 'external skill path')
+            name = _name(path.name, 'external skill path basename')
             if name in reserved:
                 raise ContractError(f'external skill conflicts with shared skill: {name}')
+            skill_id = f'{owner}/{name}'
             source_skills.append(ExternalSkillSpec(skill_id, name, path))
         result.append(ExternalSourceSpec(source_id, url, ref, tuple(source_skills)))
+    source_ids = [source.id.casefold() for source in result]
+    if len(source_ids) != len(set(source_ids)):
+        raise ContractError('project config skills has duplicate sources')
     names = [item.name for source in result for item in source.skills]
     if len(set(names)) != len(names):
-        raise ContractError('project config skills.external_sources has duplicate names')
+        raise ContractError('project config skills has duplicate names')
     return tuple(result)
 
 
@@ -621,20 +496,11 @@ def load_project_config(
         raise ContractError('project config version must be 1')
     project_external_skills = parse_external_skills(document.get('skills'), catalog)
     mcp_servers = parse_mcp_servers(document.get('mcp'))
-    managed_names = {item.name for item in catalog.external_skills}
-    conflicts = sorted(
-        item.name for source in project_external_skills for item in source.skills if item.name in managed_names
-    )
-    if conflicts:
-        raise ContractError(
-            'project config external skill conflicts with setup-managed skill: '
-            + ', '.join(conflicts)
-        )
     return ProjectConfig(
         version,
-        _selected(document.get('selected_rules'), 'selected_rules', catalog, 'rule'),
-        _selected(document.get('selected_skills'), 'selected_skills', catalog, 'skill'),
-        _selected(document.get('selected_agents'), 'selected_agents', catalog, 'agent'),
-        (*catalog.external_sources, *project_external_skills),
+        _selected(None, 'selected_rules', catalog, 'rule'),
+        _selected(None, 'selected_skills', catalog, 'skill'),
+        _selected(None, 'selected_agents', catalog, 'agent'),
+        project_external_skills,
         mcp_servers,
     )

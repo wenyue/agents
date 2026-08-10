@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 
 from .catalog import ContractError, safe_relative
 from .models import Change, ChangeKind, Plan
+from .ownership import OWNERSHIP_PATH
 from .project import ProjectError, confined_target
 
 
@@ -97,7 +98,11 @@ def _operations(plan: Plan) -> tuple[_Operation, ...]:
             operations.append(_Operation(path, change.kind, change.content))
     operations.sort(
         key=lambda operation: (
-            1 if operation.kind is ChangeKind.DELETE_DIRECTORY else 0,
+            2
+            if operation.path == OWNERSHIP_PATH
+            else 1
+            if operation.kind is ChangeKind.DELETE_DIRECTORY
+            else 0,
             -len(operation.path.parts)
             if operation.kind is ChangeKind.DELETE_DIRECTORY
             else 0,

@@ -80,7 +80,7 @@ class SetupExternalSkillTest(unittest.TestCase):
             assert first is not None
             self.assertIn('# External', (first / 'external-check/SKILL.md').read_text())
             self.assertFalse((first_session / 'external-checkouts').exists())
-            lock = json.loads((first / 'external-skills.lock.json').read_text())
+            lock = json.loads((first / 'sources.json').read_text())
             self.assertEqual(lock['sources'][0]['resolved_ref'], 'main')
             self.assertEqual(lock['sources'][0]['ref_kind'], 'branch')
             license_item = lock['sources'][0]['license']
@@ -150,6 +150,25 @@ class SetupExternalSkillTest(unittest.TestCase):
                 snapshot_external_skills((self.spec(origin.as_uri()),), session=session)
             self.assertFalse((session / 'external-checkouts').exists())
 
+    def test_rejects_conflicting_recognized_root_licenses(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            work, origin = self.make_repository(root)
+            (work / 'COPYING').write_text(
+                'Apache License\nVersion 2.0, January 2004\n',
+                encoding='utf-8',
+            )
+            git(work, 'add', '.')
+            git(work, 'commit', '--quiet', '-m', 'ambiguous licenses')
+            git(work, 'push', '--quiet', 'origin', 'main')
+            session = root / 'session'
+            session.mkdir()
+
+            with self.assertRaisesRegex(ExternalSkillError, 'license.*ambiguous'):
+                snapshot_external_skills((self.spec(origin.as_uri()),), session=session)
+
+            self.assertFalse((session / 'external-checkouts').exists())
+
     def test_rejects_a_symlinked_selected_path_ancestor(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -170,7 +189,7 @@ class SetupExternalSkillTest(unittest.TestCase):
             with self.assertRaisesRegex(ExternalSkillError, 'contains a symlink'):
                 snapshot_external_skills((spec,), session=session)
 
-    def test_rejects_a_tag_that_moved_since_the_existing_lock(self):
+    def test_rejects_a_tag_that_moved_since_the_existing_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             work, origin = self.make_repository(root)
@@ -187,6 +206,24 @@ class SetupExternalSkillTest(unittest.TestCase):
             first_session.mkdir()
             first = snapshot_external_skills((tagged,), session=first_session)
             assert first is not None
+            source_metadata = json.loads((first / 'sources.json').read_text())
+            for source in source_metadata['sources']:
+                for skill_item in source['skills']:
+                    skill_item.pop('files')
+            existing_manifest = first_session / 'smartkit.lock.json'
+            existing_manifest.write_text(json.dumps({
+                'version': 1,
+                'sources': source_metadata['sources'],
+                'assets': [{
+                    'kind': 'tree',
+                    'role': 'skill',
+                    'path': '.agents/skills/external-check',
+                    'digest': 'b' * 64,
+                    'source': 'example/repository',
+                    'source_path': 'plugins/example/skills/external-check',
+                }],
+                'seeded': [],
+            }), encoding='utf-8')
 
             skill = work / 'plugins/example/skills/external-check/SKILL.md'
             skill.write_text(skill.read_text() + '\nMoved tag.\n', encoding='utf-8')
@@ -201,7 +238,7 @@ class SetupExternalSkillTest(unittest.TestCase):
                 snapshot_external_skills(
                     (tagged,),
                     session=second_session,
-                    existing_lock=first / 'external-skills.lock.json',
+                    existing_manifest=existing_manifest,
                 )
 
 

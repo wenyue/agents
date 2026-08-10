@@ -35,6 +35,9 @@ Git safety.
   conversation.
 - Proceed without a Spec or Tickets when one accepted source already makes a single-scope task
   implementable and verifiable. Decide worktree isolation independently from planning artifacts.
+- Use `implement` to execute accepted implementation work from the conversation, an issue, a Spec,
+  or Tickets. It owns implementation, verification, and code review, then leaves the reviewed
+  changes uncommitted unless the user separately authorizes a commit.
 
 ### Scratch Markdown Language
 
@@ -50,8 +53,7 @@ Git safety.
   host or an applicable Skill requires it, parallel work needs separate state, or isolation is
   needed to protect pre-existing checkout state. Do not create a worktree for read-only work or
   solely because a repository task exists.
-- Let `create-worktree` own reuse or creation, the ignored `.worktrees` location, environment setup
-  handoff, and baseline verification before implementation.
+- Let `create-worktree` own linked-worktree selection and readiness before implementation.
 - When implementation in a named linked worktree is complete and verified, apply
   `finish-worktree`. Let it own outcome selection, exact authorization, task and base preparation,
   execution, verification, recovery, and lifecycle cleanup under this Rule's Git Safety policy.

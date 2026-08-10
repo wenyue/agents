@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import shutil
 import stat
@@ -93,7 +94,7 @@ class SetupCliTest(unittest.TestCase):
         return path
 
     @staticmethod
-    def snapshot_external_skills(specs, *, session: Path, existing_lock=None):
+    def snapshot_external_skills(specs, *, session: Path, existing_manifest=None):
         if not specs:
             return None
         root = session / 'external-skills'
@@ -105,8 +106,28 @@ class SetupCliTest(unittest.TestCase):
                     f'---\nname: {spec.name}\ndescription: Use for tests.\n---\n',
                     encoding='utf-8',
                 )
-        (root / 'external-skills.lock.json').write_text(
-            json.dumps({'version': 1, 'sources': []}) + '\n', encoding='utf-8'
+        (root / 'sources.json').write_text(
+            json.dumps({'version': 1, 'sources': [
+                {
+                    'id': source.id, 'url': source.url,
+                    'requested_ref': source.ref, 'resolved_ref': source.ref or 'main',
+                    'ref_kind': 'branch', 'commit': 'a' * 40,
+                    'license': {'spdx': 'MIT', 'path': 'LICENSE', 'sha256': 'b' * 64},
+                    'skills': [
+                        {
+                            'id': spec.id,
+                            'path': spec.path.as_posix(),
+                            'files': {
+                                'SKILL.md': hashlib.sha256(
+                                    (root / spec.name / 'SKILL.md').read_bytes()
+                                ).hexdigest(),
+                            },
+                        }
+                        for spec in source.skills
+                    ],
+                }
+                for source in specs
+            ]}) + '\n', encoding='utf-8'
         )
         return root
 
@@ -160,6 +181,7 @@ class SetupCliTest(unittest.TestCase):
 
             request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
             self.assertEqual(request['version'], 1)
+            self.assertIsNone(request['external_snapshot_sha256'])
             self.assertEqual(request['target'], str(target.absolute()))
             self.assertEqual(request['source_root'], str(REPO_ROOT.absolute()))
             self.assertEqual(request['source_commit'], self.source_commit)
@@ -237,11 +259,10 @@ class SetupCliTest(unittest.TestCase):
             config.parent.mkdir()
             config.write_text(json.dumps({
                 'version': 1,
-                'mcp': {'servers': [{
+                'mcp': [{
                     'id': 'sentry',
-                    'transport': 'http',
                     'url': 'https://mcp.sentry.dev/mcp',
-                }]},
+                }],
             }), encoding='utf-8')
             session = self.private_session(root)
 
@@ -249,7 +270,6 @@ class SetupCliTest(unittest.TestCase):
             request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
             self.assertEqual(request['mcp_servers'], [{
                 'id': 'sentry',
-                'transport': 'http',
                 'platforms': ['codex', 'cursor', 'copilot'],
                 'url': 'https://mcp.sentry.dev/mcp',
             }])
@@ -279,9 +299,14 @@ class SetupCliTest(unittest.TestCase):
                 {'type': 'http', 'url': 'https://mcp.sentry.dev/mcp'},
             )
             lock = json.loads(
-                (target / '.agents/project-mcp.lock.json').read_text()
+                (target / '.agents/smartkit.lock.json').read_text()
             )
-            self.assertEqual([server['id'] for server in lock['servers']], ['sentry'])
+            keys = {
+                asset['key'] for asset in lock['assets'] if asset['role'] == 'mcp'
+            }
+            self.assertTrue(any(key.startswith('mcp_servers.sentry.') for key in keys))
+            self.assertTrue(any(key.startswith('mcpServers.sentry.') for key in keys))
+            self.assertTrue(any(key.startswith('servers.sentry.') for key in keys))
             self.assertEqual(setup_project_agents.main(['check', *invocation]), 0)
 
     def test_apply_rejects_cross_target_replay_and_models_outside_its_session(self):
@@ -353,30 +378,19 @@ class SetupCliTest(unittest.TestCase):
                 json.dumps(
                     {
                         'version': 1,
-                        'skills': {
-                            'external_sources': [
-                                {
-                                    'id': 'example/repository',
-                                    'url': 'https://github.com/example/repository',
-                                    'ref': 'main',
-                                    'skills': [{
-                                        'id': 'example/external-check',
-                                        'path': 'skills/external-check',
-                                    }],
-                                }
-                            ]
-                        },
+                        'skills': [{
+                            'source': 'example/repository',
+                            'ref': 'main',
+                            'include': ['skills/external-check'],
+                        }],
                     }
                 ),
                 encoding='utf-8',
             )
             installed = target / '.agents/skills/external-check'
-            installed.mkdir(parents=True)
-            (installed / 'stale.txt').write_text('stale\n', encoding='utf-8')
-            (installed / 'SKILL.md').write_text('locally changed\n', encoding='utf-8')
             session = self.private_session(root)
 
-            def snapshot(specs, *, session, existing_lock=None):
+            def snapshot(specs, *, session, existing_manifest=None):
                 self.assertEqual(
                     [item.name for source in specs for item in source.skills],
                     ['external-check'],
@@ -389,15 +403,31 @@ class SetupCliTest(unittest.TestCase):
                         f'---\nname: {name}\ndescription: Use for checks.\n---\n',
                         encoding='utf-8',
                     )
-                (destination / 'external-skills.lock.json').write_text(
-                    json.dumps({'version': 1, 'sources': []}) + '\n', encoding='utf-8'
+                (destination / 'sources.json').write_text(
+                    json.dumps({'version': 1, 'sources': [{
+                        'id': 'example/repository',
+                        'url': 'https://github.com/example/repository',
+                        'requested_ref': 'main', 'resolved_ref': 'main',
+                        'ref_kind': 'branch', 'commit': 'a' * 40,
+                        'license': {'spdx': 'MIT', 'path': 'LICENSE', 'sha256': 'b' * 64},
+                        'skills': [{
+                            'id': 'example/external-check',
+                            'path': 'skills/external-check',
+                            'files': {
+                                'SKILL.md': hashlib.sha256(
+                                    (destination / 'external-check/SKILL.md').read_bytes()
+                                ).hexdigest(),
+                            },
+                        }],
+                    }]}) + '\n', encoding='utf-8'
                 )
                 return destination
 
             self.assertEqual(self.prepare(target, session, snapshot=snapshot), 0)
             request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
+            self.assertRegex(request['external_snapshot_sha256'], r'^[0-9a-f]{64}$')
             self.assertEqual(
-                [item['id'] for item in request['external_sources']],
+                [item['source'] for item in request['external_sources']],
                 ['example/repository'],
             )
             self.write_generated_outputs(session)
@@ -408,10 +438,72 @@ class SetupCliTest(unittest.TestCase):
                 ),
                 0,
             )
-            self.assertFalse((installed / 'stale.txt').exists())
             self.assertIn('name: external-check', (installed / 'SKILL.md').read_text())
 
-    def test_check_shares_apply_planning_and_never_writes_target(self):
+    def test_apply_rejects_external_snapshot_metadata_changed_after_prepare(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            config = target / '.agents/config.json'
+            config.parent.mkdir(parents=True)
+            config.write_text(json.dumps({
+                'version': 1,
+                'skills': [{
+                    'source': 'example/repository',
+                    'include': ['skills/external-check'],
+                }],
+            }), encoding='utf-8')
+            session = self.private_session(root)
+            self.assertEqual(self.prepare(target, session), 0)
+            self.write_generated_outputs(session)
+            models = self.write_models(session)
+            metadata = session / 'external-skills/sources.json'
+            document = json.loads(metadata.read_text(encoding='utf-8'))
+            document['sources'][0]['secret'] = 'must-not-enter-manifest'
+            metadata.write_text(json.dumps(document), encoding='utf-8')
+
+            with redirect_stderr(StringIO()):
+                result = setup_project_agents.main([
+                    'apply', '--target', str(target), '--session', str(session),
+                    '--models', str(models), *self.source_args(),
+                ])
+
+            self.assertEqual(result, 2)
+            self.assertEqual(self.snapshot_tree(target), {
+                '.agents/config.json': config.read_bytes(),
+            })
+
+    def test_prepare_reports_external_license_failure_without_writing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            config = target / '.agents/config.json'
+            config.parent.mkdir(parents=True)
+            config.write_text(json.dumps({
+                'version': 1,
+                'skills': [{
+                    'source': 'example/repository',
+                    'include': ['skills/external-check'],
+                }],
+            }), encoding='utf-8')
+            session = self.private_session(root)
+
+            def reject(*args, **kwargs):
+                raise setup_project_agents.ExternalSkillError(
+                    'external source license example/repository is ambiguous'
+                )
+
+            with redirect_stderr(StringIO()):
+                result = self.prepare(target, session, snapshot=reject)
+
+            self.assertEqual(result, 2)
+            self.assertEqual(self.snapshot_tree(target), {
+                '.agents/config.json': config.read_bytes(),
+            })
+
+    def test_check_rejects_modified_managed_file_without_writing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -427,22 +519,11 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(setup_project_agents.main(check_args), 0)
             (target / '.agents/rules/00-project-tools.md').write_text('drift\n', encoding='utf-8')
             before = self.snapshot_tree(target)
-            drift_output = StringIO()
-            with redirect_stdout(drift_output):
-                self.assertEqual(setup_project_agents.main(check_args), 1)
-            drift = json.loads(drift_output.getvalue())
-            self.assertEqual(
-                drift['drift'],
-                {
-                    'kind': 'desired_state_diff',
-                    'message': 'desired state differs from the target project',
-                    'paths': ['.agents/rules/00-project-tools.md'],
-                },
-            )
-            self.assertEqual(drift['changed_paths'], ['.agents/rules/00-project-tools.md'])
+            with redirect_stderr(StringIO()):
+                self.assertEqual(setup_project_agents.main(check_args), 2)
             self.assertEqual(self.snapshot_tree(target), before)
 
-    def test_check_reports_managed_field_drift_without_writing(self):
+    def test_check_rejects_modified_managed_field_without_writing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -461,16 +542,11 @@ class SetupCliTest(unittest.TestCase):
             cursor_config.write_text(json.dumps(document), encoding='utf-8')
             before = self.snapshot_tree(target)
 
-            output = StringIO()
-            with redirect_stdout(output):
-                self.assertEqual(setup_project_agents.main(check_args), 1)
-            result = json.loads(output.getvalue())
-            self.assertEqual(result['drift']['kind'], 'desired_state_diff')
-            self.assertEqual(result['drift']['paths'], ['.cursor/cli.json'])
-            self.assertEqual(result['changed_paths'], ['.cursor/cli.json'])
+            with redirect_stderr(StringIO()):
+                self.assertEqual(setup_project_agents.main(check_args), 2)
             self.assertEqual(self.snapshot_tree(target), before)
 
-    def test_existing_managed_path_is_reported_then_force_overwritten(self):
+    def test_first_adoption_rejects_conflicting_managed_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -484,29 +560,14 @@ class SetupCliTest(unittest.TestCase):
             collision.write_text('user-owned\n', encoding='utf-8')
             before = self.snapshot_tree(target)
 
-            output = StringIO()
-            with redirect_stdout(output):
+            with redirect_stderr(StringIO()):
                 self.assertEqual(
                     setup_project_agents.main(
                         ['check', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
                     ),
-                    1,
+                    2,
                 )
-            result = json.loads(output.getvalue())
-            self.assertEqual(result['drift']['kind'], 'desired_state_diff')
-            self.assertIn('.agents/rules/00-project-tools.md', result['drift']['paths'])
-            self.assertIn('.agents/rules/00-project-tools.md', result['changed_paths'])
             self.assertEqual(self.snapshot_tree(target), before)
-            self.assertEqual(
-                setup_project_agents.main(
-                    ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
-                ),
-                0,
-            )
-            self.assertEqual(
-                collision.read_bytes(),
-                (session / 'generated/.agents/rules/00-project-tools.md').read_bytes(),
-            )
 
     def test_apply_rejects_tampered_selections_or_model_requests_without_writing(self):
         tamper = (
@@ -811,7 +872,10 @@ class SetupEndToEndTest(unittest.TestCase):
             }
             self.assertEqual(
                 changed,
-                {'.agents/agents/change-set-verifier.md'},
+                {
+                    '.agents/agents/change-set-verifier.md',
+                    '.agents/smartkit.lock.json',
+                },
             )
 
             third_session = self.private_session(root, 'third-session')
@@ -881,10 +945,10 @@ class SetupEndToEndTest(unittest.TestCase):
                 '--source-commit', 'a' * 40, '--no-bootstrap',
             ]), 0)
             self.write_generated_outputs(collision_session)
-            self.assertEqual(self.apply_pinned(collision_target, collision_session)[0], 0)
+            self.assertEqual(self.apply_pinned(collision_target, collision_session)[0], 2)
             self.assertEqual(
                 collision.read_bytes(),
-                (collision_session / 'generated/.agents/rules/00-project-tools.md').read_bytes(),
+                b'user collision\n',
             )
 
             source_rule = source / 'setup-assets/agents/change-set-verifier.md'

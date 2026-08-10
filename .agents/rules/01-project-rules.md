@@ -15,11 +15,13 @@ evolution, and test contracts for this repository.
   a vendored repository asset.
 - Treat `rules/registry.json` and `rules/source/` as plugin Rule ownership. Cursor wrappers under
   `rules/cursor/` and command Hooks are delivery adapters, not policy owners.
-- Treat project `skills.external_sources` as GitHub sources fetched once per source and snapshotted
-  with `.agents/external-skills.lock.json` by setup.
-- Treat project `mcp.servers` as typed configuration rendered into host-native entries. The project
-  MCP lock owns only its recorded native path/key pairs; it never owns sibling user MCP entries or
-  records credentials, executable provenance, or remote service state.
+- Treat project `skills` as GitHub `source`/optional `ref`/`include` declarations fetched once per
+  source. Setup infers Skill names and source URLs and records resolved source and license metadata
+  in `.agents/smartkit.lock.json`.
+- Treat project `mcp` as typed configuration rendered into host-native entries. Infer HTTP versus
+  stdio from `url` versus `command`, and infer static project readiness from command paths and named
+  environment variables. The unified manifest owns only rendered leaf fields, never sibling user
+  MCP entries or secret values.
 - Keep recommended-tool Hook executables in `runtime/recommended-tools/` without a `SKILL.md`, and
   keep their authoritative tool declarations in `policies/recommended-tools/`. MCP readiness stays
   beside its Plugin or Project MCP declaration and is interpreted by the same runtime only after
@@ -55,10 +57,13 @@ evolution, and test contracts for this repository.
 - Preserve `.agents/` as the installation root in public setup prompts, templates, manifests,
   scripts, and documentation for target repositories.
 - Treat catalog-selected sources, generated outputs, platform wrappers, and configured external
-  Skill directories as force-converged setup content. Treat automatically discovered project-owned
-  Rules and Skills as preserved target content, and keep non-template structured fields unchanged.
-- Declare obsolete managed paths through `retired_assets`; do not infer deletion ownership from a
-  previous project state file.
+  Skill directories as setup-managed content. Treat automatically discovered project-owned Rules
+  and Skills as preserved target content, and keep non-template structured fields unchanged.
+- Use `.agents/smartkit.lock.json` as the sole project ownership authority for managed Rules, Skills,
+  Agents, MCP fields, wrappers, and configuration. Derive removal from the difference between the
+  previous manifest and current desired state; do not retain historical names in the catalog.
+- On first adoption, own only missing or semantically equal assets. On later runs, verify every
+  recorded digest before planning. Never overwrite an unowned conflict or a modified owned asset.
 - Unit tests may assert structured configuration, schemas, filesystem effects, state transitions,
   exit behavior, and documented repository-boundary facts. Review prose, prompts, and Hook wording
   semantically in addition to automated checks.

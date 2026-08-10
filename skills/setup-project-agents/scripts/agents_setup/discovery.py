@@ -69,7 +69,12 @@ def _rule_metadata(path: Path, relative: PurePosixPath) -> ProjectRuleSpec:
     )
 
 
-def discover_project_rules(target_root: Path, catalog: Catalog) -> tuple[ProjectRuleSpec, ...]:
+def discover_project_rules(
+    target_root: Path,
+    catalog: Catalog,
+    *,
+    previous_managed: frozenset[PurePosixPath] = frozenset(),
+) -> tuple[ProjectRuleSpec, ...]:
     root_relative = PurePosixPath('.agents/rules')
     try:
         root = confined_target(target_root, root_relative)
@@ -87,7 +92,7 @@ def discover_project_rules(target_root: Path, catalog: Catalog) -> tuple[Project
         if not path.is_file() or _RULE_NAME.fullmatch(path.name) is None:
             continue
         relative = root_relative / path.name
-        if relative in managed:
+        if relative in managed or relative in previous_managed:
             continue
         result.append(_rule_metadata(path, relative))
     return tuple(result)
@@ -97,7 +102,7 @@ def discover_project_skills(
     target_root: Path,
     catalog: Catalog,
     *,
-    external_names: frozenset[str] = frozenset(),
+    previous_managed: frozenset[PurePosixPath] = frozenset(),
 ) -> tuple[ProjectSkillSpec, ...]:
     root_relative = PurePosixPath('.agents/skills')
     try:
@@ -127,7 +132,7 @@ def discover_project_skills(
         if not path.is_dir():
             continue
         relative = root_relative / path.name
-        if relative in managed_roots or path.name in external_names:
+        if relative in managed_roots or relative in previous_managed:
             continue
         skill = path / 'SKILL.md'
         if _is_link_like(skill) or not skill.is_file():

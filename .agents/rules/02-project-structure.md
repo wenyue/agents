@@ -14,12 +14,12 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   generated host adapters.
 - `runtime/recommended-tools/` contains private Hook executables and no discoverable Skill.
   `policies/recommended-tools/` contains the declarations shared by that runtime and setup output.
-- Project configuration declares external GitHub Skill sources that setup snapshots into target
-  `.agents/skills/` with an aggregate project lock. It also declares Project MCP servers that setup
-  adapts into host-native entries with a separate entry-ownership lock.
+- Project configuration declares external GitHub Skill sources and Project MCP intent. Setup
+  snapshots Skills into target `.agents/skills/`, renders MCP host adapters, and records every
+  managed file, tree, and structured field in one `.agents/smartkit.lock.json` manifest.
 - `setup-assets/agents/` contains content installed by setup. `setup-assets/blueprints/` and
   `setup-assets/templates/` contain generation and rendering inputs, while `setup-assets/catalog/`
-  owns asset selection, retired paths, and project-configuration contracts.
+  owns asset selection and project-configuration contracts.
 - `docs/` contains design material and `docs/zh-CN/` contains Simplified-Chinese documentation.
   Documentation is outside runtime loading and target installation.
 - `.agents/rules/` owns this repository's development instructions, `.agents/plugins/` owns its

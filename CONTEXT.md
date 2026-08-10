@@ -19,10 +19,16 @@ _Avoid_: Plugin MCP, hard-coded project template
 A host-native MCP configuration generated from a canonical Plugin MCP or Project MCP declaration.
 _Avoid_: MCP source, handwritten platform copy
 
-**Managed MCP Entry**:
-A host-native MCP server entry owned by setup because it was rendered from a Project MCP declaration
-and recorded in the project MCP ownership lock.
-_Avoid_: User MCP, entire MCP configuration file
+**Managed Asset**:
+A project file, directory tree, or structured field that setup may update or delete because its
+identity and current digest are recorded in the SmartKit Ownership Manifest.
+_Avoid_: User-owned asset, inferred-by-name asset
+
+**SmartKit Ownership Manifest**:
+The target repository's `.agents/smartkit.lock.json`, which records resolved external sources,
+digest-bearing managed assets, and non-owned seeded documents. It is the only project setup
+ownership authority.
+_Avoid_: External Skill lock, Project MCP lock, migration ledger
 
 **Configured MCP**:
 An MCP capability delivered as host configuration while its server remains owned by an external
@@ -47,6 +53,6 @@ root, host platform, and local calendar day regardless of the number or outcome 
 _Avoid_: Global daily check, per-check throttle, session throttle
 
 **MCP Readiness Profile**:
-A server-owned list of typed, non-interactive static checks interpreted by the shared check runner
-after the Daily Project Check Gate allows evaluation.
+A typed, non-interactive static check set interpreted after the Daily Project Check Gate. Plugin MCP
+declares it explicitly; Project MCP derives it from command paths and environment-variable names.
 _Avoid_: MCP-specific Hook, arbitrary check script

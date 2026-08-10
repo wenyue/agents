@@ -30,6 +30,8 @@
   应承担的范围时，建议用户调用 `to-tickets`。Tickets 可以从已接受的 Spec 或当前对话开始。
 - 当一个已接受的来源已经使单一范围任务可实施且可验证时，无需 Spec 或 Tickets 即可继续。worktree
   隔离与规划产物应独立决策。
+- 使用 `implement` 执行来自对话、issue、Spec 或 Tickets 的已接受实施工作。它负责实施、验证和
+  code review；除非用户另行授权 commit，否则完成 review 后保留未提交改动。
 
 ### `.scratch` Markdown 语言
 
@@ -43,8 +45,7 @@
 - 对会改变状态的实施，当用户要求隔离、宿主或适用 Skill 要求隔离、并行工作需要独立状态，或必须
   通过隔离保护 checkout 中原有状态时，应用 `create-worktree`。不得为只读工作创建 worktree，也不得
   仅因任务涉及仓库就创建 worktree。
-- 由 `create-worktree` 负责复用或创建、已被忽略的 `.worktrees` 位置、环境准备交接，以及实施前的
-  基线验证。
+- 由 `create-worktree` 负责关联 worktree 的选择和实施前就绪。
 - 具名关联 worktree 中的实施完成并通过验证时，应用 `finish-worktree`。由其根据本 Rule 的 Git
   安全策略负责结果选择、准确授权、任务与 base 准备、执行、验证、恢复和生命周期清理。
 

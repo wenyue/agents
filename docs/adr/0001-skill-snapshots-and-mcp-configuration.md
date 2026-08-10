@@ -12,23 +12,28 @@ both capabilities as remotely resolved dependencies would make Skill behavior va
 release. Treating MCP servers as copied repository assets would duplicate implementations owned by
 npm packages, remote services, or target applications.
 
-Project MCP configuration also shares native files with user-owned servers. SmartKit therefore
-needs an ownership boundary narrower than the complete native MCP document.
+Project MCP configuration shares native files with user-owned servers. Rules, Skills, Agents,
+wrappers, and seeded documents also have different ownership semantics. Separate feature locks and
+catalog lists of historical names made those boundaries harder to reason about.
 
 ## Decision
 
 - Third-party Plugin Skills are reviewed, license-checked, hash-locked snapshots published inside
-  SmartKit. Project external Skills are resolved and snapshotted by `setup-project-agents` with a
-  project lock; setup discovers their root license instead of requiring license metadata in project
-  configuration.
+  SmartKit. Project external Skills use compact `source`/`ref`/`include` declarations and are
+  resolved and snapshotted by `setup-project-agents`; setup discovers their root license.
 - Plugin MCP is a Configured MCP. `mcp/registry.json` is canonical and generated adapters preserve
   each host's native schema. SmartKit does not vendor the external server implementation.
-- Project MCP is declared in `.agents/config.json` and rendered by setup. The project MCP lock owns
-  only the native path/key pairs generated for each logical server; unrelated entries remain
-  user-owned.
-- MCP readiness is declarative, static, and colocated with the MCP declaration. One daily runner
-  interprets the allowlisted check types after the project/host/local-day gate. It does not start a
-  server, contact a remote endpoint, or perform authentication.
+- Project MCP is a compact array in `.agents/config.json`; `url` implies HTTP and `command` implies
+  stdio. Setup renders host-native fields while preserving unrelated entries.
+- `.agents/smartkit.lock.json` is the sole project ownership manifest. It records source resolution
+  metadata plus digest-bearing `file`, `tree`, and `field` assets with descriptive roles. Seeded
+  human-owned documents are recorded separately without update or deletion authority.
+- First setup adopts only missing or equal assets. Later setup verifies the previous digest before
+  updating or deleting an asset. Removed assets are derived only from the previous/current manifest
+  difference; old lock formats and historical catalog names are not read.
+- Plugin MCP readiness remains declarative in the plugin registry. Project MCP readiness is inferred
+  from bare commands, workspace-relative commands, and named environment variables. The daily
+  runner does not contact remote endpoints or authenticate.
 
 ## Consequences
 
@@ -37,5 +42,6 @@ Package-backed MCP servers may resolve a newer package when a host starts them, 
 with `@latest`; that runtime lifecycle is explicit and separate from plugin installation.
 
 Every new host requires an MCP adapter, and adapter drift is rejected by synchronization tests.
-Project removal is safe because setup deletes only lock-owned entries. Secrets remain outside the
-canonical declarations, generated adapters, and ownership locks.
+Project removal is safe because setup deletes only manifest-owned assets. A manually modified owned
+asset fails before writes instead of being overwritten. Secrets remain outside canonical
+declarations, generated adapters, and the ownership manifest.

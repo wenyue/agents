@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .catalog import safe_field_key
+from .external import ExternalSkillError, validated_snapshot_metadata
 from .discovery import (
     DiscoveryError,
     discover_generated_skill_resources,
@@ -24,6 +24,13 @@ from .models import (
     ProjectConfig,
 )
 from .project import ProjectError, confined_target
+from .ownership import (
+    OWNERSHIP_PATH,
+    OwnershipError,
+    load_ownership,
+    reconcile_ownership,
+    verify_ownership,
+)
 from .structured import (
     StructuredConfigError,
     dump_document as _dump_structured,
@@ -112,9 +119,6 @@ def _copy_file(files: dict[PurePosixPath, bytes], path: PurePosixPath, content: 
 _TRANSIENT_NAMES = frozenset({
     '__pycache__', '.DS_Store', 'Thumbs.db', '.pytest_cache', '.mypy_cache', '.ruff_cache'
 })
-_EXTERNAL_ID = re.compile(r'^[A-Za-z0-9_.-]+/[a-z0-9][a-z0-9-]*$')
-_EXTERNAL_LOCK = PurePosixPath('.agents/external-skills.lock.json')
-_MCP_LOCK = PurePosixPath('.agents/project-mcp.lock.json')
 _MCP_NATIVE = {
     Platform.CODEX: (PurePosixPath('.codex/config.toml'), 'mcp_servers'),
     Platform.CURSOR: (PurePosixPath('.cursor/mcp.json'), 'mcpServers'),
@@ -127,39 +131,6 @@ def _is_transient(path: Path) -> bool:
         any(part in _TRANSIENT_NAMES for part in path.parts)
         or path.suffix in {'.pyc', '.pyo'}
     )
-
-
-def _existing_external_names(target_root: Path) -> frozenset[str]:
-    try:
-        lock = confined_target(target_root, _EXTERNAL_LOCK)
-    except ProjectError as error:
-        raise RenderError(str(error)) from error
-    if not lock.exists():
-        return frozenset()
-    if lock.is_symlink() or not lock.is_file():
-        raise RenderError('existing external Skill lock is unsafe')
-    try:
-        document = json.loads(lock.read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise RenderError('existing external Skill lock is invalid') from error
-    if not isinstance(document, dict) or document.get('version') != 1:
-        raise RenderError('existing external Skill lock is invalid')
-    sources = document.get('sources')
-    if not isinstance(sources, list):
-        raise RenderError('existing external Skill lock is invalid')
-    names: set[str] = set()
-    for source in sources:
-        if not isinstance(source, dict) or not isinstance(source.get('skills'), list):
-            raise RenderError('existing external Skill lock is invalid')
-        for skill in source['skills']:
-            skill_id = skill.get('id') if isinstance(skill, dict) else None
-            if not isinstance(skill_id, str) or _EXTERNAL_ID.fullmatch(skill_id) is None:
-                raise RenderError('existing external Skill lock is invalid')
-            name = skill_id.rsplit('/', 1)[1]
-            if name in names:
-                raise RenderError('existing external Skill lock has duplicate destinations')
-            names.add(name)
-    return frozenset(names)
 
 
 def _copy_asset(files: dict[PurePosixPath, bytes], source: Path, target: PurePosixPath) -> None:
@@ -229,28 +200,6 @@ def _agent_values(asset, models: Mapping[str, object]) -> dict[str, object]:
     }
 
 
-def _known_wrapper_targets(catalog: Catalog) -> set[PurePosixPath]:
-    targets: set[PurePosixPath] = set()
-    for wrapper in catalog.assets:
-        if wrapper.kind != 'wrapper' or wrapper.target is None:
-            continue
-        if 'agent' in wrapper.id:
-            candidates = (
-                asset.id for asset in catalog.assets if asset.kind == 'agent'
-            )
-            placeholder = '{agent-name}'
-        else:
-            candidates = (
-                asset.source.stem for asset in catalog.assets if asset.kind == 'rule'
-            )
-            placeholder = '{rule-name}'
-        for candidate in candidates:
-            targets.add(
-                PurePosixPath(wrapper.target.as_posix().replace(placeholder, candidate))
-            )
-    return targets
-
-
 def _remove_dotted_field(document: dict[str, object], key: str) -> bool:
     segments = key.split('.')
     current: dict[str, object] = document
@@ -297,56 +246,6 @@ def _set_dotted_field(document: dict[str, object], key: str, value: object) -> N
     current[segments[-1]] = value
 
 
-def _load_project_mcp_lock(
-    target_root: Path,
-) -> dict[str, dict[Platform, tuple[PurePosixPath, str]]]:
-    try:
-        path = confined_target(target_root, _MCP_LOCK)
-    except ProjectError as error:
-        raise RenderError(str(error)) from error
-    if not path.exists():
-        return {}
-    if path.is_symlink() or not path.is_file():
-        raise RenderError('existing Project MCP lock is unsafe')
-    try:
-        document = json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise RenderError('existing Project MCP lock is invalid') from error
-    if not isinstance(document, dict) or set(document) != {'version', 'servers'}:
-        raise RenderError('existing Project MCP lock is invalid')
-    if document.get('version') != 1 or not isinstance(document.get('servers'), list):
-        raise RenderError('existing Project MCP lock is invalid')
-    result: dict[str, dict[Platform, tuple[PurePosixPath, str]]] = {}
-    for raw_server in document['servers']:
-        if (
-            not isinstance(raw_server, dict)
-            or set(raw_server) != {'id', 'entries'}
-            or not isinstance(raw_server.get('id'), str)
-            or not isinstance(raw_server.get('entries'), dict)
-        ):
-            raise RenderError('existing Project MCP lock is invalid')
-        server_id = raw_server['id']
-        if server_id in result:
-            raise RenderError('existing Project MCP lock has duplicate server ids')
-        entries: dict[Platform, tuple[PurePosixPath, str]] = {}
-        for raw_platform, raw_entry in raw_server['entries'].items():
-            try:
-                platform = Platform(raw_platform)
-            except (TypeError, ValueError) as error:
-                raise RenderError('existing Project MCP lock is invalid') from error
-            expected_path, expected_root = _MCP_NATIVE[platform]
-            if (
-                not isinstance(raw_entry, dict)
-                or set(raw_entry) != {'path', 'key'}
-                or raw_entry.get('path') != expected_path.as_posix()
-                or raw_entry.get('key') != f'{expected_root}.{server_id}'
-            ):
-                raise RenderError('existing Project MCP lock is invalid')
-            entries[platform] = (expected_path, raw_entry['key'])
-        result[server_id] = entries
-    return result
-
-
 def _effective_mcp_server(
     server: McpServerSpec,
     platform: Platform,
@@ -385,28 +284,14 @@ def _render_mcp_entry(server: McpServerSpec, platform: Platform) -> dict[str, ob
     return entry
 
 
-def _mcp_entries_equal(current: object, desired: object, platform: Platform) -> bool:
-    if current == desired:
-        return True
-    if platform is not Platform.CURSOR or not isinstance(current, Mapping):
-        return False
-    normalized = dict(current)
-    if 'type' not in normalized:
-        if 'command' in normalized and 'url' not in normalized:
-            normalized['type'] = 'stdio'
-        elif 'url' in normalized and 'command' not in normalized:
-            normalized['type'] = 'http'
-    return normalized == desired
-
-
 def _render_project_mcp(
     target_root: Path,
     config: ProjectConfig,
     native_documents: dict[PurePosixPath, dict[str, object]],
     native_templates: dict[PurePosixPath, dict[str, object]],
     delete_paths: set[PurePosixPath],
-) -> bytes | None:
-    previous = _load_project_mcp_lock(target_root)
+    previous_owned_fields: frozenset[tuple[PurePosixPath, str]],
+) -> None:
 
     def native_document(path: PurePosixPath) -> dict[str, object]:
         if path in native_documents:
@@ -421,40 +306,33 @@ def _render_project_mcp(
         native_documents[path] = document
         return document
 
-    owned = {
-        (platform, path, key)
-        for entries in previous.values()
-        for platform, (path, key) in entries.items()
-    }
     touched_paths: set[PurePosixPath] = set()
-    for entries in previous.values():
-        for path, key in entries.values():
-            document = native_document(path)
-            _remove_dotted_field(document, key)
-            touched_paths.add(path)
-
-    lock_servers: list[dict[str, object]] = []
     for server in config.mcp_servers:
-        lock_entries: dict[str, object] = {}
         for platform in server.platforms:
             path, root = _MCP_NATIVE[platform]
             key = f'{root}.{server.id}'
             desired = _render_mcp_entry(server, platform)
             document = native_document(path)
-            exists, current = _existing_dotted_field(document, key)
-            if exists and (platform, path, key) not in owned:
-                if not _mcp_entries_equal(current, desired, platform):
+            desired_fields = dict(_safe_leaves(desired, key))
+            for owned_path, owned_key in previous_owned_fields:
+                if owned_path == path and owned_key.startswith(key + '.'):
+                    exists, current = _existing_dotted_field(document, owned_key)
+                    if owned_key in desired_fields and (
+                        not exists or current != desired_fields[owned_key]
+                    ):
+                        _remove_dotted_field(document, owned_key)
+            for desired_key, desired_value in desired_fields.items():
+                exists, current = _existing_dotted_field(document, desired_key)
+                if exists and current != desired_value:
                     raise RenderError(
                         f'Project MCP entry conflicts with user configuration: '
-                        f'{path.as_posix()}:{key}'
+                        f'{path.as_posix()}:{desired_key}'
                     )
-                _remove_dotted_field(document, key)
-            _set_dotted_field(document, key, desired)
+                if not exists:
+                    _set_dotted_field(document, desired_key, desired_value)
             template = native_templates.setdefault(path, {})
             _set_dotted_field(template, key, desired)
             touched_paths.add(path)
-            lock_entries[platform.value] = {'path': path.as_posix(), 'key': key}
-        lock_servers.append({'id': server.id, 'entries': lock_entries})
 
     for path in touched_paths:
         if not native_documents[path] and path not in native_templates:
@@ -463,9 +341,7 @@ def _render_project_mcp(
         else:
             delete_paths.discard(path)
 
-    if not lock_servers:
-        return None
-    return (json.dumps({'version': 1, 'servers': lock_servers}, indent=2) + '\n').encode()
+    return None
 
 
 def render_desired_state(
@@ -478,15 +354,17 @@ def render_desired_state(
     external_root: Path | None = None,
 ) -> RenderedState:
     """Render only catalog-owned project assets without mutating the target."""
+    try:
+        previous_ownership = load_ownership(target_root)
+        verify_ownership(target_root, previous_ownership)
+    except OwnershipError as error:
+        raise RenderError(str(error)) from error
     files: dict[PurePosixPath, bytes] = {}
     fields: list[DesiredField] = []
     native_documents: dict[PurePosixPath, dict[str, object]] = {}
     native_templates: dict[PurePosixPath, dict[str, object]] = {}
     replace_roots: set[PurePosixPath] = set()
-    delete_paths: set[PurePosixPath] = set(catalog.retired_assets)
-    known_file_targets = _known_wrapper_targets(catalog)
-    known_file_targets.add(_EXTERNAL_LOCK)
-    known_file_targets.add(_MCP_LOCK)
+    delete_paths: set[PurePosixPath] = set()
     assets_by_id = {asset.id: asset for asset in catalog.assets}
     for asset in catalog.assets:
         if asset.control_plane or asset.target is None:
@@ -494,21 +372,47 @@ def render_desired_state(
         source = source_root / asset.source
         if asset.kind == 'skill' and source.is_dir():
             replace_roots.add(asset.target)
-        elif asset.kind in {'rule', 'agent'} or (
-            asset.kind == 'template' and _format_for(asset.target) is None
-        ):
-            known_file_targets.add(asset.target)
-    existing_external_names = _existing_external_names(target_root)
-    replace_roots.update(
-        PurePosixPath('.agents/skills') / name for name in existing_external_names
+    previous_rule_paths = frozenset(
+        asset.path
+        for asset in (previous_ownership.assets if previous_ownership else ())
+        if asset.role == 'rule' and asset.path.parts[:2] == ('.agents', 'rules')
     )
+    previous_skill_roots = frozenset(
+        asset.path if asset.kind == 'tree' else asset.path.parent
+        for asset in (previous_ownership.assets if previous_ownership else ())
+        if asset.role == 'skill' and asset.path.parts[:2] == ('.agents', 'skills')
+    )
+    previous_owned_fields = frozenset(
+        (asset.path, asset.key)
+        for asset in (previous_ownership.assets if previous_ownership else ())
+        if asset.kind == 'field' and asset.key is not None
+    )
+    sources: list[Mapping[str, object]] = []
+    external_assets: dict[str, tuple[str, PurePosixPath]] = {}
+
+    def native_document(path: PurePosixPath) -> dict[str, object]:
+        if path not in native_documents:
+            format_name = _format_for(path)
+            assert format_name is not None
+            try:
+                current = confined_target(target_root, path)
+            except ProjectError as error:
+                raise RenderError(str(error)) from error
+            native_documents[path] = _load_structured(current, format_name)
+        return native_documents[path]
+
     try:
-        project_rules = discover_project_rules(target_root, catalog)
+        project_rules = discover_project_rules(
+            target_root, catalog, previous_managed=previous_rule_paths,
+        )
         project_skills = discover_project_skills(
             target_root,
             catalog,
-            external_names=frozenset(item.name for item in config.external_skills)
-            | existing_external_names,
+            previous_managed=previous_skill_roots
+            | frozenset(
+                PurePosixPath('.agents/skills') / item.name
+                for item in config.external_skills
+            ),
         )
         generated_skill_resources = discover_generated_skill_resources(target_root, catalog)
     except DiscoveryError as error:
@@ -531,7 +435,7 @@ def render_desired_state(
                     target_path = confined_target(target_root, asset.target)
                 except ProjectError as error:
                     raise RenderError(str(error)) from error
-                existing = _load_structured(target_path, format_name)
+                existing = dict(native_document(asset.target))
                 if existing:
                     remaining = _remove_template_fields(existing, template)
                     if remaining:
@@ -550,8 +454,11 @@ def render_desired_state(
                 target_path = confined_target(target_root, asset.target)
             except ProjectError as error:
                 raise RenderError(str(error)) from error
-            existing = _load_structured(target_path, format_name)
-            native_documents[asset.target] = _deep_merge(existing, template)
+            existing = dict(native_document(asset.target))
+            for key, _ in _safe_leaves(template):
+                if (asset.target, key) in previous_owned_fields:
+                    _remove_dotted_field(existing, key)
+            native_documents[asset.target] = _deep_merge(template, existing)
             native_templates[asset.target] = template
             continue
         if asset.kind == 'template':
@@ -618,60 +525,74 @@ def render_desired_state(
         }
         if actual_external != expected_external:
             raise RenderError('external Skill snapshot does not match project config')
+        try:
+            sources = list(validated_snapshot_metadata(config.external_sources, external_root))
+        except ExternalSkillError as error:
+            raise RenderError(str(error)) from error
+        for source in sources:
+            for item in source['skills']:
+                assert isinstance(item, Mapping)
+                name = str(item['id']).rsplit('/', 1)[-1]
+                external_assets[name] = (
+                    str(source['id']), PurePosixPath(str(item['path'])),
+                )
         for skill in config.external_skills:
             source = external_root / skill.name
             if not (source / 'SKILL.md').is_file():
                 raise RenderError(f'external Skill is missing SKILL.md: {skill.name}')
             _copy_asset(files, source, PurePosixPath('.agents/skills') / skill.name)
             replace_roots.add(PurePosixPath('.agents/skills') / skill.name)
-        lock = external_root / 'external-skills.lock.json'
-        if not lock.is_file() or lock.is_symlink():
-            raise RenderError('external Skill lock is missing or unsafe')
-        files[_EXTERNAL_LOCK] = lock.read_bytes()
-
-    mcp_lock = _render_project_mcp(
+    _render_project_mcp(
         target_root,
         config,
         native_documents,
         native_templates,
         delete_paths,
+        previous_owned_fields,
     )
-    if mcp_lock is not None:
-        files[_MCP_LOCK] = mcp_lock
-
-    for retired in catalog.retired_fields:
-        format_name = _format_for(retired.path)
-        if format_name is None:
-            raise RenderError(
-                f'retired field path has no structured format: {retired.path.as_posix()}'
-            )
-        if retired.path in native_documents:
-            document = native_documents[retired.path]
-        else:
-            try:
-                target_path = confined_target(target_root, retired.path)
-            except ProjectError as error:
-                raise RenderError(str(error)) from error
-            document = _load_structured(target_path, format_name)
-        if not _remove_dotted_field(document, retired.key):
-            continue
-        if document:
-            native_documents[retired.path] = document
-        else:
-            native_documents.pop(retired.path, None)
-            native_templates.pop(retired.path, None)
-            delete_paths.add(retired.path)
 
     for path, document in native_documents.items():
+        if not document:
+            delete_paths.add(path)
+            continue
         format_name = _format_for(path)
         assert format_name is not None
         _copy_file(files, path, _dump_structured(document, format_name))
         for key, value in _safe_leaves(native_templates.get(path, {})):
             fields.append(DesiredField(path, key, value, format_name))
-    delete_paths.update(known_file_targets.difference(files))
-    delete_paths.difference_update(files)
     desired_files = tuple(DesiredFile(path, content) for path, content in sorted(files.items(), key=lambda item: item[0].as_posix()))
     desired_fields = tuple(sorted(fields, key=lambda item: (item.path.as_posix(), item.key)))
+    try:
+        ownership = reconcile_ownership(
+            target_root,
+            desired_files,
+            desired_fields,
+            tuple(replace_roots),
+            sources=sources,
+            external_sources=external_assets,
+            structured_paths=tuple(native_documents),
+            previous=previous_ownership,
+        )
+    except OwnershipError as error:
+        raise RenderError(str(error)) from error
+    files = {item.path: item.content for item in ownership.files}
+    for path, key in ownership.remove_fields:
+        document = native_documents.get(path)
+        if document is None:
+            document = native_document(path)
+        _remove_dotted_field(document, key)
+        if document:
+            format_name = _format_for(path)
+            assert format_name is not None
+            files[path] = _dump_structured(document, format_name)
+            delete_paths.discard(path)
+        else:
+            files.pop(path, None)
+            delete_paths.add(path)
+    files[OWNERSHIP_PATH] = ownership.manifest
+    desired_files = tuple(DesiredFile(path, content) for path, content in sorted(files.items()))
+    delete_paths.update(ownership.delete_paths)
+    delete_paths.difference_update(files)
     return RenderedState(
         desired_files,
         desired_fields,

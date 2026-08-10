@@ -31,10 +31,10 @@ Agent 只能编辑以下工作流输入：
 三个 `docs/agents/` 文件和 `AGENTS.md` 指针是团队共享、可由人工编辑的仓库配置。除非用户明确
 确认重新配置，否则应保留完整的现有文档；它们不是可丢弃的生成缓存。
 
-目标仓库的 `.agents/config.json` 是所选外部 Skills 与 Project MCP 的唯一 canonical 输入。它必须在
-`start` 前符合当前 version 1 schema。不要在 `request.json` 中修改已捕获的选择。Setup 会快照外部
-Skills，将 Project MCP 渲染为各宿主原生配置，并只在 `.agents/project-mcp.lock.json` 中记录自己
-拥有的原生条目。
+目标仓库的 `.agents/config.json` 是外部 Skills 与 Project MCP 的唯一 canonical 输入。它必须在
+`start` 前符合当前 version 1 schema：`skills` 是由 `source`、可选 `ref` 和 `include` 组成的数组，
+`mcp` 是每项只能声明 `url` 或 `command` 之一的数组。不要在 `request.json` 中修改已捕获的选择。
+Setup 会在 `.agents/smartkit.lock.json` 中记录全部受管文件、目录树和结构化字段；绝不记录 secret 值。
 
 ## 前置条件
 
@@ -113,8 +113,6 @@ Skills，将 Project MCP 渲染为各宿主原生配置，并只在 `.agents/pro
 - [ ] 读取已填写的 models 文件；确认每个请求的 Agent/platform 都有非空 model。
 - [ ] 确认 request 未被修改，且 `GENERATED` 恰好包含八个请求目标路径，没有未声明目录。
 - [ ] 确认 Git 未忽略任何请求目标，并且生成的项目文件不包含 credential 或 secret。
-- [ ] 确认 Project MCP 原生条目和 `.agents/project-mcp.lock.json` 只包含已声明配置与环境变量名称，
-      不包含环境变量值。
 
 ## Acceptance Gate
 

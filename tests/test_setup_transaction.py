@@ -59,6 +59,15 @@ class SetupTransactionTest(unittest.TestCase):
                 )
             self.assertEqual((target / 'owned').read_bytes(), content)
 
+    def test_ownership_manifest_is_the_last_transaction_mutation(self):
+        operations = transaction._operations(self.plan(
+            Change(ChangeKind.UPDATE, PurePosixPath('.agents/smartkit.lock.json'), b'next\n'),
+            Change(ChangeKind.CREATE, PurePosixPath('z-content.txt'), b'content\n'),
+            Change(ChangeKind.DELETE_DIRECTORY, PurePosixPath('retired'), None),
+        ))
+
+        self.assertEqual(operations[-1].path, PurePosixPath('.agents/smartkit.lock.json'))
+
     def test_rolls_back_all_changes_when_a_later_replace_fails(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             target = Path(temp_dir)
@@ -85,6 +94,64 @@ class SetupTransactionTest(unittest.TestCase):
                     )
             self.assertEqual(first.read_bytes(), b'a-old\n')
             self.assertEqual(second.read_bytes(), b'b-old\n')
+
+    def test_rolls_back_when_structured_field_file_replace_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            ordinary = self.write(target, 'a-file.txt', b'old-file\n')
+            structured = self.write(
+                target, '.codex/config.toml', b'[mcp_servers.old]\nurl = "old"\n'
+            )
+            real_replace = transaction._replace
+
+            def fail_structured(source, destination, *args, **kwargs):
+                if destination == 'config.toml':
+                    raise OSError('injected field application failure')
+                return real_replace(source, destination, *args, **kwargs)
+
+            with mock.patch.object(transaction, '_replace', side_effect=fail_structured):
+                with self.assertRaisesRegex(TransactionError, 'field application failure'):
+                    apply_plan(target, self.plan(
+                        Change(ChangeKind.UPDATE, PurePosixPath('a-file.txt'), b'new-file\n'),
+                        Change(
+                            ChangeKind.UPDATE,
+                            PurePosixPath('.codex/config.toml'),
+                            b'[mcp_servers.next]\nurl = "next"\n',
+                        ),
+                    ))
+
+            self.assertEqual(ordinary.read_bytes(), b'old-file\n')
+            self.assertEqual(structured.read_bytes(), b'[mcp_servers.old]\nurl = "old"\n')
+
+    def test_rolls_back_when_ownership_manifest_replace_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            content = self.write(target, 'a-content.txt', b'old-content\n')
+            manifest = self.write(
+                target, '.agents/smartkit.lock.json', b'{"version": 1, "old": true}\n'
+            )
+            real_replace = transaction._replace
+
+            def fail_manifest(source, destination, *args, **kwargs):
+                if destination == 'smartkit.lock.json':
+                    raise OSError('injected manifest application failure')
+                return real_replace(source, destination, *args, **kwargs)
+
+            with mock.patch.object(transaction, '_replace', side_effect=fail_manifest):
+                with self.assertRaisesRegex(TransactionError, 'manifest application failure'):
+                    apply_plan(target, self.plan(
+                        Change(ChangeKind.UPDATE, PurePosixPath('a-content.txt'), b'new-content\n'),
+                        Change(
+                            ChangeKind.UPDATE,
+                            PurePosixPath('.agents/smartkit.lock.json'),
+                            b'{"version": 1, "old": false}\n',
+                        ),
+                    ))
+
+            self.assertEqual(content.read_bytes(), b'old-content\n')
+            self.assertEqual(
+                manifest.read_bytes(), b'{"version": 1, "old": true}\n'
+            )
 
     def test_rolls_back_a_retired_directory_when_parent_removal_fails(self):
         with tempfile.TemporaryDirectory() as temp_dir:

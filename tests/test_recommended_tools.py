@@ -523,23 +523,20 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             config.parent.mkdir()
             config.write_text(json.dumps({
                 'version': 1,
-                'mcp': {'servers': [
+                'mcp': [
                     {
                         'id': 'inspector', 'platforms': ['codex'],
-                        'readiness': {'checks': [{
-                            'kind': 'workspace-path',
-                            'path': 'cache/inspector.exe',
-                            'executable': True,
-                        }]},
+                        'command': 'cache/inspector.exe',
                     },
                     {
                         'id': 'private', 'platforms': ['codex'],
-                        'readiness': {'checks': [{
-                            'kind': 'environment-variable', 'name': 'MCP_TOKEN',
-                        }]},
+                        'command': 'private-mcp', 'env': ['MCP_TOKEN'],
                     },
-                    {'id': 'sentry', 'platforms': ['codex']},
-                ]},
+                    {
+                        'id': 'sentry', 'platforms': ['codex'],
+                        'url': 'https://mcp.sentry.dev/mcp',
+                    },
+                ],
             }), encoding='utf-8')
 
             with mock.patch.object(checker, 'run_detector', return_value='17.9.0'), \
@@ -551,6 +548,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 [finding.code for finding in findings],
                 [
                     'mcp-version-too-old',
+                    'mcp-prerequisite-missing',
                     'mcp-prerequisite-missing',
                     'mcp-prerequisite-missing',
                     'mcp-prerequisite-missing',
@@ -574,18 +572,16 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             config.parent.mkdir()
             config.write_text(json.dumps({
                 'version': 1,
-                'mcp': {'servers': [{
+                'mcp': [{
                     'id': 'inspector', 'platforms': ['cursor'],
-                    'readiness': {'checks': [{
-                        'kind': 'workspace-path', 'path': 'cache/inspector.exe',
-                    }]},
+                    'command': 'cache/inspector.exe',
                 }, {
                     'id': 'unsafe', 'platforms': ['codex'],
                     'readiness': {'checks': [
                         {'kind': 'shell', 'command': 'echo unsafe'},
                         {'kind': 'environment-variable', 'name': 'MISSING_TOKEN'},
                     ]},
-                }]},
+                }],
             }), encoding='utf-8')
 
             with mock.patch.dict(checker.os.environ, {}, clear=True):
@@ -594,11 +590,42 @@ class RecommendedToolCheckerTest(unittest.TestCase):
 
             self.assertEqual(
                 [finding.code for finding in codex],
-                ['detector-error', 'mcp-prerequisite-missing'],
+                ['detector-error'],
             )
             self.assertEqual(
                 [(finding.tool, finding.code) for finding in cursor],
                 [('inspector MCP', 'mcp-prerequisite-missing')],
+            )
+
+    def test_project_mcp_readiness_uses_effective_host_override(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry = root / 'registry.json'
+            registry.write_text(json.dumps({'version': 1, 'servers': []}), encoding='utf-8')
+            config = root / '.agents/config.json'
+            config.parent.mkdir()
+            config.write_text(json.dumps({
+                'version': 1,
+                'mcp': [{
+                    'id': 'inspector',
+                    'command': 'python3',
+                    'overrides': {'cursor': {
+                        'command': '${workspaceFolder}/cache/inspector.exe',
+                        'env': ['INSPECTOR_TOKEN'],
+                    }},
+                }],
+            }), encoding='utf-8')
+
+            with mock.patch.object(checker.shutil, 'which', return_value='/usr/bin/python3'), \
+                    mock.patch.dict(checker.os.environ, {}, clear=True):
+                codex = checker.check_mcp_readiness('codex', root, registry)
+                cursor = checker.check_mcp_readiness('cursor', root, registry)
+
+            self.assertEqual(codex, [])
+            self.assertEqual(
+                [finding.code for finding in cursor],
+                ['mcp-prerequisite-missing', 'mcp-prerequisite-missing'],
             )
 
     def test_default_daily_runner_combines_tool_and_mcp_findings_once(self):

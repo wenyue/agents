@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -126,6 +127,7 @@ def _request(
     *,
     target: Path,
     source_root: Path,
+    external_snapshot_sha256: str | None,
 ) -> dict[str, object]:
     model_requests = _model_requests(config, catalog)
     blueprint_assets = {
@@ -148,26 +150,22 @@ def _request(
         'target': str(target),
         'source_root': str(source_root),
         'source_commit': source_commit,
+        'external_snapshot_sha256': external_snapshot_sha256,
         'platforms': [item.value for item in _PLATFORMS],
         'selected_rules': list(config.selected_rules),
         'selected_skills': list(config.selected_skills),
         'selected_agents': list(config.selected_agents),
         'external_sources': [
             {
-                'id': source.id,
-                'url': source.url,
+                'source': source.id,
                 **({'ref': source.ref} if source.ref is not None else {}),
-                'skills': [
-                    {'id': item.id, 'path': item.path.as_posix()}
-                    for item in source.skills
-                ],
+                'include': [item.path.as_posix() for item in source.skills],
             }
             for source in config.external_sources
         ],
         'mcp_servers': [
             {
                 'id': server.id,
-                'transport': server.transport.value,
                 'platforms': [platform.value for platform in server.platforms],
                 **({'command': server.command} if server.command is not None else {}),
                 **({'args': list(server.args)} if server.args else {}),
@@ -186,22 +184,6 @@ def _request(
                         for platform, override in server.overrides.items()
                     }
                 } if server.overrides else {}),
-                **({
-                    'readiness': {
-                        'checks': [
-                            {
-                                'kind': check.kind,
-                                **({'command': check.command} if check.command is not None else {}),
-                                **({'runtime': check.runtime} if check.runtime is not None else {}),
-                                **({'minimum': check.minimum} if check.minimum is not None else {}),
-                                **({'path': check.path.as_posix()} if check.path is not None else {}),
-                                **({'executable': True} if check.executable else {}),
-                                **({'name': check.name} if check.name is not None else {}),
-                            }
-                            for check in server.readiness
-                        ]
-                    }
-                } if server.readiness else {}),
             }
             for server in config.mcp_servers
         ],
@@ -268,7 +250,7 @@ def _request_config(
     required = {
         'version', 'target', 'source_root', 'source_commit', 'platforms', 'selected_rules',
         'selected_skills', 'selected_agents', 'external_sources', 'model_requests',
-        'mcp_servers', 'generation_requests',
+        'mcp_servers', 'generation_requests', 'external_snapshot_sha256',
     }
     if set(request) != required or request.get('version') != 1:
         raise SetupError('session request has an invalid shape')
@@ -279,6 +261,13 @@ def _request_config(
     if request.get('source_root') != str(source_root):
         raise SetupError('session request source root does not match this pinned source')
     try:
+        snapshot_digest = request['external_snapshot_sha256']
+        if snapshot_digest is not None and (
+            not isinstance(snapshot_digest, str)
+            or len(snapshot_digest) != 64
+            or any(character not in '0123456789abcdef' for character in snapshot_digest)
+        ):
+            raise ValueError
         platforms = tuple(Platform(item) for item in request['platforms'])
         if platforms != _PLATFORMS:
             raise ValueError
@@ -310,10 +299,8 @@ def _request_config(
             )
         ):
             raise ValueError
-        external_sources = parse_external_skills(
-            {'external_sources': request['external_sources']}, catalog
-        )
-        mcp_servers = parse_mcp_servers({'servers': request['mcp_servers']})
+        external_sources = parse_external_skills(request['external_sources'], catalog)
+        mcp_servers = parse_mcp_servers(request['mcp_servers'])
         config = ProjectConfig(1, *selections, external_sources, mcp_servers)
         if request['model_requests'] != _model_requests(config, catalog):
             raise ValueError
@@ -480,11 +467,18 @@ def _prepare(args: argparse.Namespace, session: Path, source_commit: str | None)
         generated_skills.mkdir(parents=True, exist_ok=False)
     except OSError as error:
         raise SetupError('cannot create generated output directories') from error
-    snapshot_external_skills(
+    external_root = snapshot_external_skills(
         config.external_sources,
         session=session,
-        existing_lock=project.root / '.agents/external-skills.lock.json',
+        existing_manifest=project.root / '.agents/smartkit.lock.json',
     )
+    external_snapshot_sha256 = None
+    if external_root is not None:
+        metadata = external_root / 'sources.json'
+        try:
+            external_snapshot_sha256 = hashlib.sha256(metadata.read_bytes()).hexdigest()
+        except OSError as error:
+            raise SetupError('cannot bind external Skill source metadata') from error
     _write_json(
         session / _REQUEST_NAME,
         _request(
@@ -493,6 +487,7 @@ def _prepare(args: argparse.Namespace, session: Path, source_commit: str | None)
             catalog,
             target=project.root,
             source_root=Path(args.source_root).absolute(),
+            external_snapshot_sha256=external_snapshot_sha256,
         ),
     )
 
@@ -508,6 +503,19 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
         source_root=Path(args.source_root).absolute(),
         catalog=catalog,
     )
+    external_root = session / 'external-skills'
+    expected_snapshot_digest = request['external_snapshot_sha256']
+    if bool(config.external_sources) != (expected_snapshot_digest is not None):
+        raise SetupError('session request external Skill snapshot binding is invalid')
+    if expected_snapshot_digest is not None:
+        try:
+            actual_snapshot_digest = hashlib.sha256(
+                (external_root / 'sources.json').read_bytes()
+            ).hexdigest()
+        except OSError as error:
+            raise SetupError('external Skill source metadata is missing') from error
+        if actual_snapshot_digest != expected_snapshot_digest:
+            raise SetupError('external Skill source metadata changed after prepare')
     generated = _generated_root(session)
     _reject_ignored_generated_targets(project.root)
     models_path = Path(args.models).absolute()
@@ -525,7 +533,7 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
         config,
         generated,
         models,
-        session / 'external-skills' if config.external_sources else None,
+        external_root if config.external_sources else None,
     )
     validate_rendered_state(rendered)
     plan = build_plan(

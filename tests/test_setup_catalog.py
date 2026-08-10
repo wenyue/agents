@@ -23,11 +23,9 @@ class SetupCatalogTest(unittest.TestCase):
             path = Path(temp_dir) / 'config.json'
             path.write_text(json.dumps({
                 'version': 1,
-                'mcp': {
-                    'servers': [
+                'mcp': [
                         {
                             'id': 'inspector',
-                            'transport': 'stdio',
                             'command': 'cache/inspector.exe',
                             'args': ['--port', '8181'],
                             'env': ['INSPECTOR_TOKEN'],
@@ -36,22 +34,12 @@ class SetupCatalogTest(unittest.TestCase):
                                     'command': '${workspaceFolder}/cache/inspector.exe'
                                 }
                             },
-                            'readiness': {
-                                'checks': [
-                                    {
-                                        'kind': 'workspace-path',
-                                        'path': 'cache/inspector.exe',
-                                    }
-                                ]
-                            },
                         },
                         {
                             'id': 'sentry',
-                            'transport': 'http',
                             'url': 'https://mcp.sentry.dev/mcp',
                         },
-                    ]
-                },
+                    ],
             }), encoding='utf-8')
 
             config = load_project_config(path, catalog=load_catalog(REPO_ROOT))
@@ -65,42 +53,32 @@ class SetupCatalogTest(unittest.TestCase):
                 )].command,
                 '${workspaceFolder}/cache/inspector.exe',
             )
-            self.assertEqual(inspector.readiness[0].path.as_posix(), 'cache/inspector.exe')
+            self.assertEqual(inspector.transport.value, 'stdio')
 
     def test_project_config_rejects_untyped_or_inconsistent_mcp_contracts(self):
         invalid_servers = (
-            {'id': 'bad', 'transport': 'stdio', 'command': 'x', 'shell': 'echo unsafe'},
-            {'id': 'bad', 'transport': 'stdio', 'command': 'x', 'url': 'https://example.invalid'},
-            {'id': 'bad', 'transport': 'http', 'url': 'file:///tmp/server'},
+            {'id': 'bad', 'command': 'x', 'shell': 'echo unsafe'},
+            {'id': 'bad', 'command': 'x', 'url': 'https://example.invalid'},
+            {'id': 'bad', 'url': 'file:///tmp/server'},
+            {'id': 'bad'},
             {
-                'id': 'bad', 'transport': 'stdio', 'command': 'x',
-                'readiness': {'checks': [{'kind': 'shell', 'command': 'echo unsafe'}]},
-            },
-            {
-                'id': 'bad', 'transport': 'stdio', 'command': 'x',
-                'readiness': {'checks': [{
-                    'kind': 'runtime-version', 'runtime': 'python',
-                    'minimum': '3.10.0',
-                }]},
-            },
-            {
-                'id': 'bad', 'transport': 'http', 'url': 'https://example.invalid',
+                'id': 'bad', 'url': 'https://example.invalid',
                 'overrides': {'codex': {'command': 'bridge'}},
             },
             {
-                'id': 'bad', 'transport': 'stdio', 'command': 'x',
+                'id': 'bad', 'command': 'x',
                 'platforms': ['codex', 'codex'],
             },
             {
-                'id': 'bad', 'transport': 'stdio', 'command': 'x',
+                'id': 'bad', 'command': 'x',
                 'env': ['TOKEN', 'TOKEN'],
             },
             {
-                'id': 'bad', 'transport': 'stdio', 'command': 'x',
+                'id': 'bad', 'command': 'x',
                 'platforms': ['codex'], 'overrides': {'cursor': {'command': 'y'}},
             },
             {
-                'id': 'bad', 'transport': 'stdio', 'command': 'x',
+                'id': 'bad', 'command': 'x',
                 'overrides': {'vscode': {'command': 'y'}},
             },
         )
@@ -109,7 +87,7 @@ class SetupCatalogTest(unittest.TestCase):
                 path = Path(temp_dir) / 'config.json'
                 path.write_text(json.dumps({
                     'version': 1,
-                    'mcp': {'servers': [server]},
+                    'mcp': [server],
                 }), encoding='utf-8')
                 with self.assertRaises(ContractError):
                     load_project_config(path, catalog=load_catalog(REPO_ROOT))
@@ -119,67 +97,15 @@ class SetupCatalogTest(unittest.TestCase):
             path = Path(temp_dir) / 'config.json'
             path.write_text(json.dumps({
                 'version': 1,
-                'mcp': {'servers': [{
-                    'id': 'example', 'transport': 'stdio', 'command': 'runner',
+                'mcp': [{
+                    'id': 'example', 'command': 'runner',
                     'args': ['--flag', '--flag'],
-                }]},
+                }],
             }), encoding='utf-8')
 
             config = load_project_config(path, catalog=load_catalog(REPO_ROOT))
 
             self.assertEqual(config.mcp_servers[0].args, ('--flag', '--flag'))
-
-    def test_catalog_parses_only_safe_unique_structured_retired_fields(self):
-        def load_with(retired_fields):
-            root = Path(self.temp_dir)
-            (root / 'setup-assets/catalog').mkdir(parents=True, exist_ok=True)
-            (root / 'VERSION').write_text('1.0.0\n', encoding='utf-8')
-            (root / 'setup-assets/catalog/assets.json').write_text(
-                json.dumps({
-                    'plugin': {
-                        'id': 'smartkit',
-                        'version': '1.0.0',
-                        'repository': 'https://example.invalid/agents.git',
-                        'ref': 'master',
-                    },
-                    'assets': [],
-                    'retired_fields': retired_fields,
-                }),
-                encoding='utf-8',
-            )
-            return load_catalog(root)
-
-        with tempfile.TemporaryDirectory() as self.temp_dir:
-            catalog = load_with([{
-                'path': '.github/copilot/settings.json',
-                'key': 'enabledPlugins.superpowers@superpowers-marketplace',
-            }])
-            self.assertEqual(
-                catalog.retired_fields[0].path.as_posix(),
-                '.github/copilot/settings.json',
-            )
-            self.assertEqual(
-                catalog.retired_fields[0].key,
-                'enabledPlugins.superpowers@superpowers-marketplace',
-            )
-
-        invalid = (
-            [{'path': '/absolute.json', 'key': 'value'}],
-            [{'path': '../escape.json', 'key': 'value'}],
-            [{'path': 'settings.json', 'key': ''}],
-            [{'path': 'settings.json', 'key': 'bad..key'}],
-            [{'path': 'settings.txt', 'key': 'value'}],
-            [{'path': 'settings.json', 'key': 'value', 'extra': True}],
-            [
-                {'path': 'settings.json', 'key': 'value'},
-                {'path': 'settings.json', 'key': 'value'},
-            ],
-        )
-        for retired_fields in invalid:
-            with self.subTest(retired_fields=retired_fields), tempfile.TemporaryDirectory() as temp_dir:
-                self.temp_dir = temp_dir
-                with self.assertRaises(ContractError):
-                    load_with(retired_fields)
 
     def test_catalog_excludes_setup_control_plane(self):
         catalog = load_catalog(REPO_ROOT)
@@ -528,19 +454,13 @@ class SetupCatalogTest(unittest.TestCase):
                     {
                         '$schema': 'project-config.schema.json',
                         'version': 1,
-                        'skills': {
-                            'external_sources': [
-                                {
-                                    'id': 'getsentry/plugin-codex',
-                                    'url': 'https://github.com/getsentry/plugin-codex',
-                                    'ref': 'main',
-                                    'skills': [{
-                                        'id': 'getsentry/sentry-debug-issue',
-                                        'path': 'plugins/sentry/skills/sentry-debug-issue',
-                                    }],
-                                }
-                            ]
-                        },
+                        'skills': [{
+                            'source': 'getsentry/plugin-codex',
+                            'ref': 'main',
+                            'include': [
+                                'plugins/sentry/skills/sentry-debug-issue',
+                            ],
+                        }],
                     }
                 ),
                 encoding='utf-8',
@@ -553,10 +473,7 @@ class SetupCatalogTest(unittest.TestCase):
                 'plugins/sentry/skills/sentry-debug-issue',
             )
             document = json.loads(path.read_text(encoding='utf-8'))
-            document['skills']['external_sources'][0]['license'] = {
-                'spdx': 'MIT',
-                'path': 'LICENSE',
-            }
+            document['skills'][0]['license'] = {'spdx': 'MIT', 'path': 'LICENSE'}
             path.write_text(json.dumps(document), encoding='utf-8')
             with self.assertRaisesRegex(ContractError, 'unknown external source fields: license'):
                 load_project_config(path, catalog=load_catalog(REPO_ROOT))
@@ -564,21 +481,12 @@ class SetupCatalogTest(unittest.TestCase):
                 json.dumps(
                     {
                         'version': 1,
-                        'skills': {
-                            'external_sources': [
-                                {
-                                    'id': 'bad/repo',
-                                    'url': 'https://example.invalid/repo.git',
-                                    'ref': 'main',
-                                    'skills': [{'id': 'bad/skill', 'path': 'skill'}],
-                                }
-                            ]
-                        },
+                        'skills': [{'source': 'not-a-source', 'include': ['skill']}],
                     }
                 ),
                 encoding='utf-8',
             )
-            with self.assertRaisesRegex(ContractError, 'GitHub url'):
+            with self.assertRaisesRegex(ContractError, 'owner/repository'):
                 load_project_config(path, catalog=load_catalog(REPO_ROOT))
 
     def test_project_config_rejects_duplicate_external_destination(self):
@@ -588,21 +496,10 @@ class SetupCatalogTest(unittest.TestCase):
                 json.dumps(
                     {
                         'version': 1,
-                        'skills': {
-                            'external_sources': [
-                                {
-                                    'id': 'example/debug-mode',
-                                    'url': 'https://github.com/example/debug-mode',
-                                    'ref': 'main',
-                                    'skills': [{'id': 'example/debug-mode', 'path': 'debug-mode'}],
-                                },
-                                {
-                                    'id': 'other/debug-mode',
-                                    'url': 'https://github.com/other/debug-mode',
-                                    'skills': [{'id': 'other/debug-mode', 'path': 'debug-mode'}],
-                                },
-                            ]
-                        },
+                        'skills': [
+                            {'source': 'example/one', 'ref': 'main', 'include': ['debug-mode']},
+                            {'source': 'other/two', 'include': ['debug-mode']},
+                        ],
                     }
                 ),
                 encoding='utf-8',

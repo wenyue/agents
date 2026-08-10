@@ -483,10 +483,10 @@ def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[st
     mcp = document.get('mcp')
     if mcp is None:
         return []
-    if not isinstance(mcp, dict) or not isinstance(mcp.get('servers', []), list):
+    if not isinstance(mcp, list):
         raise PolicyError('project MCP configuration is invalid')
     servers: list[dict[str, Any]] = []
-    for raw_server in mcp.get('servers', []):
+    for raw_server in mcp:
         if not isinstance(raw_server, dict):
             raise PolicyError('project MCP configuration is invalid')
         platforms = raw_server.get('platforms', ['codex', 'cursor', 'copilot'])
@@ -499,7 +499,40 @@ def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[st
         ):
             raise PolicyError('project MCP configuration is invalid')
         if platform in platforms:
-            servers.append(raw_server)
+            overrides = raw_server.get('overrides', {})
+            if not isinstance(overrides, dict):
+                raise PolicyError('project MCP configuration is invalid')
+            override = overrides.get(platform, {})
+            if not isinstance(override, dict):
+                raise PolicyError('project MCP configuration is invalid')
+            command = override.get('command', raw_server.get('command'))
+            url = override.get('url', raw_server.get('url'))
+            has_command = isinstance(command, str) and bool(command)
+            has_url = isinstance(url, str) and bool(url)
+            if has_command == has_url:
+                raise PolicyError('project MCP configuration is invalid')
+            checks: list[dict[str, Any]] = []
+            if isinstance(command, str):
+                if '/' in command or '\\' in command:
+                    workspace_prefix = '${workspaceFolder}/'
+                    path = (
+                        command[len(workspace_prefix):]
+                        if command.startswith(workspace_prefix)
+                        else command
+                    )
+                    checks.append({
+                        'kind': 'workspace-path', 'path': path, 'executable': True,
+                    })
+                else:
+                    checks.append({'kind': 'command-exists', 'command': command})
+            env = override.get('env', raw_server.get('env', []))
+            if not isinstance(env, list):
+                raise PolicyError('project MCP configuration is invalid')
+            checks.extend({'kind': 'environment-variable', 'name': name} for name in env)
+            servers.append({
+                'id': raw_server.get('id'),
+                'readiness': {'checks': checks},
+            })
     return servers
 
 

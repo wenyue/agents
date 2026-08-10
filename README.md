@@ -89,18 +89,16 @@ One maintainer runs setup for a new repository, reviews the result, and commits 
 snapshot. Other developers receive it through clone or pull and do not run setup individually. Run
 `setup-project-agents` again only when the project adopts a newer setup-managed snapshot contract.
 
-Projects may declare GitHub Skill sources in `.agents/config.json` under
-`skills.external_sources`. Setup fetches each source URL once, snapshots its selected Skills, and
-writes `.agents/external-skills.lock.json`. Generated project Rules use `00–09`; module Rules use
-`10–19`, domain Rules use `20–29`, and package or project-plugin Rules use `30–39`.
+Projects may declare GitHub Skill sources in the `.agents/config.json` `skills` array. Each item
+uses `source`, optional `ref`, and non-empty `include`. Setup installs the selected Skills under
+`.agents/skills/` and manages subsequent updates through the project snapshot.
 
-Projects may also declare an optional `mcp.servers` array in the same version 1 configuration.
-Every server has a stable ID and a typed `http` or `stdio` transport, may target a host subset, and
-may use small typed host overrides. Setup renders Codex `.codex/config.toml`, Cursor
-`.cursor/mcp.json`, and Copilot `.vscode/mcp.json`, then records only the managed path/key pairs in
-`.agents/project-mcp.lock.json`. Equal existing entries are adopted; conflicting user entries stop
-setup; removing a declaration deletes only entries recorded in that lock. Environment variables
-are referenced by name, never stored with their secret values.
+Projects may also declare an optional `mcp` array. Every server has a stable ID and exactly one of
+`url` (HTTP) or `command` (stdio), may target a host subset, and may use small typed host overrides.
+Setup renders Codex `.codex/config.toml`, Cursor `.cursor/mcp.json`, and Copilot
+`.vscode/mcp.json` while preserving entries it does not manage. Conflicting or locally modified
+managed entries stop setup before writes. Environment variables are referenced by name, never
+stored with their secret values.
 
 SmartKit manages only the content it generates and preserves the project's existing files and user
 configuration whenever possible. Commit `AGENTS.md`, `.agents/`, managed host wrappers and config,
@@ -116,12 +114,12 @@ calendar day. Its first step is the daily gate; policy changes do not bypass it,
 - recommended-tool installation and version, including CodeGraph and Tokscale;
 - required effective values, including Codex multi-agent support;
 - Plugin MCP static prerequisites, currently Node 18 or newer and `npx` for Playwright;
-- Project MCP typed prerequisites: command availability, an allowlisted runtime minimum, a
-  workspace-relative file, or an environment-variable name.
+- Project MCP inferred prerequisites: bare-command availability, an executable workspace-relative
+  command path, and declared environment-variable names.
 
 These checks never install tools, mutate MCP configuration, start an MCP server, probe a network or
-application port, trigger OAuth, or require a live debug session. HTTP MCP declarations without a
-static readiness profile therefore produce no connectivity check.
+application port, trigger OAuth, or require a live debug session. Project HTTP MCP declarations
+therefore produce no connectivity check.
 
 When missing or outdated tools are detected, SmartKit first lists the affected items and asks the
 user. It runs maintenance actions only after explicit consent. If the user explicitly declines the

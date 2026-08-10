@@ -58,14 +58,13 @@ Run both commands for every completed change set; together they form the require
   `setup_project_agents.py` prepare/apply/check phases are internal workflow operations.
 - Start creates and owns the private session, reads `setup-assets/catalog/assets.json`, fetches
   canonical `master`, snapshots external Skills, and creates the request and models template. Finish
-  discovers project-owned Rules and Skills, force-converges catalog-managed, generated, and
-  configured external content, checks convergence, summarizes, and cleans up without a project
-  lock. Cancel safely cleans up an unfinished workflow-owned session.
+  discovers project-owned Rules and Skills, reconciles setup-managed content through
+  `.agents/smartkit.lock.json`, checks convergence, summarizes, and cleans up. Cancel safely cleans
+  up an unfinished workflow-owned session.
 - Setup preserves structured fields outside catalog templates and project-owned Rule and Skill
-  content. Project MCP declarations render through host adapters and use
-  `.agents/project-mcp.lock.json` for entry-level update and deletion ownership. Setup removes
-  deselected known catalog outputs, paths declared by `retired_assets`, and stale files inside a
-  managed Skill directory.
+  content. The unified ownership manifest records managed files, trees, and structured fields with
+  deterministic digests. Setup updates or deletes only entries authorized by the previous manifest;
+  a modified owned asset or conflicting first-adoption target stops before writes.
 - `check` reports desired-state drift without writes. Neither command is a formatter, fixer, or
   replacement for this repository's test command.
 - Keep this repository's local `.agents/` directory limited to its `plugins/` marketplace

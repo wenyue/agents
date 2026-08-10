@@ -80,16 +80,15 @@ tracker。
 无需逐人运行 setup。只有项目需要采用新版 setup 受管快照契约时，才再次运行
 `setup-project-agents`。
 
-项目可在 `.agents/config.json` 的 `skills.external_sources` 下声明 GitHub Skill 源。Setup 对每个 URL
-只拉取一次，快照其中选定的 Skills，并写入 `.agents/external-skills.lock.json`。生成式项目 Rules
-使用 `00–09`，模块 Rules 使用 `10–19`，领域 Rules 使用 `20–29`，包或项目插件 Rules 使用
-`30–39`。
+项目可在 `.agents/config.json` 的 `skills` 数组中声明 GitHub Skill 源。每项只需要 `source`、可选
+`ref` 和非空 `include`。Setup 会将选中的 Skills 安装到 `.agents/skills/`，并通过项目快照管理
+后续更新。
 
-项目也可在同一份 version 1 配置中声明可选的 `mcp.servers` 数组。每个 server 具有稳定 ID 和类型化
-的 `http` 或 `stdio` transport，可以限定宿主范围，并使用小范围的类型化宿主 override。Setup 会
-生成 Codex `.codex/config.toml`、Cursor `.cursor/mcp.json` 和 Copilot `.vscode/mcp.json`，并只在
-`.agents/project-mcp.lock.json` 中记录受管 path/key。等价的已有条目会被接管；冲突的用户条目会让
-setup 停止；删除声明时只删除该 lock 记录的条目。环境变量仅按名称引用，不存储 secret 值。
+项目也可声明可选的 `mcp` 数组。每个 server 具有稳定 ID，并且只能声明 `url`（HTTP）或
+`command`（stdio）之一，可以限定宿主范围，并使用小范围的类型化宿主 override。Setup 会生成
+Codex `.codex/config.toml`、Cursor `.cursor/mcp.json` 和 Copilot `.vscode/mcp.json`，并保留不由
+SmartKit 管理的条目。受管条目发生冲突或被本地修改时，setup 会在写入前停止。环境变量仅按名称
+引用，不存储 secret 值。
 
 SmartKit 只管理自己生成的内容，并尽量保留项目原有文件和用户配置。应提交 `AGENTS.md`、
 `.agents/`、受管宿主 wrapper 和配置以及 `docs/agents/`；不要将它们加入 `.gitignore`。Session
@@ -103,11 +102,11 @@ SmartKit 只管理自己生成的内容，并尽量保留项目原有文件和�
 - 推荐工具的安装状态和版本，包括 CodeGraph 与 Tokscale；
 - 必要的实际配置值，包括 Codex 多智能体支持；
 - Plugin MCP 的静态前置条件，目前是 Playwright 所需的 Node 18 或更高版本与 `npx`；
-- Project MCP 的类型化前置条件：命令是否存在、allowlist runtime 的最低版本、workspace 相对文件，
-  或环境变量名称。
+- Project MCP 推导出的前置条件：裸命令是否存在、workspace 相对命令路径是否可执行，以及声明的
+  环境变量名称。
 
 这些检查不会安装工具、修改 MCP 配置、启动 MCP server、探测网络或应用端口、触发 OAuth，也不
-要求 debug session 在线。因此，没有静态 readiness profile 的 HTTP MCP 不会执行连接检查。
+要求 debug session 在线。因此，Project HTTP MCP 不会执行连接检查。
 
 发现缺失或过期工具时，SmartKit 会先列出需要处理的项目并询问用户，只执行用户明确同意的维护
 操作。如果用户明确拒绝列出的操作，SmartKit 会直接跳过，不再重复询问，Agent 随后继续原任务。

@@ -22,17 +22,6 @@ class McpTransport(str, Enum):
 
 
 @dataclass(frozen=True)
-class McpReadinessCheck:
-    kind: str
-    command: str | None = None
-    runtime: str | None = None
-    minimum: str | None = None
-    path: PurePosixPath | None = None
-    executable: bool = False
-    name: str | None = None
-
-
-@dataclass(frozen=True)
 class McpOverride:
     command: str | None = None
     args: tuple[str, ...] | None = None
@@ -52,7 +41,6 @@ class McpServerSpec:
     env: tuple[str, ...] = ()
     url: str | None = None
     overrides: Mapping[Platform, McpOverride] = field(default_factory=dict)
-    readiness: tuple[McpReadinessCheck, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -133,12 +121,6 @@ class DesiredField:
 
 
 @dataclass(frozen=True)
-class RetiredFieldSpec:
-    path: PurePosixPath
-    key: str
-
-
-@dataclass(frozen=True)
 class Change:
     kind: ChangeKind
     path: PurePosixPath
@@ -157,10 +139,3 @@ class Catalog:
     repository: str
     ref: str
     assets: tuple[AssetSpec, ...]
-    retired_assets: tuple[PurePosixPath, ...] = ()
-    external_sources: tuple[ExternalSourceSpec, ...] = ()
-
-    @property
-    def external_skills(self) -> tuple[ExternalSkillSpec, ...]:
-        return tuple(skill for source in self.external_sources for skill in source.skills)
-    retired_fields: tuple[RetiredFieldSpec, ...] = ()

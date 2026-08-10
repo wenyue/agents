@@ -109,6 +109,7 @@ def license_matches(spdx: str, content: bytes) -> bool:
 
 
 def discover_license(root: Path, label: str) -> LicenseDiscovery:
+    discoveries: list[LicenseDiscovery] = []
     for relative in LICENSE_CANDIDATES:
         path = source_path(root, relative, label)
         if not path.exists():
@@ -121,8 +122,18 @@ def discover_license(root: Path, label: str) -> LicenseDiscovery:
             raise ExternalContractError(f'{label} cannot be read: {relative}') from error
         for spdx in LICENSE_DISCOVERY_ORDER:
             if license_matches(spdx, content):
-                return LicenseDiscovery(spdx, relative, content)
-    raise ExternalContractError(f'{label} was not found or recognized')
+                discoveries.append(LicenseDiscovery(spdx, relative, content))
+                break
+    if not discoveries:
+        raise ExternalContractError(f'{label} was not found or recognized')
+    signatures = {
+        (item.spdx, hashlib.sha256(item.content).hexdigest())
+        for item in discoveries
+    }
+    if len(signatures) != 1:
+        paths = ', '.join(item.path.as_posix() for item in discoveries)
+        raise ExternalContractError(f'{label} is ambiguous: {paths}')
+    return discoveries[0]
 
 
 def _is_link_like(path: Path) -> bool:

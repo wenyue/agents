@@ -317,6 +317,19 @@ class SetupWorkflowTest(unittest.TestCase):
             )
             self.assertFalse(session.exists())
             self.assertTrue((target / 'AGENTS.md').is_file())
+            ownership_path = target / '.agents/smartkit.lock.json'
+            self.assertTrue(ownership_path.is_file())
+            ownership = json.loads(ownership_path.read_text(encoding='utf-8'))
+            self.assertEqual(ownership['version'], 1)
+            self.assertEqual(ownership['sources'], [])
+            project_rule = next(
+                item
+                for item in ownership['assets']
+                if item.get('path') == '.agents/rules/00-project-tools.md'
+            )
+            self.assertEqual(project_rule['kind'], 'file')
+            self.assertEqual(project_rule['role'], 'rule')
+            self.assertRegex(project_rule['digest'], r'^[0-9a-f]{64}$')
             self.assertEqual(local_rule.read_bytes(), local_rule_content)
             self.assertEqual(local_skill.read_bytes(), local_skill_content)
             self.assertEqual(

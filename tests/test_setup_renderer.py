@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import shutil
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +29,11 @@ from agents_setup.models import (  # noqa: E402
     ProjectConfig,
 )
 from agents_setup.planner import build_plan  # noqa: E402
+from agents_setup.ownership import (  # noqa: E402
+    OwnershipError,
+    _actual_tree_digest,
+    reconcile_ownership,
+)
 from agents_setup.project import inspect_project  # noqa: E402
 from agents_setup.renderer import (  # noqa: E402
     RenderError,
@@ -80,8 +88,10 @@ class SetupRendererTest(unittest.TestCase):
     def mcp_config(self, target: Path, servers: list[dict]) -> ProjectConfig:
         path = target / '.agents/config.json'
         path.parent.mkdir(parents=True, exist_ok=True)
+        document = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {'version': 1}
+        document['mcp'] = servers
         path.write_text(
-            json.dumps({'version': 1, 'mcp': {'servers': servers}}),
+            json.dumps(document),
             encoding='utf-8',
         )
         return load_project_config(path, catalog=self.catalog)
@@ -103,12 +113,10 @@ class SetupRendererTest(unittest.TestCase):
             config = self.mcp_config(target, [
                 {
                     'id': 'sentry',
-                    'transport': 'http',
                     'url': 'https://mcp.sentry.dev/mcp',
                 },
                 {
                     'id': 'inspector',
-                    'transport': 'stdio',
                     'command': 'cache/inspector.exe',
                     'args': ['--port', '8181', '--flag', '--flag'],
                     'cwd': 'cache',
@@ -124,7 +132,7 @@ class SetupRendererTest(unittest.TestCase):
             codex = tomllib.loads(rendered.files_by_path['.codex/config.toml'].decode())
             cursor = json.loads(rendered.files_by_path['.cursor/mcp.json'])
             copilot = json.loads(rendered.files_by_path['.vscode/mcp.json'])
-            lock = json.loads(rendered.files_by_path['.agents/project-mcp.lock.json'])
+            lock = json.loads(rendered.files_by_path['.agents/smartkit.lock.json'])
 
             self.assertEqual(
                 codex['mcp_servers']['sentry'],
@@ -154,10 +162,20 @@ class SetupRendererTest(unittest.TestCase):
                 copilot['servers']['inspector']['env'],
                 {'INSPECTOR_TOKEN': '${env:INSPECTOR_TOKEN}'},
             )
-            self.assertEqual(
-                {server['id'] for server in lock['servers']},
-                {'sentry', 'inspector'},
-            )
+            mcp_assets = [asset for asset in lock['assets'] if asset['role'] == 'mcp']
+            for path, prefix in (
+                ('.codex/config.toml', 'mcp_servers'),
+                ('.cursor/mcp.json', 'mcpServers'),
+                ('.vscode/mcp.json', 'servers'),
+            ):
+                self.assertTrue(any(
+                    asset['path'] == path and asset['key'].startswith(f'{prefix}.sentry.')
+                    for asset in mcp_assets
+                ))
+                self.assertTrue(any(
+                    asset['path'] == path and asset['key'].startswith(f'{prefix}.inspector.')
+                    for asset in mcp_assets
+                ))
 
     def test_project_mcp_adopts_equal_entry_but_rejects_unmanaged_conflict(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -172,7 +190,7 @@ class SetupRendererTest(unittest.TestCase):
                 }
             }), encoding='utf-8')
             config = self.mcp_config(target, [{
-                'id': 'sentry', 'transport': 'http',
+                'id': 'sentry',
                 'url': 'https://mcp.sentry.dev/mcp', 'platforms': ['cursor'],
             }])
 
@@ -189,7 +207,7 @@ class SetupRendererTest(unittest.TestCase):
                 rendered.files_by_path['.cursor/mcp.json'],
             )
 
-            (target / '.agents/project-mcp.lock.json').unlink()
+            (target / '.agents/smartkit.lock.json').unlink()
             cursor.write_text(json.dumps({
                 'mcpServers': {
                     'sentry': {'type': 'http', 'url': 'https://other.invalid/mcp'},
@@ -204,32 +222,20 @@ class SetupRendererTest(unittest.TestCase):
             target = root / 'target'
             cursor = target / '.cursor/mcp.json'
             cursor.parent.mkdir(parents=True)
-            cursor.write_text(json.dumps({
-                'mcpServers': {
-                    'retired': {'type': 'http', 'url': 'https://retired.invalid/mcp'},
-                    'keep': {'type': 'http', 'url': 'https://keep.invalid/mcp'},
-                }
-            }), encoding='utf-8')
-            lock = target / '.agents/project-mcp.lock.json'
-            lock.parent.mkdir(parents=True)
-            lock.write_text(json.dumps({
-                'version': 1,
-                'servers': [{
-                    'id': 'retired',
-                    'entries': {
-                        'cursor': {
-                            'path': '.cursor/mcp.json',
-                            'key': 'mcpServers.retired',
-                        }
-                    },
-                }],
-            }), encoding='utf-8')
+            cursor.write_text(json.dumps({'mcpServers': {
+                'keep': {'type': 'http', 'url': 'https://keep.invalid/mcp'},
+            }}), encoding='utf-8')
+            owned = self.mcp_config(target, [{
+                'id': 'retired', 'url': 'https://retired.invalid/mcp',
+                'platforms': ['cursor'],
+            }])
+            first = self.render_with_config(target, self.generated_tree(root), owned)
+            self.materialize(target, first.files)
 
             rendered = self.render(target, self.generated_tree(root))
             desired = json.loads(rendered.files_by_path['.cursor/mcp.json'])
 
             self.assertEqual(set(desired['mcpServers']), {'keep'})
-            self.assertIn(PurePosixPath('.agents/project-mcp.lock.json'), rendered.delete_paths)
 
     def test_owned_stdio_mcp_can_move_platforms_without_touching_user_entries(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -238,27 +244,19 @@ class SetupRendererTest(unittest.TestCase):
             cursor = target / '.cursor/mcp.json'
             cursor.parent.mkdir(parents=True)
             cursor.write_text(json.dumps({'mcpServers': {
-                'inspector': {
-                    'type': 'stdio', 'command': 'old-inspector', 'args': [],
-                },
                 'user-owned': {
                     'type': 'stdio', 'command': 'keep-me', 'args': [],
                 },
             }}), encoding='utf-8')
-            lock = target / '.agents/project-mcp.lock.json'
-            lock.parent.mkdir(parents=True)
-            lock.write_text(json.dumps({
-                'version': 1,
-                'servers': [{
-                    'id': 'inspector',
-                    'entries': {'cursor': {
-                        'path': '.cursor/mcp.json',
-                        'key': 'mcpServers.inspector',
-                    }},
-                }],
-            }), encoding='utf-8')
+            old = self.mcp_config(target, [{
+                'id': 'inspector', 'platforms': ['cursor'], 'command': 'old-inspector',
+            }])
+            self.materialize(
+                target,
+                self.render_with_config(target, self.generated_tree(root), old).files,
+            )
             config = self.mcp_config(target, [{
-                'id': 'inspector', 'transport': 'stdio',
+                'id': 'inspector',
                 'platforms': ['codex'], 'command': 'new-inspector',
             }])
 
@@ -272,6 +270,65 @@ class SetupRendererTest(unittest.TestCase):
             self.assertEqual(
                 desired_codex['mcp_servers']['inspector'],
                 {'command': 'new-inspector', 'args': []},
+            )
+
+    def test_owned_mcp_entry_can_update_on_the_same_platform(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            old = self.mcp_config(target, [{
+                'id': 'sentry',
+                'url': 'https://old.invalid/mcp',
+                'platforms': ['cursor'],
+            }])
+            self.materialize(
+                target,
+                self.render_with_config(target, self.generated_tree(root), old).files,
+            )
+            new = self.mcp_config(target, [{
+                'id': 'sentry',
+                'url': 'https://new.invalid/mcp',
+                'platforms': ['cursor'],
+            }])
+
+            rendered = self.render_with_config(target, self.generated_tree(root), new)
+
+            desired = json.loads(rendered.files_by_path['.cursor/mcp.json'])
+            self.assertEqual(
+                desired['mcpServers']['sentry']['url'],
+                'https://new.invalid/mcp',
+            )
+
+    def test_first_adoption_of_mcp_preserves_extra_user_entry_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            cursor = target / '.cursor/mcp.json'
+            cursor.parent.mkdir(parents=True)
+            cursor.write_text(json.dumps({'mcpServers': {
+                'sentry': {
+                    'type': 'http',
+                    'url': 'https://mcp.sentry.dev/mcp',
+                    'user-note': 'keep',
+                },
+            }}), encoding='utf-8')
+            config = self.mcp_config(target, [{
+                'id': 'sentry',
+                'url': 'https://mcp.sentry.dev/mcp',
+                'platforms': ['cursor'],
+            }])
+
+            rendered = self.render_with_config(target, self.generated_tree(root), config)
+
+            desired = json.loads(rendered.files_by_path['.cursor/mcp.json'])
+            self.assertEqual(
+                desired['mcpServers']['sentry'],
+                {
+                    'type': 'http',
+                    'url': 'https://mcp.sentry.dev/mcp',
+                    'user-note': 'keep',
+                },
             )
 
     def test_project_snapshot_excludes_plugin_owned_hooks(self):
@@ -329,6 +386,36 @@ class SetupRendererTest(unittest.TestCase):
                 {'$schema', 'version'},
             )
 
+    def test_owned_template_field_can_update_at_the_same_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            generated = self.generated_tree(root)
+            first = self.render(target, generated)
+            self.materialize(target, first.files)
+            source = root / 'source'
+            shutil.copytree(REPO_ROOT / 'setup-assets', source / 'setup-assets')
+            template = source / 'setup-assets/templates/platform-config/agents.config.json'
+            document = json.loads(template.read_text(encoding='utf-8'))
+            document['$schema'] = 'https://example.invalid/project-config.schema.json'
+            template.write_text(json.dumps(document), encoding='utf-8')
+
+            rendered = render_desired_state(
+                source,
+                target,
+                self.catalog,
+                self.config(),
+                generated,
+                self.models,
+            )
+
+            updated = json.loads(rendered.files_by_path['.agents/config.json'])
+            self.assertEqual(
+                updated['$schema'],
+                'https://example.invalid/project-config.schema.json',
+            )
+
     def test_project_defaults_have_no_external_skill(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             target = Path(temp_dir) / 'target'
@@ -350,16 +437,11 @@ class SetupRendererTest(unittest.TestCase):
                 json.dumps(
                     {
                         'version': 1,
-                        'skills': {
-                            'external_sources': [
-                                {
-                                    'id': 'example/local-check',
-                                    'url': 'https://github.com/example/local-check',
-                                    'ref': 'main',
-                                    'skills': [{'id': 'example/local-check', 'path': 'skills/local-check'}],
-                                }
-                            ]
-                        },
+                        'skills': [{
+                            'source': 'example/local-check',
+                            'ref': 'main',
+                            'include': ['skills/local-check'],
+                        }],
                     }
                 ),
                 encoding='utf-8',
@@ -377,8 +459,25 @@ class SetupRendererTest(unittest.TestCase):
                     f'---\nname: {name}\ndescription: Use for tests.\n---\n',
                     encoding='utf-8',
                 )
-            (external_root / 'external-skills.lock.json').write_text(
-                json.dumps({'version': 1, 'sources': []}) + '\n', encoding='utf-8'
+            (external_root / 'sources.json').write_text(
+                json.dumps({'version': 1, 'sources': [{
+                    'id': 'example/local-check',
+                    'url': 'https://github.com/example/local-check',
+                    'requested_ref': 'main',
+                    'resolved_ref': 'main',
+                    'ref_kind': 'branch',
+                    'commit': 'a' * 40,
+                    'license': {'spdx': 'MIT', 'path': 'LICENSE', 'sha256': 'b' * 64},
+                    'skills': [{
+                        'id': 'example/local-check',
+                        'path': 'skills/local-check',
+                        'files': {
+                            'SKILL.md': hashlib.sha256(
+                                (external_root / 'local-check/SKILL.md').read_bytes()
+                            ).hexdigest(),
+                        },
+                    }],
+                }]}) + '\n', encoding='utf-8'
             )
 
             rendered = render_desired_state(
@@ -395,15 +494,12 @@ class SetupRendererTest(unittest.TestCase):
             )
 
             self.assertEqual(
-                rendered_config['skills']['external_sources'],
-                [
-                    {
-                        'id': 'example/local-check',
-                        'url': 'https://github.com/example/local-check',
-                        'ref': 'main',
-                        'skills': [{'id': 'example/local-check', 'path': 'skills/local-check'}],
-                    }
-                ],
+                rendered_config['skills'],
+                [{
+                    'source': 'example/local-check',
+                    'ref': 'main',
+                    'include': ['skills/local-check'],
+                }],
             )
             self.assertIn(
                 '.agents/skills/local-check/SKILL.md',
@@ -418,35 +514,54 @@ class SetupRendererTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
-            external = target / '.agents/skills/retired-external'
-            external.mkdir(parents=True)
-            (external / 'SKILL.md').write_text(
-                '---\nname: retired-external\ndescription: Retired.\n---\n',
-                encoding='utf-8',
-            )
             project_owned = target / '.agents/skills/project-owned'
             project_owned.mkdir(parents=True)
             (project_owned / 'SKILL.md').write_text(
                 '---\nname: project-owned\ndescription: Keep.\n---\n',
                 encoding='utf-8',
             )
-            lock = target / '.agents/external-skills.lock.json'
-            lock.write_text(json.dumps({
-                'version': 1,
-                'sources': [{
-                    'id': 'example/repository',
-                    'skills': [{'id': 'example/retired-external'}],
+            external_root = root / 'external'
+            external = external_root / 'retired-external'
+            external.mkdir(parents=True)
+            (external / 'SKILL.md').write_text(
+                '---\nname: retired-external\ndescription: Retired.\n---\n', encoding='utf-8'
+            )
+            (external_root / 'sources.json').write_text(json.dumps({
+                'version': 1, 'sources': [{
+                    'id': 'example/repository', 'url': 'https://github.com/example/repository',
+                    'requested_ref': None, 'resolved_ref': 'main', 'ref_kind': 'branch',
+                    'commit': 'a' * 40,
+                    'license': {'spdx': 'MIT', 'path': 'LICENSE', 'sha256': 'b' * 64},
+                    'skills': [{
+                        'id': 'example/retired-external',
+                        'path': 'skills/retired-external',
+                        'files': {
+                            'SKILL.md': hashlib.sha256(
+                                (external / 'SKILL.md').read_bytes()
+                            ).hexdigest(),
+                        },
+                    }],
                 }],
             }), encoding='utf-8')
+            config_path = target / '.agents/config.json'
+            config_path.write_text(json.dumps({
+                'version': 1,
+                'skills': [{
+                    'source': 'example/repository',
+                    'include': ['skills/retired-external'],
+                }],
+            }), encoding='utf-8')
+            first_config = load_project_config(config_path, catalog=self.catalog)
+            first = render_desired_state(
+                REPO_ROOT, target, self.catalog, first_config,
+                self.generated_tree(root), self.models, external_root,
+            )
+            self.materialize(target, first.files)
 
             rendered = self.render(target, self.generated_tree(root))
 
             self.assertIn(
                 PurePosixPath('.agents/skills/retired-external'),
-                rendered.replace_roots,
-            )
-            self.assertIn(
-                PurePosixPath('.agents/external-skills.lock.json'),
                 rendered.delete_paths,
             )
             self.assertIn(
@@ -457,6 +572,93 @@ class SetupRendererTest(unittest.TestCase):
                 PurePosixPath('.agents/skills/retired-external/SKILL.md'),
                 rendered.preserved_paths,
             )
+
+    def test_modified_installed_external_skill_tree_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            external_root = root / 'external'
+            skill = external_root / 'local-check/SKILL.md'
+            skill.parent.mkdir(parents=True)
+            skill.write_text(
+                '---\nname: local-check\ndescription: Use for tests.\n---\n',
+                encoding='utf-8',
+            )
+            (external_root / 'sources.json').write_text(json.dumps({
+                'version': 1,
+                'sources': [{
+                    'id': 'example/local-check',
+                    'url': 'https://github.com/example/local-check',
+                    'requested_ref': None,
+                    'resolved_ref': 'main',
+                    'ref_kind': 'branch',
+                    'commit': 'a' * 40,
+                    'license': {'spdx': 'MIT', 'path': 'LICENSE', 'sha256': 'b' * 64},
+                    'skills': [{
+                        'id': 'example/local-check',
+                        'path': 'skills/local-check',
+                        'files': {'SKILL.md': hashlib.sha256(skill.read_bytes()).hexdigest()},
+                    }],
+                }],
+            }), encoding='utf-8')
+            config_path = target / '.agents/config.json'
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(json.dumps({
+                'version': 1,
+                'skills': [{
+                    'source': 'example/local-check',
+                    'include': ['skills/local-check'],
+                }],
+            }), encoding='utf-8')
+            config = load_project_config(config_path, catalog=self.catalog)
+            first = render_desired_state(
+                REPO_ROOT, target, self.catalog, config,
+                self.generated_tree(root), self.models, external_root,
+            )
+            self.materialize(target, first.files)
+            installed = target / '.agents/skills/local-check/SKILL.md'
+            installed.write_text(installed.read_text() + '\nlocal drift\n', encoding='utf-8')
+
+            with self.assertRaisesRegex(RenderError, 'modified outside setup'):
+                render_desired_state(
+                    REPO_ROOT, target, self.catalog, config,
+                    self.generated_tree(root), self.models, external_root,
+                )
+
+    def test_managed_blueprint_rule_rename_is_delete_plus_create_not_project_discovery(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            first = self.render(target, self.generated_tree(root))
+            self.materialize(target, first.files)
+            old = PurePosixPath('.agents/rules/00-project-tools.md')
+            new = PurePosixPath('.agents/rules/05-project-tools.md')
+            assets = tuple(
+                replace(asset, target=new)
+                if asset.target == old else asset
+                for asset in self.catalog.assets
+            )
+            renamed_catalog = replace(self.catalog, assets=assets)
+            generated = self.generated_tree(root)
+            old_generated = generated / old.as_posix()
+            new_generated = generated / new.as_posix()
+            new_generated.parent.mkdir(parents=True, exist_ok=True)
+            old_generated.rename(new_generated)
+
+            rendered = render_desired_state(
+                REPO_ROOT, target, renamed_catalog, ProjectConfig(
+                    1,
+                    tuple(asset.id for asset in assets if asset.kind == 'rule' and not asset.control_plane),
+                    tuple(asset.id for asset in assets if asset.kind == 'skill' and not asset.control_plane),
+                    tuple(asset.id for asset in assets if asset.kind == 'agent' and not asset.control_plane),
+                ), generated, self.models,
+            )
+
+            self.assertIn(old, rendered.delete_paths)
+            self.assertIn(new.as_posix(), rendered.files_by_path)
+            self.assertNotIn(old.as_posix(), rendered.preserved_paths)
 
     def test_unsafe_structured_template_field_is_rejected(self):
         with self.assertRaisesRegex(RenderError, 'unsafe template field'):
@@ -544,7 +746,7 @@ class SetupRendererTest(unittest.TestCase):
             )
             self.assertEqual(settings.read_text(encoding='utf-8'), original)
 
-    def test_retired_structured_fields_are_removed_without_touching_user_fields(self):
+    def test_historical_unowned_structured_fields_are_preserved(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -566,21 +768,10 @@ class SetupRendererTest(unittest.TestCase):
             )
 
             rendered = self.render(target, self.generated_tree(root))
-            parsed = json.loads(
-                rendered.files_by_path['.github/copilot/settings.json']
-            )
+            self.assertNotIn('.github/copilot/settings.json', rendered.files_by_path)
+            self.assertNotIn(PurePosixPath('.github/copilot/settings.json'), rendered.delete_paths)
 
-            self.assertEqual(parsed, {
-                'extraKnownMarketplaces': {
-                    'team-marketplace': {'source': 'kept'},
-                },
-                'enabledPlugins': {
-                    'team-tool@team-marketplace': True,
-                },
-                'editor': {'theme': 'team'},
-            })
-
-    def test_file_with_only_retired_structured_fields_is_deleted(self):
+    def test_historical_unowned_structured_file_is_not_deleted(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -601,7 +792,7 @@ class SetupRendererTest(unittest.TestCase):
             rendered = self.render(target, self.generated_tree(root))
 
             self.assertNotIn('.github/copilot/settings.json', rendered.files_by_path)
-            self.assertIn(
+            self.assertNotIn(
                 PurePosixPath('.github/copilot/settings.json'),
                 rendered.delete_paths,
             )
@@ -734,7 +925,7 @@ class SetupRendererTest(unittest.TestCase):
             with self.assertRaisesRegex(RenderError, 'symlink'):
                 self.render(real_target, generated)
 
-    def test_first_setup_merges_user_config_without_owning_user_selections(self):
+    def test_removed_project_selection_fields_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -747,42 +938,122 @@ class SetupRendererTest(unittest.TestCase):
                 }),
                 encoding='utf-8',
             )
-            rendered = self.render(target, self.generated_tree(root))
+            with self.assertRaisesRegex(ValueError, 'selected_rules'):
+                load_project_config(config_path, catalog=self.catalog)
 
-            plan = build_plan(target, rendered.files, rendered.fields)
-            desired_config = json.loads(rendered.files_by_path['.agents/config.json'])
-
-            config_change = next(
-                change
-                for change in plan.changes
-                if change.path.as_posix() == '.agents/config.json'
-            )
-            self.assertEqual(config_change.kind, ChangeKind.UPDATE)
-            self.assertNotIn('platforms', desired_config)
-            self.assertEqual(
-                {
-                    key
-                    for path, key in rendered.fields_by_key
-                    if path == '.agents/config.json'
-                },
-                {'$schema', 'version'},
-            )
-
-    def test_force_convergence_overwrites_conflicting_owned_config_field(self):
+    def test_first_adoption_rejects_conflicting_managed_config_field(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
             config_path = target / '.agents/config.json'
             config_path.parent.mkdir(parents=True)
             config_path.write_text('{"version": 2}\n', encoding='utf-8')
-            rendered = self.render(target, self.generated_tree(root))
+            with self.assertRaisesRegex(RenderError, 'cannot adopt conflicting'):
+                self.render(target, self.generated_tree(root))
 
-            plan = build_plan(target, rendered.files, rendered.fields)
-            change = next(
-                item for item in plan.changes if item.path.as_posix() == '.agents/config.json'
+    def test_malformed_ownership_sources_and_seeded_assets_are_rejected(self):
+        malformed_values = (
+            {'sources': [123], 'seeded': []},
+            {'sources': [], 'seeded': ['garbage']},
+        )
+        for malformed in malformed_values:
+            with self.subTest(malformed=malformed), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                target = root / 'target'
+                manifest = target / '.agents/smartkit.lock.json'
+                manifest.parent.mkdir(parents=True)
+                manifest.write_text(json.dumps({
+                    'version': 1,
+                    'sources': malformed['sources'],
+                    'assets': [],
+                    'seeded': malformed['seeded'],
+                }), encoding='utf-8')
+
+                with self.assertRaisesRegex(RenderError, 'ownership manifest'):
+                    self.render(target, self.generated_tree(root))
+
+    def test_ownership_manifest_rejects_mismatched_external_skill_provenance(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            external_root = root / 'external'
+            skill = external_root / 'local-check/SKILL.md'
+            skill.parent.mkdir(parents=True)
+            skill.write_text(
+                '---\nname: local-check\ndescription: Use for tests.\n---\n',
+                encoding='utf-8',
             )
-            self.assertEqual(change.kind, ChangeKind.UPDATE)
-            self.assertEqual(json.loads(change.content)['version'], 1)
+            (external_root / 'sources.json').write_text(json.dumps({
+                'version': 1,
+                'sources': [{
+                    'id': 'example/local-check',
+                    'url': 'https://github.com/example/local-check',
+                    'requested_ref': None,
+                    'resolved_ref': 'main',
+                    'ref_kind': 'branch',
+                    'commit': 'a' * 40,
+                    'license': {'spdx': 'MIT', 'path': 'LICENSE', 'sha256': 'b' * 64},
+                    'skills': [{
+                        'id': 'example/local-check',
+                        'path': 'skills/local-check',
+                        'files': {'SKILL.md': hashlib.sha256(skill.read_bytes()).hexdigest()},
+                    }],
+                }],
+            }), encoding='utf-8')
+            config_path = target / '.agents/config.json'
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(json.dumps({
+                'version': 1,
+                'skills': [{
+                    'source': 'example/local-check',
+                    'include': ['skills/local-check'],
+                }],
+            }), encoding='utf-8')
+            config = load_project_config(config_path, catalog=self.catalog)
+            first = render_desired_state(
+                REPO_ROOT, target, self.catalog, config,
+                self.generated_tree(root), self.models, external_root,
+            )
+            self.materialize(target, first.files)
+            manifest = target / '.agents/smartkit.lock.json'
+            document = json.loads(manifest.read_text(encoding='utf-8'))
+            tree = next(asset for asset in document['assets'] if asset['kind'] == 'tree')
+            tree['source_path'] = 'skills/other'
+            manifest.write_text(json.dumps(document), encoding='utf-8')
+
+            with self.assertRaisesRegex(RenderError, 'Skill provenance is invalid'):
+                render_desired_state(
+                    REPO_ROOT, target, self.catalog, config,
+                    self.generated_tree(root), self.models, external_root,
+                )
+
+    def test_managed_tree_rejects_junction_like_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            tree = target / 'owned'
+            tree.mkdir()
+            (tree / 'file.txt').write_text('content\n', encoding='utf-8')
+
+            with mock.patch.object(
+                Path,
+                'is_junction',
+                create=True,
+                new=lambda path: path.name == 'owned',
+            ):
+                with self.assertRaisesRegex(OwnershipError, 'symlink|managed tree is unsafe'):
+                    _actual_tree_digest(target, PurePosixPath('owned'))
+
+    def test_reconciler_rejects_invalid_next_manifest_before_returning(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(OwnershipError, 'manifest source'):
+                reconcile_ownership(
+                    Path(temp_dir),
+                    (),
+                    (),
+                    (),
+                    sources=({'secret': 'must-not-be-written'},),
+                )
 
     def test_deselected_assets_are_removed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -792,10 +1063,8 @@ class SetupRendererTest(unittest.TestCase):
                 '.agents/agents/change-set-verifier.md',
                 '.github/agents/change-set-verifier.agent.md',
             )
-            for relative in stale_paths:
-                path = target.joinpath(*PurePosixPath(relative).parts)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text('stale\n', encoding='utf-8')
+            first = self.render(target, self.generated_tree(root))
+            self.materialize(target, first.files)
 
             config = ProjectConfig(
                 1,
