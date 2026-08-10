@@ -9,13 +9,22 @@ evolution, and test contracts for this repository.
 
 - Treat custom entries in `skills/registry.json` as SmartKit-owned plugin Skills and external
   entries as read-only snapshots owned by `scripts/update_external_skills.py`.
+- Treat `mcp/registry.json` as the canonical Plugin MCP source and `.mcp.json`,
+  `mcp/cursor.json`, and `mcp/copilot.json` as generated host adapters owned by
+  `scripts/sync_mcp_adapters.py`. MCP configuration does not make an external MCP implementation
+  a vendored repository asset.
 - Treat `rules/registry.json` and `rules/source/` as plugin Rule ownership. Cursor wrappers under
   `rules/cursor/` and command Hooks are delivery adapters, not policy owners.
 - Treat project `skills.external_sources` as GitHub sources fetched once per source and snapshotted
   with `.agents/external-skills.lock.json` by setup.
+- Treat project `mcp.servers` as typed configuration rendered into host-native entries. The project
+  MCP lock owns only its recorded native path/key pairs; it never owns sibling user MCP entries or
+  records credentials, executable provenance, or remote service state.
 - Keep recommended-tool Hook executables in `runtime/recommended-tools/` without a `SKILL.md`, and
-  keep their authoritative declarations in `policies/recommended-tools/`. They remain plugin-private
-  and setup must not copy them into target repositories.
+  keep their authoritative tool declarations in `policies/recommended-tools/`. MCP readiness stays
+  beside its Plugin or Project MCP declaration and is interpreted by the same runtime only after
+  the project/host/local-day gate passes. These assets remain plugin-private and setup must not copy
+  them into target repositories.
 - Keep shared blueprints and host templates under `setup-assets/`. Treat
   `setup-assets/catalog/assets.json` as the owner of target asset inclusion, Rule and Skill
   blueprints, wrapper routing, renderer metadata, and managed root-configuration declarations.

@@ -1,6 +1,6 @@
 {
   "name": "smartkit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Install and maintain shared project-agent workflows across repositories.",
   "author": {
     "name": "wenyue",
@@ -14,5 +14,6 @@
     "skills"
   ],
   "skills": "./skills/",
-  "hooks": "./hooks/copilot.json"
+  "hooks": "./hooks/copilot.json",
+  "mcpServers": "./mcp/copilot.json"
 }

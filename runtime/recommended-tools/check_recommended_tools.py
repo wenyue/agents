@@ -24,6 +24,15 @@ from typing import Any, Callable
 _DEFAULT_VERSION_PATTERN = r'(\d+(?:\.\d+)+(?:[-+][0-9A-Za-z.-]+)?)'
 _MAX_COMMAND_OUTPUT = 16_384
 _LOCK_STALE_SECONDS = 300
+_RUNTIME_PROBES = {
+    'node': (('node', '--version'), _DEFAULT_VERSION_PATTERN),
+}
+_MCP_CHECK_FIELDS = {
+    'command-exists': frozenset({'kind', 'command'}),
+    'runtime-version': frozenset({'kind', 'runtime', 'minimum'}),
+    'workspace-path': frozenset({'kind', 'path', 'executable'}),
+    'environment-variable': frozenset({'kind', 'name'}),
+}
 
 
 class PolicyError(RuntimeError):
@@ -137,22 +146,25 @@ def _run_command(command: list[str], timeout: float) -> str | None:
     reader = threading.Thread(target=read_output, daemon=True)
     reader.start()
     try:
-        returncode = process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired as error:
-        process.kill()
-        process.wait()
+        try:
+            returncode = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            process.kill()
+            process.wait()
+            reader.join(timeout=1)
+            raise DetectorError('detector command timed out') from error
         reader.join(timeout=1)
-        raise DetectorError('detector command timed out') from error
-    reader.join(timeout=1)
-    if reader.is_alive():
-        process.kill()
-        process.wait()
-        raise DetectorError('detector output reader did not finish')
-    if overflow.is_set():
-        raise DetectorError('detector command output exceeded the limit')
-    if returncode != 0:
-        raise DetectorError('detector command returned a failure status')
-    return captured.decode('utf-8', errors='replace')
+        if reader.is_alive():
+            process.kill()
+            process.wait()
+            raise DetectorError('detector output reader did not finish')
+        if overflow.is_set():
+            raise DetectorError('detector command output exceeded the limit')
+        if returncode != 0:
+            raise DetectorError('detector command returned a failure status')
+        return captured.decode('utf-8', errors='replace')
+    finally:
+        process.stdout.close()
 
 
 def _read_manifest_version(pattern: str, json_path: str) -> str | None:
@@ -406,6 +418,248 @@ def check_policy(policy: dict[str, Any]) -> list[Finding]:
     return findings
 
 
+def default_mcp_registry_path() -> Path:
+    runtime_root = Path(__file__).resolve().parents[1]
+    for ancestor in runtime_root.parents:
+        candidate = ancestor / 'mcp' / 'registry.json'
+        if candidate.is_file():
+            return candidate
+    raise PolicyError('plugin MCP registry is unavailable')
+
+
+def resolve_project_root(cwd: Path | None = None) -> Path:
+    current = (cwd or Path.cwd()).resolve()
+    candidates = (current, *current.parents)
+    for candidate in candidates:
+        if (candidate / '.agents' / 'config.json').is_file():
+            return candidate
+    for candidate in candidates:
+        if (candidate / '.git').exists():
+            return candidate
+    return current
+
+
+def _load_json_object(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise PolicyError(f'unable to load {label}') from error
+    if not isinstance(value, dict):
+        raise PolicyError(f'{label} must contain an object')
+    return value
+
+
+def _mcp_servers_from_registry(path: Path, platform: str) -> list[dict[str, Any]]:
+    if platform not in {'codex', 'cursor', 'copilot'}:
+        raise PolicyError('MCP platform is invalid')
+    document = _load_json_object(path, 'plugin MCP registry')
+    if document.get('version') != 1 or not isinstance(document.get('servers'), list):
+        raise PolicyError('plugin MCP registry is invalid')
+    servers: list[dict[str, Any]] = []
+    for raw_server in document['servers']:
+        if not isinstance(raw_server, dict):
+            raise PolicyError('plugin MCP registry is invalid')
+        platforms = raw_server.get('platforms')
+        if (
+            not isinstance(platforms, list)
+            or not platforms
+            or not all(isinstance(item, str) for item in platforms)
+            or len(platforms) != len(set(platforms))
+            or set(platforms) - {'codex', 'cursor', 'copilot'}
+        ):
+            raise PolicyError('plugin MCP registry is invalid')
+        if platform in platforms:
+            servers.append(raw_server)
+    return servers
+
+
+def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[str, Any]]:
+    if platform not in {'codex', 'cursor', 'copilot'}:
+        raise PolicyError('MCP platform is invalid')
+    path = project_root / '.agents' / 'config.json'
+    if not path.is_file():
+        return []
+    document = _load_json_object(path, 'project agent config')
+    mcp = document.get('mcp')
+    if mcp is None:
+        return []
+    if not isinstance(mcp, dict) or not isinstance(mcp.get('servers', []), list):
+        raise PolicyError('project MCP configuration is invalid')
+    servers: list[dict[str, Any]] = []
+    for raw_server in mcp.get('servers', []):
+        if not isinstance(raw_server, dict):
+            raise PolicyError('project MCP configuration is invalid')
+        platforms = raw_server.get('platforms', ['codex', 'cursor', 'copilot'])
+        if (
+            not isinstance(platforms, list)
+            or not platforms
+            or not all(isinstance(item, str) for item in platforms)
+            or len(platforms) != len(set(platforms))
+            or set(platforms) - {'codex', 'cursor', 'copilot'}
+        ):
+            raise PolicyError('project MCP configuration is invalid')
+        if platform in platforms:
+            servers.append(raw_server)
+    return servers
+
+
+def _minimum_satisfied(installed: str, minimum: str) -> bool:
+    installed_parts = parse_version(installed)
+    minimum_parts = parse_version(minimum)
+    width = max(len(installed_parts), len(minimum_parts))
+    return installed_parts + (0,) * (width - len(installed_parts)) >= (
+        minimum_parts + (0,) * (width - len(minimum_parts))
+    )
+
+
+def _mcp_check_finding(
+    server_name: str,
+    check: dict[str, Any],
+    project_root: Path,
+) -> Finding | None:
+    kind = check.get('kind')
+    allowed = _MCP_CHECK_FIELDS.get(kind)
+    if allowed is None or set(check) - allowed:
+        raise PolicyError('unsupported MCP readiness check')
+    if kind == 'command-exists':
+        command = check.get('command')
+        if not isinstance(command, str) or not command:
+            raise PolicyError('MCP command-exists check is invalid')
+        if shutil.which(command) is None:
+            return Finding(
+                'mcp-prerequisite-missing',
+                f'{server_name} MCP',
+                f'requires the {command} command, which is unavailable',
+                f'Install {command} and expose it on PATH.',
+            )
+        return None
+    if kind == 'runtime-version':
+        runtime = check.get('runtime')
+        minimum = check.get('minimum')
+        if runtime not in _RUNTIME_PROBES or not isinstance(minimum, str):
+            raise PolicyError('MCP runtime-version check is invalid')
+        command, pattern = _RUNTIME_PROBES[runtime]
+        try:
+            installed = run_detector({
+                'kind': 'command-regex',
+                'command': list(command),
+                'pattern': pattern,
+            })
+        except (PolicyError, re.error) as error:
+            raise DetectorError('MCP runtime version detection failed') from error
+        if installed is None:
+            return Finding(
+                'mcp-prerequisite-missing',
+                f'{server_name} MCP',
+                f'requires the {runtime} runtime, which is unavailable',
+                f'Install {runtime} {minimum} or newer and expose it on PATH.',
+            )
+        try:
+            satisfied = _minimum_satisfied(installed, minimum)
+        except ValueError as error:
+            raise DetectorError('MCP runtime version is unreadable') from error
+        if not satisfied:
+            return Finding(
+                'mcp-version-too-old',
+                f'{server_name} MCP',
+                f'requires {runtime} {minimum} or newer; installed version is {installed}',
+                f'Upgrade {runtime} to {minimum} or newer.',
+            )
+        return None
+    if kind == 'workspace-path':
+        raw_path = check.get('path')
+        executable = check.get('executable', False)
+        if (
+            not isinstance(raw_path, str)
+            or not raw_path
+            or '\\' in raw_path
+            or Path(raw_path).is_absolute()
+            or '..' in Path(raw_path).parts
+            or type(executable) is not bool
+        ):
+            raise PolicyError('MCP workspace-path check is invalid')
+        path = project_root.joinpath(*Path(raw_path).parts)
+        available = path.is_file() and (
+            not executable or os.name == 'nt' or os.access(path, os.X_OK)
+        )
+        if not available:
+            return Finding(
+                'mcp-prerequisite-missing',
+                f'{server_name} MCP',
+                f'requires the project file {raw_path}, which is unavailable',
+                f'Install or restore {raw_path} for this project.',
+            )
+        return None
+    if kind == 'environment-variable':
+        name = check.get('name')
+        if not isinstance(name, str) or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', name) is None:
+            raise PolicyError('MCP environment-variable check is invalid')
+        if name not in os.environ:
+            return Finding(
+                'mcp-prerequisite-missing',
+                f'{server_name} MCP',
+                f'requires the {name} environment variable, which is unset',
+                f'Set {name} in the host environment without committing its value.',
+            )
+        return None
+    raise PolicyError('unsupported MCP readiness check')
+
+
+def check_mcp_readiness(
+    platform: str,
+    project_root: Path,
+    registry_path: Path | None = None,
+) -> list[Finding]:
+    registry_path = registry_path or default_mcp_registry_path()
+    findings: list[Finding] = []
+    try:
+        servers = [
+            *_mcp_servers_from_registry(registry_path, platform),
+            *_mcp_servers_from_project(project_root, platform),
+        ]
+    except (PolicyError, DetectorError):
+        findings.append(Finding(
+            'detector-error',
+            'MCP readiness',
+            'static readiness detection failed',
+            'Review the MCP declaration and retry explicitly.',
+        ))
+        return findings
+    for server in servers:
+        server_id = server.get('id')
+        readiness = server.get('readiness', {'checks': []})
+        if (
+            not isinstance(server_id, str)
+            or re.fullmatch(r'[a-z0-9][a-z0-9-]*', server_id) is None
+            or not isinstance(readiness, dict)
+            or set(readiness) != {'checks'}
+            or not isinstance(readiness.get('checks'), list)
+        ):
+            findings.append(Finding(
+                'detector-error',
+                'MCP readiness',
+                'static readiness detection failed',
+                'Review the MCP declaration and retry explicitly.',
+            ))
+            continue
+        for raw_check in readiness['checks']:
+            try:
+                if not isinstance(raw_check, dict):
+                    raise PolicyError('MCP readiness declaration is invalid')
+                finding = _mcp_check_finding(server_id, raw_check, project_root)
+            except (PolicyError, DetectorError, re.error):
+                findings.append(Finding(
+                    'detector-error',
+                    f'{server_id} MCP',
+                    'static readiness detection failed',
+                    'Review the MCP declaration and retry explicitly.',
+                ))
+                continue
+            if finding is not None:
+                findings.append(finding)
+    return findings
+
+
 def load_policy(path: Path, platform: str | None = None) -> dict[str, Any]:
     try:
         policy = json.loads(path.read_text(encoding='utf-8'))
@@ -439,27 +693,15 @@ def default_cache_root() -> Path:
     return Path.home() / '.cache' / 'smartkit'
 
 
-def _fingerprint(policy_path: Path, checker_path: Path) -> str:
-    digest = hashlib.sha256()
-    digest.update(policy_path.read_bytes())
-    digest.update(checker_path.read_bytes())
-    return digest.hexdigest()
-
-
-def _project_cache_key(policy_path: Path) -> str:
-    resolved = policy_path.resolve()
-    project_root = next(
-        (parent.parent for parent in resolved.parents if parent.name == '.agents'),
-        resolved.parent,
-    )
-    normalized = os.path.normcase(str(project_root))
+def _project_cache_key(project_root: Path) -> str:
+    resolved = project_root.resolve()
+    normalized = os.path.normcase(str(resolved))
     return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
 
 def _load_state(
     path: Path,
     date: str,
-    fingerprint: str,
 ) -> str | None:
     try:
         state = json.loads(path.read_text(encoding='utf-8'))
@@ -467,12 +709,11 @@ def _load_state(
         return None
     if not isinstance(state, dict):
         return None
-    if state.get('date') != date or state.get('fingerprint') != fingerprint:
+    if state.get('date') != date:
         return None
     outcome = state.get('outcome')
-    if outcome in {'passed', 'notified', 'error'} and set(state) == {
+    if outcome in {'started', 'passed', 'notified', 'error'} and set(state) == {
         'date',
-        'fingerprint',
         'outcome',
     }:
         return outcome
@@ -482,14 +723,12 @@ def _load_state(
 def _write_state(
     path: Path,
     date: str,
-    fingerprint: str,
     outcome: str,
 ) -> None:
-    if outcome not in {'passed', 'notified', 'error'}:
-        raise ValueError('daily state outcome must be passed, notified, or error')
+    if outcome not in {'started', 'passed', 'notified', 'error'}:
+        raise ValueError('daily state outcome is invalid')
     state: dict[str, Any] = {
         'date': date,
-        'fingerprint': fingerprint,
         'outcome': outcome,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -539,48 +778,63 @@ def run_hook(
     cache_root: Path | None = None,
     now: datetime | None = None,
     *,
-    cache_scope: str | None = None,
+    project_root: Path | None = None,
+    mcp_registry_path: Path | None = None,
     force: bool = False,
-    evaluator: Callable[[dict[str, Any]], list[Finding]] = check_policy,
+    evaluator: Callable[[dict[str, Any]], list[Finding]] | None = None,
 ) -> HookResult:
     cache_root = cache_root or default_cache_root()
     now = now or datetime.now().astimezone()
-    project_cache = cache_root / _project_cache_key(policy_path)
-    state_key = cache_scope or platform
-    state_path = project_cache / f'{state_key}.json'
-    lock_path = project_cache / f'{state_key}.lock'
+    project_root = resolve_project_root(project_root)
+    project_cache = cache_root / _project_cache_key(project_root)
+    state_path = project_cache / f'{platform}.json'
+    lock_path = project_cache / f'{platform}.lock'
     try:
-        fingerprint = _fingerprint(policy_path, Path(__file__))
         date = now.date().isoformat()
-        if not force and _load_state(state_path, date, fingerprint):
+        if not force and _load_state(state_path, date):
             return HookResult(False)
         lock_status = _acquire_lock(lock_path)
         if lock_status == 'busy':
             return HookResult(False)
+        if lock_status == 'uncached' and not force:
+            return HookResult(False, internal_error=True)
         try:
-            if not force and _load_state(state_path, date, fingerprint):
+            if not force and _load_state(state_path, date):
                 return HookResult(False)
+            if not force:
+                try:
+                    _write_state(state_path, date, 'started')
+                except OSError:
+                    return HookResult(False, internal_error=True)
             policy = load_policy(policy_path, platform)
-            findings = tuple(evaluator(policy))
+            findings_list = (
+                evaluator(policy)
+                if evaluator is not None
+                else [
+                    *check_policy(policy),
+                    *check_mcp_readiness(platform, project_root, mcp_registry_path),
+                ]
+            )
+            findings = tuple(findings_list)
             if not findings:
                 try:
-                    _write_state(state_path, date, fingerprint, 'passed')
+                    _write_state(state_path, date, 'passed')
                 except OSError:
                     pass
             elif any(finding.code != 'detector-error' for finding in findings):
                 try:
-                    _write_state(state_path, date, fingerprint, 'notified')
+                    _write_state(state_path, date, 'notified')
                 except OSError:
                     pass
             else:
                 try:
-                    _write_state(state_path, date, fingerprint, 'error')
+                    _write_state(state_path, date, 'error')
                 except OSError:
                     pass
             return HookResult(True, findings)
         except Exception:
             try:
-                _write_state(state_path, date, fingerprint, 'error')
+                _write_state(state_path, date, 'error')
             except OSError:
                 pass
             return HookResult(True, internal_error=True)
@@ -713,15 +967,9 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     policy_path = args.policy or default_policy_path(args.platform)
     if args.command == 'hook':
-        cache_scope = (
-            f'{args.platform}-context'
-            if args.delivery == 'context'
-            else args.platform
-        )
         result = run_hook(
             args.platform,
             policy_path,
-            cache_scope=cache_scope,
             force=args.force,
         )
         output = render_hook_result(

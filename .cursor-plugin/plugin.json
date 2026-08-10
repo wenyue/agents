@@ -1,7 +1,7 @@
 {
   "name": "smartkit",
   "displayName": "WenYue SmartKit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Install and maintain shared project-agent workflows across repositories.",
   "author": {
     "name": "wenyue"
@@ -16,5 +16,6 @@
   "category": "developer-tools",
   "skills": "./skills/",
   "rules": "./rules/cursor/",
-  "hooks": "./hooks/cursor.json"
+  "hooks": "./hooks/cursor.json",
+  "mcpServers": "./mcp/cursor.json"
 }

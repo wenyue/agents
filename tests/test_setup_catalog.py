@@ -18,6 +18,117 @@ from agents_setup.catalog import (  # noqa: E402
 
 
 class SetupCatalogTest(unittest.TestCase):
+    def test_project_config_parses_typed_mcp_servers_and_readiness(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'config.json'
+            path.write_text(json.dumps({
+                'version': 1,
+                'mcp': {
+                    'servers': [
+                        {
+                            'id': 'inspector',
+                            'transport': 'stdio',
+                            'command': 'cache/inspector.exe',
+                            'args': ['--port', '8181'],
+                            'env': ['INSPECTOR_TOKEN'],
+                            'overrides': {
+                                'cursor': {
+                                    'command': '${workspaceFolder}/cache/inspector.exe'
+                                }
+                            },
+                            'readiness': {
+                                'checks': [
+                                    {
+                                        'kind': 'workspace-path',
+                                        'path': 'cache/inspector.exe',
+                                    }
+                                ]
+                            },
+                        },
+                        {
+                            'id': 'sentry',
+                            'transport': 'http',
+                            'url': 'https://mcp.sentry.dev/mcp',
+                        },
+                    ]
+                },
+            }), encoding='utf-8')
+
+            config = load_project_config(path, catalog=load_catalog(REPO_ROOT))
+
+            self.assertEqual([server.id for server in config.mcp_servers], ['inspector', 'sentry'])
+            inspector = config.mcp_servers[0]
+            self.assertEqual(inspector.env, ('INSPECTOR_TOKEN',))
+            self.assertEqual(
+                inspector.overrides[next(
+                    platform for platform in inspector.overrides if platform.value == 'cursor'
+                )].command,
+                '${workspaceFolder}/cache/inspector.exe',
+            )
+            self.assertEqual(inspector.readiness[0].path.as_posix(), 'cache/inspector.exe')
+
+    def test_project_config_rejects_untyped_or_inconsistent_mcp_contracts(self):
+        invalid_servers = (
+            {'id': 'bad', 'transport': 'stdio', 'command': 'x', 'shell': 'echo unsafe'},
+            {'id': 'bad', 'transport': 'stdio', 'command': 'x', 'url': 'https://example.invalid'},
+            {'id': 'bad', 'transport': 'http', 'url': 'file:///tmp/server'},
+            {
+                'id': 'bad', 'transport': 'stdio', 'command': 'x',
+                'readiness': {'checks': [{'kind': 'shell', 'command': 'echo unsafe'}]},
+            },
+            {
+                'id': 'bad', 'transport': 'stdio', 'command': 'x',
+                'readiness': {'checks': [{
+                    'kind': 'runtime-version', 'runtime': 'python',
+                    'minimum': '3.10.0',
+                }]},
+            },
+            {
+                'id': 'bad', 'transport': 'http', 'url': 'https://example.invalid',
+                'overrides': {'codex': {'command': 'bridge'}},
+            },
+            {
+                'id': 'bad', 'transport': 'stdio', 'command': 'x',
+                'platforms': ['codex', 'codex'],
+            },
+            {
+                'id': 'bad', 'transport': 'stdio', 'command': 'x',
+                'env': ['TOKEN', 'TOKEN'],
+            },
+            {
+                'id': 'bad', 'transport': 'stdio', 'command': 'x',
+                'platforms': ['codex'], 'overrides': {'cursor': {'command': 'y'}},
+            },
+            {
+                'id': 'bad', 'transport': 'stdio', 'command': 'x',
+                'overrides': {'vscode': {'command': 'y'}},
+            },
+        )
+        for server in invalid_servers:
+            with self.subTest(server=server), tempfile.TemporaryDirectory() as temp_dir:
+                path = Path(temp_dir) / 'config.json'
+                path.write_text(json.dumps({
+                    'version': 1,
+                    'mcp': {'servers': [server]},
+                }), encoding='utf-8')
+                with self.assertRaises(ContractError):
+                    load_project_config(path, catalog=load_catalog(REPO_ROOT))
+
+    def test_project_stdio_mcp_preserves_duplicate_arguments(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'config.json'
+            path.write_text(json.dumps({
+                'version': 1,
+                'mcp': {'servers': [{
+                    'id': 'example', 'transport': 'stdio', 'command': 'runner',
+                    'args': ['--flag', '--flag'],
+                }]},
+            }), encoding='utf-8')
+
+            config = load_project_config(path, catalog=load_catalog(REPO_ROOT))
+
+            self.assertEqual(config.mcp_servers[0].args, ('--flag', '--flag'))
+
     def test_catalog_parses_only_safe_unique_structured_retired_fields(self):
         def load_with(retired_fields):
             root = Path(self.temp_dir)
@@ -423,7 +534,6 @@ class SetupCatalogTest(unittest.TestCase):
                                     'id': 'getsentry/plugin-codex',
                                     'url': 'https://github.com/getsentry/plugin-codex',
                                     'ref': 'main',
-                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
                                     'skills': [{
                                         'id': 'getsentry/sentry-debug-issue',
                                         'path': 'plugins/sentry/skills/sentry-debug-issue',
@@ -442,6 +552,14 @@ class SetupCatalogTest(unittest.TestCase):
                 external['sentry-debug-issue'].path.as_posix(),
                 'plugins/sentry/skills/sentry-debug-issue',
             )
+            document = json.loads(path.read_text(encoding='utf-8'))
+            document['skills']['external_sources'][0]['license'] = {
+                'spdx': 'MIT',
+                'path': 'LICENSE',
+            }
+            path.write_text(json.dumps(document), encoding='utf-8')
+            with self.assertRaisesRegex(ContractError, 'unknown external source fields: license'):
+                load_project_config(path, catalog=load_catalog(REPO_ROOT))
             path.write_text(
                 json.dumps(
                     {
@@ -452,7 +570,6 @@ class SetupCatalogTest(unittest.TestCase):
                                     'id': 'bad/repo',
                                     'url': 'https://example.invalid/repo.git',
                                     'ref': 'main',
-                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
                                     'skills': [{'id': 'bad/skill', 'path': 'skill'}],
                                 }
                             ]
@@ -477,13 +594,11 @@ class SetupCatalogTest(unittest.TestCase):
                                     'id': 'example/debug-mode',
                                     'url': 'https://github.com/example/debug-mode',
                                     'ref': 'main',
-                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
                                     'skills': [{'id': 'example/debug-mode', 'path': 'debug-mode'}],
                                 },
                                 {
                                     'id': 'other/debug-mode',
                                     'url': 'https://github.com/other/debug-mode',
-                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
                                     'skills': [{'id': 'other/debug-mode', 'path': 'debug-mode'}],
                                 },
                             ]

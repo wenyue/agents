@@ -24,6 +24,22 @@ LICENSE_MARKERS: dict[str, tuple[str, ...]] = {
     'MPL-2.0': ('mozilla public license', 'version 2.0'),
     'ISC': ('permission to use, copy, modify', 'the software is provided'),
 }
+LICENSE_CANDIDATES = (
+    PurePosixPath('LICENSE'),
+    PurePosixPath('LICENSE.txt'),
+    PurePosixPath('LICENSE.md'),
+    PurePosixPath('COPYING'),
+    PurePosixPath('COPYING.txt'),
+    PurePosixPath('COPYING.md'),
+)
+LICENSE_DISCOVERY_ORDER = (
+    'MIT',
+    'Apache-2.0',
+    'BSD-3-Clause',
+    'BSD-2-Clause',
+    'MPL-2.0',
+    'ISC',
+)
 
 
 class ExternalContractError(ValueError):
@@ -40,6 +56,12 @@ class RefResolution(NamedTuple):
 class SkillTreeSnapshot(NamedTuple):
     root: Path
     files: dict[str, str]
+
+
+class LicenseDiscovery(NamedTuple):
+    spdx: str
+    path: PurePosixPath
+    content: bytes
 
 
 GitRunner = Callable[[tuple[str, ...]], str]
@@ -84,6 +106,23 @@ def license_matches(spdx: str, content: bytes) -> bool:
     except UnicodeDecodeError:
         return False
     return all(marker in text for marker in expected)
+
+
+def discover_license(root: Path, label: str) -> LicenseDiscovery:
+    for relative in LICENSE_CANDIDATES:
+        path = source_path(root, relative, label)
+        if not path.exists():
+            continue
+        if not path.is_file():
+            raise ExternalContractError(f'{label} is not a regular file: {relative}')
+        try:
+            content = path.read_bytes()
+        except OSError as error:
+            raise ExternalContractError(f'{label} cannot be read: {relative}') from error
+        for spdx in LICENSE_DISCOVERY_ORDER:
+            if license_matches(spdx, content):
+                return LicenseDiscovery(spdx, relative, content)
+    raise ExternalContractError(f'{label} was not found or recognized')
 
 
 def _is_link_like(path: Path) -> bool:

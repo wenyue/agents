@@ -10,10 +10,13 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   snapshots. `hooks/` contains the host lifecycle entry points.
 - `rules/source/` owns plugin Rule policy, `rules/registry.json` owns order and activation, and
   `rules/cursor/` contains Cursor-native adapters.
+- `mcp/registry.json` owns Plugin MCP intent; the other files under `mcp/` and root `.mcp.json` are
+  generated host adapters.
 - `runtime/recommended-tools/` contains private Hook executables and no discoverable Skill.
   `policies/recommended-tools/` contains the declarations shared by that runtime and setup output.
 - Project configuration declares external GitHub Skill sources that setup snapshots into target
-  `.agents/skills/` with an aggregate project lock.
+  `.agents/skills/` with an aggregate project lock. It also declares Project MCP servers that setup
+  adapts into host-native entries with a separate entry-ownership lock.
 - `setup-assets/agents/` contains content installed by setup. `setup-assets/blueprints/` and
   `setup-assets/templates/` contain generation and rendering inputs, while `setup-assets/catalog/`
   owns asset selection, retired paths, and project-configuration contracts.
@@ -41,7 +44,8 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
 ## Dependency Direction
 
 - Plugin Hooks depend on `runtime/recommended-tools/`, which depends only on
-  `policies/recommended-tools/` and the Python standard library.
+  `policies/recommended-tools/`, `mcp/registry.json`, an optional target `.agents/config.json`, and
+  the Python standard library.
 - The setup control plane may read `setup-assets/`; plugin Hooks alone read `runtime/` and
   `policies/`. None of those areas may depend on plugin-discovered Skills.
 - Repository-local Skill wrappers depend only on their corresponding custom sources under
@@ -50,8 +54,9 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   templates only to author the Matt repository-context outputs declared by setup. Plugin Hooks must
   not depend on vendored Skills, and all other vendored Skills remain independent read-only plugin
   capabilities.
-- Plugin manifests expose `skills/`, host Hook entry points, and Cursor-native Rule adapters. They
-  do not expose `setup-assets/`, private runtime implementation, or policies directly.
+- Plugin manifests expose `skills/`, Plugin MCP adapters, host Hook entry points, and Cursor-native
+  Rule adapters. They do not expose `setup-assets/`, private runtime implementation, or policies
+  directly.
 
 ## Script and Test Ownership
 

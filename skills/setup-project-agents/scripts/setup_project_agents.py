@@ -10,7 +10,12 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 
-from agents_setup.catalog import ContractError, load_catalog, parse_external_skills
+from agents_setup.catalog import (
+    ContractError,
+    load_catalog,
+    parse_external_skills,
+    parse_mcp_servers,
+)
 from agents_setup.discovery import DiscoveryError
 from agents_setup.external import ExternalSkillError, snapshot_external_skills
 from agents_setup.models import Catalog, Platform, ProjectConfig
@@ -152,16 +157,53 @@ def _request(
                 'id': source.id,
                 'url': source.url,
                 **({'ref': source.ref} if source.ref is not None else {}),
-                'license': {
-                    'spdx': source.license.spdx,
-                    'path': source.license.path.as_posix(),
-                },
                 'skills': [
                     {'id': item.id, 'path': item.path.as_posix()}
                     for item in source.skills
                 ],
             }
             for source in config.external_sources
+        ],
+        'mcp_servers': [
+            {
+                'id': server.id,
+                'transport': server.transport.value,
+                'platforms': [platform.value for platform in server.platforms],
+                **({'command': server.command} if server.command is not None else {}),
+                **({'args': list(server.args)} if server.args else {}),
+                **({'cwd': server.cwd} if server.cwd is not None else {}),
+                **({'env': list(server.env)} if server.env else {}),
+                **({'url': server.url} if server.url is not None else {}),
+                **({
+                    'overrides': {
+                        platform.value: {
+                            **({'command': override.command} if override.command is not None else {}),
+                            **({'args': list(override.args)} if override.args is not None else {}),
+                            **({'cwd': override.cwd} if override.cwd is not None else {}),
+                            **({'env': list(override.env)} if override.env is not None else {}),
+                            **({'url': override.url} if override.url is not None else {}),
+                        }
+                        for platform, override in server.overrides.items()
+                    }
+                } if server.overrides else {}),
+                **({
+                    'readiness': {
+                        'checks': [
+                            {
+                                'kind': check.kind,
+                                **({'command': check.command} if check.command is not None else {}),
+                                **({'runtime': check.runtime} if check.runtime is not None else {}),
+                                **({'minimum': check.minimum} if check.minimum is not None else {}),
+                                **({'path': check.path.as_posix()} if check.path is not None else {}),
+                                **({'executable': True} if check.executable else {}),
+                                **({'name': check.name} if check.name is not None else {}),
+                            }
+                            for check in server.readiness
+                        ]
+                    }
+                } if server.readiness else {}),
+            }
+            for server in config.mcp_servers
         ],
         'model_requests': model_requests,
         'generation_requests': generation_requests,
@@ -226,7 +268,7 @@ def _request_config(
     required = {
         'version', 'target', 'source_root', 'source_commit', 'platforms', 'selected_rules',
         'selected_skills', 'selected_agents', 'external_sources', 'model_requests',
-        'generation_requests',
+        'mcp_servers', 'generation_requests',
     }
     if set(request) != required or request.get('version') != 1:
         raise SetupError('session request has an invalid shape')
@@ -271,7 +313,8 @@ def _request_config(
         external_sources = parse_external_skills(
             {'external_sources': request['external_sources']}, catalog
         )
-        config = ProjectConfig(1, *selections, external_sources)
+        mcp_servers = parse_mcp_servers({'servers': request['mcp_servers']})
+        config = ProjectConfig(1, *selections, external_sources, mcp_servers)
         if request['model_requests'] != _model_requests(config, catalog):
             raise ValueError
     except (KeyError, TypeError, ValueError, SetupError) as error:

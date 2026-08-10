@@ -77,6 +77,203 @@ class SetupRendererTest(unittest.TestCase):
             self.models,
         )
 
+    def mcp_config(self, target: Path, servers: list[dict]) -> ProjectConfig:
+        path = target / '.agents/config.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({'version': 1, 'mcp': {'servers': servers}}),
+            encoding='utf-8',
+        )
+        return load_project_config(path, catalog=self.catalog)
+
+    def render_with_config(self, target: Path, generated: Path, config: ProjectConfig):
+        return render_desired_state(
+            REPO_ROOT,
+            target,
+            self.catalog,
+            config,
+            generated,
+            self.models,
+        )
+
+    def test_project_mcp_renders_three_native_adapters_and_ownership_lock(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            config = self.mcp_config(target, [
+                {
+                    'id': 'sentry',
+                    'transport': 'http',
+                    'url': 'https://mcp.sentry.dev/mcp',
+                },
+                {
+                    'id': 'inspector',
+                    'transport': 'stdio',
+                    'command': 'cache/inspector.exe',
+                    'args': ['--port', '8181', '--flag', '--flag'],
+                    'cwd': 'cache',
+                    'env': ['INSPECTOR_TOKEN'],
+                    'overrides': {
+                        'cursor': {'command': '${workspaceFolder}/cache/inspector.exe'},
+                        'copilot': {'command': '${workspaceFolder}/cache/inspector.exe'},
+                    },
+                },
+            ])
+
+            rendered = self.render_with_config(target, self.generated_tree(root), config)
+            codex = tomllib.loads(rendered.files_by_path['.codex/config.toml'].decode())
+            cursor = json.loads(rendered.files_by_path['.cursor/mcp.json'])
+            copilot = json.loads(rendered.files_by_path['.vscode/mcp.json'])
+            lock = json.loads(rendered.files_by_path['.agents/project-mcp.lock.json'])
+
+            self.assertEqual(
+                codex['mcp_servers']['sentry'],
+                {'url': 'https://mcp.sentry.dev/mcp'},
+            )
+            self.assertEqual(
+                cursor['mcpServers']['inspector']['command'],
+                '${workspaceFolder}/cache/inspector.exe',
+            )
+            self.assertEqual(
+                cursor['mcpServers']['inspector']['env'],
+                {'INSPECTOR_TOKEN': '${env:INSPECTOR_TOKEN}'},
+            )
+            self.assertEqual(cursor['mcpServers']['inspector']['cwd'], 'cache')
+            self.assertEqual(
+                cursor['mcpServers']['inspector']['args'],
+                ['--port', '8181', '--flag', '--flag'],
+            )
+            self.assertEqual(
+                codex['mcp_servers']['inspector']['env_vars'],
+                ['INSPECTOR_TOKEN'],
+            )
+            self.assertEqual(codex['mcp_servers']['inspector']['cwd'], 'cache')
+            self.assertNotIn('type', codex['mcp_servers']['inspector'])
+            self.assertEqual(copilot['servers']['inspector']['type'], 'stdio')
+            self.assertEqual(
+                copilot['servers']['inspector']['env'],
+                {'INSPECTOR_TOKEN': '${env:INSPECTOR_TOKEN}'},
+            )
+            self.assertEqual(
+                {server['id'] for server in lock['servers']},
+                {'sentry', 'inspector'},
+            )
+
+    def test_project_mcp_adopts_equal_entry_but_rejects_unmanaged_conflict(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            cursor = target / '.cursor/mcp.json'
+            cursor.parent.mkdir(parents=True)
+            cursor.write_text(json.dumps({
+                'mcpServers': {
+                    'sentry': {'url': 'https://mcp.sentry.dev/mcp'},
+                    'user-owned': {'type': 'http', 'url': 'https://example.invalid/mcp'},
+                }
+            }), encoding='utf-8')
+            config = self.mcp_config(target, [{
+                'id': 'sentry', 'transport': 'http',
+                'url': 'https://mcp.sentry.dev/mcp', 'platforms': ['cursor'],
+            }])
+
+            rendered = self.render_with_config(target, self.generated_tree(root), config)
+            desired = json.loads(rendered.files_by_path['.cursor/mcp.json'])
+            self.assertIn('user-owned', desired['mcpServers'])
+
+            self.materialize(target, rendered.files)
+            converged = self.render_with_config(
+                target, self.generated_tree(root), config
+            )
+            self.assertEqual(
+                converged.files_by_path['.cursor/mcp.json'],
+                rendered.files_by_path['.cursor/mcp.json'],
+            )
+
+            (target / '.agents/project-mcp.lock.json').unlink()
+            cursor.write_text(json.dumps({
+                'mcpServers': {
+                    'sentry': {'type': 'http', 'url': 'https://other.invalid/mcp'},
+                }
+            }), encoding='utf-8')
+            with self.assertRaisesRegex(RenderError, 'conflicts with user configuration'):
+                self.render_with_config(target, self.generated_tree(root), config)
+
+    def test_removed_project_mcp_deletes_only_lock_owned_entries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            cursor = target / '.cursor/mcp.json'
+            cursor.parent.mkdir(parents=True)
+            cursor.write_text(json.dumps({
+                'mcpServers': {
+                    'retired': {'type': 'http', 'url': 'https://retired.invalid/mcp'},
+                    'keep': {'type': 'http', 'url': 'https://keep.invalid/mcp'},
+                }
+            }), encoding='utf-8')
+            lock = target / '.agents/project-mcp.lock.json'
+            lock.parent.mkdir(parents=True)
+            lock.write_text(json.dumps({
+                'version': 1,
+                'servers': [{
+                    'id': 'retired',
+                    'entries': {
+                        'cursor': {
+                            'path': '.cursor/mcp.json',
+                            'key': 'mcpServers.retired',
+                        }
+                    },
+                }],
+            }), encoding='utf-8')
+
+            rendered = self.render(target, self.generated_tree(root))
+            desired = json.loads(rendered.files_by_path['.cursor/mcp.json'])
+
+            self.assertEqual(set(desired['mcpServers']), {'keep'})
+            self.assertIn(PurePosixPath('.agents/project-mcp.lock.json'), rendered.delete_paths)
+
+    def test_owned_stdio_mcp_can_move_platforms_without_touching_user_entries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            cursor = target / '.cursor/mcp.json'
+            cursor.parent.mkdir(parents=True)
+            cursor.write_text(json.dumps({'mcpServers': {
+                'inspector': {
+                    'type': 'stdio', 'command': 'old-inspector', 'args': [],
+                },
+                'user-owned': {
+                    'type': 'stdio', 'command': 'keep-me', 'args': [],
+                },
+            }}), encoding='utf-8')
+            lock = target / '.agents/project-mcp.lock.json'
+            lock.parent.mkdir(parents=True)
+            lock.write_text(json.dumps({
+                'version': 1,
+                'servers': [{
+                    'id': 'inspector',
+                    'entries': {'cursor': {
+                        'path': '.cursor/mcp.json',
+                        'key': 'mcpServers.inspector',
+                    }},
+                }],
+            }), encoding='utf-8')
+            config = self.mcp_config(target, [{
+                'id': 'inspector', 'transport': 'stdio',
+                'platforms': ['codex'], 'command': 'new-inspector',
+            }])
+
+            rendered = self.render_with_config(target, self.generated_tree(root), config)
+            desired_cursor = json.loads(rendered.files_by_path['.cursor/mcp.json'])
+            desired_codex = tomllib.loads(
+                rendered.files_by_path['.codex/config.toml'].decode()
+            )
+
+            self.assertEqual(set(desired_cursor['mcpServers']), {'user-owned'})
+            self.assertEqual(
+                desired_codex['mcp_servers']['inspector'],
+                {'command': 'new-inspector', 'args': []},
+            )
+
     def test_project_snapshot_excludes_plugin_owned_hooks(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -159,7 +356,6 @@ class SetupRendererTest(unittest.TestCase):
                                     'id': 'example/local-check',
                                     'url': 'https://github.com/example/local-check',
                                     'ref': 'main',
-                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
                                     'skills': [{'id': 'example/local-check', 'path': 'skills/local-check'}],
                                 }
                             ]
@@ -205,7 +401,6 @@ class SetupRendererTest(unittest.TestCase):
                         'id': 'example/local-check',
                         'url': 'https://github.com/example/local-check',
                         'ref': 'main',
-                        'license': {'spdx': 'MIT', 'path': 'LICENSE'},
                         'skills': [{'id': 'example/local-check', 'path': 'skills/local-check'}],
                     }
                 ],

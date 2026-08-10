@@ -3,14 +3,8 @@
   "hooks": {
     "sessionStart": [
       {
-        "name": "smartkit recommended-tool consent context",
+        "name": "smartkit daily project readiness check",
         "command": "\"${CURSOR_PLUGIN_ROOT}/runtime/recommended-tools/run_recommended_tools.cmd\" hook --platform cursor --delivery context"
-      }
-    ],
-    "beforeSubmitPrompt": [
-      {
-        "name": "smartkit recommended-tool consent check",
-        "command": "\"${CURSOR_PLUGIN_ROOT}/runtime/recommended-tools/run_recommended_tools.cmd\" hook --platform cursor"
       }
     ]
   }

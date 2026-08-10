@@ -10,15 +10,17 @@ from .models import (
     AssetSpec,
     Catalog,
     ContractError,
-    ExternalLicenseSpec,
     ExternalSourceSpec,
     ExternalSkillSpec,
+    McpOverride,
+    McpReadinessCheck,
+    McpServerSpec,
+    McpTransport,
     Platform,
     ProjectConfig,
     RetiredFieldSpec,
 )
 from .external_contract import (
-    LICENSE_MARKERS,
     ExternalContractError,
     validate_ref,
     validate_source_identity,
@@ -46,12 +48,26 @@ _CATALOG_FIELDS = frozenset(
 )
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
 _PROJECT_CONFIG_FIELDS = frozenset(
-    {'$schema', 'version', 'selected_rules', 'selected_skills', 'selected_agents', 'skills'}
+    {'$schema', 'version', 'selected_rules', 'selected_skills', 'selected_agents', 'skills', 'mcp'}
 )
 _SKILLS_FIELDS = frozenset({'external_sources'})
-_EXTERNAL_SOURCE_FIELDS = frozenset({'id', 'url', 'ref', 'license', 'skills'})
+_EXTERNAL_SOURCE_FIELDS = frozenset({'id', 'url', 'ref', 'skills'})
 _EXTERNAL_SKILL_FIELDS = frozenset({'id', 'path'})
-_LICENSE_FIELDS = frozenset({'spdx', 'path'})
+_MCP_FIELDS = frozenset({'servers'})
+_MCP_SERVER_FIELDS = frozenset({
+    'id', 'transport', 'platforms', 'command', 'args', 'cwd', 'env', 'url',
+    'overrides', 'readiness',
+})
+_MCP_OVERRIDE_FIELDS = frozenset({'command', 'args', 'cwd', 'env', 'url'})
+_MCP_READINESS_FIELDS = frozenset({'checks'})
+_MCP_CHECK_FIELDS = {
+    'command-exists': frozenset({'kind', 'command'}),
+    'runtime-version': frozenset({'kind', 'runtime', 'minimum'}),
+    'workspace-path': frozenset({'kind', 'path', 'executable'}),
+    'environment-variable': frozenset({'kind', 'name'}),
+}
+_ENVIRONMENT_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+_NUMERIC_VERSION = re.compile(r'^(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*)){2}$')
 _RETIRED_FIELD_FIELDS = frozenset({'path', 'key'})
 _STRUCTURED_SUFFIXES = frozenset({'.json', '.jsonc', '.toml'})
 _MATT_BLUEPRINTS = {
@@ -129,6 +145,173 @@ def _nonempty_string(value: object, label: str) -> str:
     if not isinstance(value, str) or not value:
         raise ContractError(f'{label} must be a non-empty string')
     return value
+
+
+def _string_array(value: object, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item for item in value
+    ):
+        raise ContractError(f'{label} must be an array of non-empty strings')
+    return tuple(value)
+
+
+def _mcp_text(value: object, label: str) -> str:
+    text = _nonempty_string(value, label)
+    if any(unicodedata.category(character) == 'Cc' for character in text):
+        raise ContractError(f'{label} contains control characters')
+    return text
+
+
+def _mcp_env(value: object, label: str) -> tuple[str, ...]:
+    names = _string_array(value, label)
+    if len(names) != len(set(names)):
+        raise ContractError(f'{label} has duplicate values')
+    if any(_ENVIRONMENT_NAME.fullmatch(name) is None for name in names):
+        raise ContractError(f'{label} contains an invalid environment variable name')
+    return names
+
+
+def _mcp_override(
+    value: object,
+    *,
+    label: str,
+    transport: McpTransport,
+) -> McpOverride:
+    document = _object(value, label)
+    _fields(document, _MCP_OVERRIDE_FIELDS, label)
+    if transport is McpTransport.HTTP:
+        if set(document) - {'url'}:
+            raise ContractError(f'{label} HTTP override may declare only url')
+    elif 'url' in document:
+        raise ContractError(f'{label} stdio override cannot declare url')
+    command = _mcp_text(document['command'], f'{label}.command') if 'command' in document else None
+    args = _string_array(document['args'], f'{label}.args') if 'args' in document else None
+    cwd = _mcp_text(document['cwd'], f'{label}.cwd') if 'cwd' in document else None
+    env = _mcp_env(document['env'], f'{label}.env') if 'env' in document else None
+    url = _mcp_text(document['url'], f'{label}.url') if 'url' in document else None
+    if url is not None and not url.startswith(('https://', 'http://')):
+        raise ContractError(f'{label}.url must be an HTTP URL')
+    return McpOverride(command, args, cwd, env, url)
+
+
+def _mcp_readiness(value: object, label: str) -> tuple[McpReadinessCheck, ...]:
+    if value is None:
+        return ()
+    document = _object(value, label)
+    _fields(document, _MCP_READINESS_FIELDS, label)
+    raw_checks = _required(document, 'checks', label)
+    if not isinstance(raw_checks, list):
+        raise ContractError(f'{label}.checks must be an array')
+    result: list[McpReadinessCheck] = []
+    for index, raw_check in enumerate(raw_checks):
+        check_label = f'{label}.checks[{index}]'
+        check = _object(raw_check, check_label)
+        kind = check.get('kind')
+        if not isinstance(kind, str) or kind not in _MCP_CHECK_FIELDS:
+            raise ContractError(f'{check_label}.kind is unsupported')
+        _fields(check, _MCP_CHECK_FIELDS[kind], check_label)
+        if kind == 'command-exists':
+            result.append(McpReadinessCheck(
+                kind,
+                command=_mcp_text(_required(check, 'command', check_label), f'{check_label}.command'),
+            ))
+        elif kind == 'runtime-version':
+            minimum = _mcp_text(
+                _required(check, 'minimum', check_label), f'{check_label}.minimum'
+            )
+            if _NUMERIC_VERSION.fullmatch(minimum) is None:
+                raise ContractError(f'{check_label}.minimum must be a numeric version')
+            runtime = _mcp_text(
+                _required(check, 'runtime', check_label), f'{check_label}.runtime'
+            )
+            if runtime != 'node':
+                raise ContractError(f'{check_label}.runtime is unsupported')
+            result.append(McpReadinessCheck(
+                kind,
+                runtime=runtime,
+                minimum=minimum,
+            ))
+        elif kind == 'workspace-path':
+            executable = check.get('executable', False)
+            if type(executable) is not bool:
+                raise ContractError(f'{check_label}.executable must be a boolean')
+            result.append(McpReadinessCheck(
+                kind,
+                path=safe_relative(_required(check, 'path', check_label), f'{check_label}.path'),
+                executable=executable,
+            ))
+        else:
+            name = _mcp_text(_required(check, 'name', check_label), f'{check_label}.name')
+            if _ENVIRONMENT_NAME.fullmatch(name) is None:
+                raise ContractError(f'{check_label}.name must be an environment variable name')
+            result.append(McpReadinessCheck(kind, name=name))
+    return tuple(result)
+
+
+def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
+    if value is None:
+        return ()
+    root = _object(value, 'project config mcp')
+    _fields(root, _MCP_FIELDS, 'project config mcp')
+    raw_servers = root.get('servers', [])
+    if not isinstance(raw_servers, list):
+        raise ContractError('project config mcp.servers must be an array')
+    result: list[McpServerSpec] = []
+    for index, raw_server in enumerate(raw_servers):
+        label = f'project config mcp.servers[{index}]'
+        document = _object(raw_server, label)
+        _fields(document, _MCP_SERVER_FIELDS, label)
+        server_id = _name(_required(document, 'id', label), f'{label}.id')
+        try:
+            transport = McpTransport(_required(document, 'transport', label))
+        except (TypeError, ValueError) as error:
+            raise ContractError(f'{label}.transport is unsupported') from error
+        platforms = _platforms(document.get('platforms'), f'{label}.platforms', tuple(Platform))
+        if not platforms:
+            raise ContractError(f'{label}.platforms must not be empty')
+        command = args = cwd = env = url = None
+        if transport is McpTransport.STDIO:
+            if 'url' in document:
+                raise ContractError(f'{label} stdio server cannot declare url')
+            command = _mcp_text(_required(document, 'command', label), f'{label}.command')
+            args = _string_array(document.get('args', []), f'{label}.args')
+            cwd = _mcp_text(document['cwd'], f'{label}.cwd') if 'cwd' in document else None
+            env = _mcp_env(document.get('env', []), f'{label}.env')
+        else:
+            if set(document).intersection({'command', 'args', 'cwd', 'env'}):
+                raise ContractError(f'{label} HTTP server cannot declare stdio fields')
+            url = _mcp_text(_required(document, 'url', label), f'{label}.url')
+            if not url.startswith(('https://', 'http://')):
+                raise ContractError(f'{label}.url must be an HTTP URL')
+        raw_overrides = document.get('overrides', {})
+        overrides_doc = _object(raw_overrides, f'{label}.overrides')
+        overrides: dict[Platform, McpOverride] = {}
+        for key, raw_override in overrides_doc.items():
+            try:
+                platform = Platform(key)
+            except (TypeError, ValueError) as error:
+                raise ContractError(f'{label}.overrides has an unsupported platform') from error
+            if platform not in platforms:
+                raise ContractError(f'{label}.overrides platform is not enabled')
+            overrides[platform] = _mcp_override(
+                raw_override, label=f'{label}.overrides.{platform.value}', transport=transport
+            )
+        result.append(McpServerSpec(
+            server_id,
+            transport,
+            platforms,
+            command=command,
+            args=args or (),
+            cwd=cwd,
+            env=env or (),
+            url=url,
+            overrides=overrides,
+            readiness=_mcp_readiness(document.get('readiness'), f'{label}.readiness'),
+        ))
+    ids = [server.id for server in result]
+    if len(ids) != len(set(ids)):
+        raise ContractError('project config mcp.servers has duplicate ids')
+    return tuple(result)
 
 
 def _rule_metadata(value: object, *, project_blueprint: bool) -> Mapping[str, object]:
@@ -398,17 +581,6 @@ def parse_external_skills(value: object, catalog: Catalog) -> tuple[ExternalSour
             validate_ref(ref)
         except ExternalContractError as error:
             raise ContractError('external source ref must be a safe Git argument') from error
-        license_doc = _object(_required(document, 'license', 'external source'), 'external license')
-        _fields(license_doc, _LICENSE_FIELDS, 'external license')
-        spdx = _nonempty_string(
-            _required(license_doc, 'spdx', 'external license'), 'external license spdx'
-        )
-        if spdx not in LICENSE_MARKERS:
-            raise ContractError('external license spdx is not supported')
-        license_spec = ExternalLicenseSpec(
-            spdx,
-            safe_relative(_required(license_doc, 'path', 'external license'), 'external license path'),
-        )
         source_skills: list[ExternalSkillSpec] = []
         raw_skills = _required(document, 'skills', 'external source')
         if not isinstance(raw_skills, list) or not raw_skills:
@@ -426,7 +598,7 @@ def parse_external_skills(value: object, catalog: Catalog) -> tuple[ExternalSour
             if name in reserved:
                 raise ContractError(f'external skill conflicts with shared skill: {name}')
             source_skills.append(ExternalSkillSpec(skill_id, name, path))
-        result.append(ExternalSourceSpec(source_id, url, ref, license_spec, tuple(source_skills)))
+        result.append(ExternalSourceSpec(source_id, url, ref, tuple(source_skills)))
     names = [item.name for source in result for item in source.skills]
     if len(set(names)) != len(names):
         raise ContractError('project config skills.external_sources has duplicate names')
@@ -448,6 +620,7 @@ def load_project_config(
     if type(version) is not int or version != 1:
         raise ContractError('project config version must be 1')
     project_external_skills = parse_external_skills(document.get('skills'), catalog)
+    mcp_servers = parse_mcp_servers(document.get('mcp'))
     managed_names = {item.name for item in catalog.external_skills}
     conflicts = sorted(
         item.name for source in project_external_skills for item in source.skills if item.name in managed_names
@@ -463,4 +636,5 @@ def load_project_config(
         _selected(document.get('selected_skills'), 'selected_skills', catalog, 'skill'),
         _selected(document.get('selected_agents'), 'selected_agents', catalog, 'agent'),
         (*catalog.external_sources, *project_external_skills),
+        mcp_servers,
     )

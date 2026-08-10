@@ -11,22 +11,14 @@ from pathlib import Path
 from .models import ExternalSourceSpec
 from .external_contract import (
     ExternalContractError,
-    license_matches,
+    discover_license,
     resolve_ref,
     snapshot_skill_tree,
-    source_path,
 )
 
 
 class ExternalSkillError(ValueError):
     """Raised when a configured external Skill cannot produce a safe snapshot."""
-
-
-def _license_matches(spdx: str, content: bytes) -> bool:
-    try:
-        return license_matches(spdx, content)
-    except ExternalContractError as error:
-        raise ExternalSkillError(str(error)) from error
 
 
 def _git_environment() -> dict[str, str]:
@@ -129,17 +121,11 @@ def snapshot_external_skills(
                     f'external source tag moved: {source_spec.id}:{source_spec.ref}'
                 )
             try:
-                license_path = source_path(
-                    checkout, source_spec.license.path, f'external source {source_spec.id}'
+                license_discovery = discover_license(
+                    checkout, f'external source license {source_spec.id}'
                 )
             except ExternalContractError as error:
                 raise ExternalSkillError(str(error)) from error
-            try:
-                license_bytes = license_path.read_bytes()
-            except OSError as error:
-                raise ExternalSkillError(f'external source license is missing: {source_spec.id}') from error
-            if not _license_matches(source_spec.license.spdx, license_bytes):
-                raise ExternalSkillError(f'external source license does not match: {source_spec.id}')
             skill_locks: list[dict[str, object]] = []
             for spec in source_spec.skills:
                 try:
@@ -162,9 +148,9 @@ def snapshot_external_skills(
                 'ref_kind': resolution.ref_kind,
                 'commit': commit,
                 'license': {
-                    'spdx': source_spec.license.spdx,
-                    'path': source_spec.license.path.as_posix(),
-                    'sha256': hashlib.sha256(license_bytes).hexdigest(),
+                    'spdx': license_discovery.spdx,
+                    'path': license_discovery.path.as_posix(),
+                    'sha256': hashlib.sha256(license_discovery.content).hexdigest(),
                 },
                 'skills': skill_locks,
             })

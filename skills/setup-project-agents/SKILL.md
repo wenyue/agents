@@ -37,6 +37,12 @@ The three `docs/agents/` files and the `AGENTS.md` pointers are shared, human-ed
 configuration. Preserve complete existing documents unless the user explicitly confirms a
 reconfiguration; they are not disposable generated cache files.
 
+The target's `.agents/config.json` is the sole canonical input for selected external Skills and
+Project MCP. It must use the current version 1 schema before `start`. Do not edit its captured
+choices in `request.json`. Setup snapshots external Skills, renders Project MCP into each host's
+native configuration, and records only its owned native entries in
+`.agents/project-mcp.lock.json`.
+
 ## Preconditions
 
 - Start at the target repository root and identify the loaded Skill directory as
@@ -126,6 +132,8 @@ remove the session.
       paths with no undeclared directories.
 - [ ] Confirm no requested target is ignored by Git and no generated project file contains a
       credential or secret.
+- [ ] Confirm Project MCP native entries and `.agents/project-mcp.lock.json` contain only declared
+      configuration and environment-variable names, never environment-variable values.
 
 ## Acceptance Gate
 

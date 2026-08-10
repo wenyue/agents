@@ -2,7 +2,7 @@
 
 `WenYue SmartKit` is a cross-platform plugin for Codex, Cursor, and GitHub Copilot. It helps projects
 standardize Agent rules, commonly used skills, and collaboration workflows, and checks whether
-recommended tools are available when a session starts.
+recommended tools and configured MCP prerequisites are available when a session starts.
 
 ## Install the plugin
 
@@ -36,7 +36,7 @@ copilot plugin install smartkit@wenyue
 To update the Copilot plugin, run `copilot plugin marketplace update wenyue`, followed by
 `copilot plugin update smartkit`.
 
-## Plugin Skills and Rules
+## Plugin Skills, MCP, and Rules
 
 `skills/registry.json` explicitly declares SmartKit-owned Skills and GitHub-hosted external Skills.
 Maintainers update all external sources with `python scripts/update_external_skills.py --update`,
@@ -44,6 +44,14 @@ or one source with `--source owner/repository`; `--check` is read-only. Omitted 
 repository default branch, while a branch, tag, or commit may be selected explicitly. Updates use
 ambient Git credentials, validate licenses, and transactionally replace the aggregate lock and
 snapshots.
+
+Third-party Plugin Skills are reviewed, licensed, locked snapshots shipped inside SmartKit because
+the supported hosts load them from plugin-local paths. Plugin MCP uses a different lifecycle:
+`mcp/registry.json` declares configuration, `python scripts/sync_mcp_adapters.py` generates the
+three host adapters, and each host starts or connects to the external server. SmartKit does not copy
+the server implementation. SmartKit 1.1 configures Playwright MCP on all three hosts through
+`@playwright/mcp@latest` in isolated headless mode; browser tool calls keep the host's normal
+approval behavior.
 
 `rules/registry.json` orders plugin Rules. `always` Rules load for every task; `file` Rules activate
 for matching project-relative Git-style globs. Strength wins first (`Mandatory` > `Default` >
@@ -61,11 +69,11 @@ plugin-Rule contract.
 All three hosts support Windows and Linux. Setup gives every generated Agent an explicit model;
 host-specific fields remain native to that host.
 
-| Host | Plugin Rule delivery | Recommended-tool Hook | Native Agent fields |
-| --- | --- | --- | --- |
-| Codex | Session, prompt, and structured-tool Hooks | PowerShell / POSIX sh | `model_reasoning_effort`, `sandbox_mode` |
-| Cursor | Native plugin Rules | Polyglot dispatcher | `readonly` |
-| GitHub Copilot CLI | Session, transformed-prompt, and structured-tool Hooks | `powershell` / `bash` | `disable-model-invocation` |
+| Host | Plugin Rule delivery | Daily readiness Hook | Plugin MCP | Native Agent fields |
+| --- | --- | --- | --- | --- |
+| Codex | Session, prompt, and structured-tool Hooks | PowerShell / POSIX sh | `.mcp.json` | `model_reasoning_effort`, `sandbox_mode` |
+| Cursor | Native plugin Rules | Polyglot dispatcher at session start | `mcp/cursor.json` | `readonly` |
+| GitHub Copilot CLI | Session, transformed-prompt, and structured-tool Hooks | `powershell` / `bash` | `mcp/copilot.json` | `disable-model-invocation` |
 
 ## Set up each project
 
@@ -86,16 +94,34 @@ Projects may declare GitHub Skill sources in `.agents/config.json` under
 writes `.agents/external-skills.lock.json`. Generated project Rules use `00–09`; module Rules use
 `10–19`, domain Rules use `20–29`, and package or project-plugin Rules use `30–39`.
 
+Projects may also declare an optional `mcp.servers` array in the same version 1 configuration.
+Every server has a stable ID and a typed `http` or `stdio` transport, may target a host subset, and
+may use small typed host overrides. Setup renders Codex `.codex/config.toml`, Cursor
+`.cursor/mcp.json`, and Copilot `.vscode/mcp.json`, then records only the managed path/key pairs in
+`.agents/project-mcp.lock.json`. Equal existing entries are adopted; conflicting user entries stop
+setup; removing a declaration deletes only entries recorded in that lock. Environment variables
+are referenced by name, never stored with their secret values.
+
 SmartKit manages only the content it generates and preserves the project's existing files and user
 configuration whenever possible. Commit `AGENTS.md`, `.agents/`, managed host wrappers and config,
 and `docs/agents/`; do not add them to `.gitignore`. Session data, caches, logs, and credentials stay
 outside the repository, and generated project files must not contain secrets.
 
-## Hooks, multi-agent, and tool maintenance
+## Hooks, multi-agent, MCP readiness, and tool maintenance
 
-The plugin automatically checks recommended tools and required capabilities, such as CodeGraph,
-Tokscale, and multi-agent support. These checks only detect issues; they never install tools or
-change related configuration by themselves.
+The plugin runs one automatic readiness pipeline per canonical project, active host, and local
+calendar day. Its first step is the daily gate; policy changes do not bypass it, while an explicit
+`--force` run does. The current checks are:
+
+- recommended-tool installation and version, including CodeGraph and Tokscale;
+- required effective values, including Codex multi-agent support;
+- Plugin MCP static prerequisites, currently Node 18 or newer and `npx` for Playwright;
+- Project MCP typed prerequisites: command availability, an allowlisted runtime minimum, a
+  workspace-relative file, or an environment-variable name.
+
+These checks never install tools, mutate MCP configuration, start an MCP server, probe a network or
+application port, trigger OAuth, or require a live debug session. HTTP MCP declarations without a
+static readiness profile therefore produce no connectivity check.
 
 When missing or outdated tools are detected, SmartKit first lists the affected items and asks the
 user. It runs maintenance actions only after explicit consent. If the user explicitly declines the

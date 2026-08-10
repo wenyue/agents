@@ -11,8 +11,11 @@ sys.path.insert(0, str(REPO_ROOT / 'skills' / 'setup-project-agents' / 'scripts'
 
 from agents_setup import external  # noqa: E402
 from agents_setup.external import ExternalSkillError, snapshot_external_skills  # noqa: E402
+from agents_setup.external_contract import (  # noqa: E402
+    ExternalContractError,
+    license_matches,
+)
 from agents_setup.models import (  # noqa: E402
-    ExternalLicenseSpec,
     ExternalSkillSpec,
     ExternalSourceSpec,
 )
@@ -60,7 +63,6 @@ class SetupExternalSkillTest(unittest.TestCase):
             'example/repository',
             repository,
             'main',
-            ExternalLicenseSpec('MIT', PurePosixPath('LICENSE')),
             (ExternalSkillSpec(
                 'example/external-check',
                 'external-check',
@@ -81,6 +83,10 @@ class SetupExternalSkillTest(unittest.TestCase):
             lock = json.loads((first / 'external-skills.lock.json').read_text())
             self.assertEqual(lock['sources'][0]['resolved_ref'], 'main')
             self.assertEqual(lock['sources'][0]['ref_kind'], 'branch')
+            license_item = lock['sources'][0]['license']
+            self.assertEqual(license_item['spdx'], 'MIT')
+            self.assertEqual(license_item['path'], 'LICENSE')
+            self.assertRegex(license_item['sha256'], r'^[0-9a-f]{64}$')
 
             skill = work / 'plugins/example/skills/external-check/SKILL.md'
             skill.write_text(skill.read_text() + '\nUpdated.\n', encoding='utf-8')
@@ -111,13 +117,38 @@ class SetupExternalSkillTest(unittest.TestCase):
             self.assertFalse((session / 'external-checkouts').exists())
 
     def test_recognizes_standard_spdx_license_text(self):
-        self.assertTrue(external._license_matches(
+        self.assertTrue(license_matches(
             'Apache-2.0',
             b'Apache License\nVersion 2.0, January 2004\n',
         ))
-        self.assertFalse(external._license_matches('Apache-2.0', b'not a license'))
-        with self.assertRaisesRegex(ExternalSkillError, 'unsupported SPDX'):
-            external._license_matches('GPL-3.0-only', b'GPL-3.0-only')
+        self.assertFalse(license_matches('Apache-2.0', b'not a license'))
+        with self.assertRaisesRegex(ExternalContractError, 'unsupported SPDX'):
+            license_matches('GPL-3.0-only', b'GPL-3.0-only')
+
+    def test_discovers_a_supported_copying_file_without_project_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / 'COPYING').write_text(
+                'Apache License\nVersion 2.0, January 2004\n',
+                encoding='utf-8',
+            )
+            discovered = external.discover_license(root, 'external source license')
+            self.assertEqual(discovered.spdx, 'Apache-2.0')
+            self.assertEqual(discovered.path, PurePosixPath('COPYING'))
+
+    def test_rejects_a_source_without_a_recognized_root_license(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            work, origin = self.make_repository(root)
+            (work / 'LICENSE').write_text('A private license.\n', encoding='utf-8')
+            git(work, 'add', '.')
+            git(work, 'commit', '--quiet', '-m', 'unrecognized license')
+            git(work, 'push', '--quiet', 'origin', 'main')
+            session = root / 'session'
+            session.mkdir()
+            with self.assertRaisesRegex(ExternalSkillError, 'not found or recognized'):
+                snapshot_external_skills((self.spec(origin.as_uri()),), session=session)
+            self.assertFalse((session / 'external-checkouts').exists())
 
     def test_rejects_a_symlinked_selected_path_ancestor(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -129,7 +160,6 @@ class SetupExternalSkillTest(unittest.TestCase):
             git(work, 'push', '--quiet', 'origin', 'main')
             spec = ExternalSourceSpec(
                 'example/repository', origin.as_uri(), 'main',
-                ExternalLicenseSpec('MIT', PurePosixPath('LICENSE')),
                 (ExternalSkillSpec(
                     'example/external-check', 'external-check',
                     PurePosixPath('plugins/linked/skills/external-check'),
@@ -148,7 +178,6 @@ class SetupExternalSkillTest(unittest.TestCase):
             git(work, 'push', '--quiet', 'origin', 'refs/tags/v1')
             tagged = ExternalSourceSpec(
                 'example/repository', origin.as_uri(), 'v1',
-                ExternalLicenseSpec('MIT', PurePosixPath('LICENSE')),
                 (ExternalSkillSpec(
                     'example/external-check', 'external-check',
                     PurePosixPath('plugins/example/skills/external-check'),

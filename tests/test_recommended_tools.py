@@ -434,6 +434,8 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             second_project = root / 'second-project'
             first_project.mkdir()
             second_project.mkdir()
+            (first_project / '.git').mkdir()
+            (second_project / '.git').mkdir()
             codex_policy = first_project / 'codex.json'
             other_codex_policy = second_project / 'codex.json'
             cursor_policy = first_project / 'cursor.json'
@@ -449,38 +451,189 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 return []
 
             today = datetime(2026, 7, 21, 9, tzinfo=timezone.utc)
-            first = checker.run_hook('codex', codex_policy, cache, today, evaluator=evaluator)
-            second = checker.run_hook('codex', codex_policy, cache, today, evaluator=evaluator)
+            first = checker.run_hook(
+                'codex', codex_policy, cache, today,
+                project_root=first_project, evaluator=evaluator,
+            )
+            second = checker.run_hook(
+                'codex', codex_policy, cache, today,
+                project_root=first_project, evaluator=evaluator,
+            )
             other_project = checker.run_hook(
-                'codex', other_codex_policy, cache, today, evaluator=evaluator
+                'codex', other_codex_policy, cache, today,
+                project_root=second_project, evaluator=evaluator,
             )
-            cursor = checker.run_hook('cursor', cursor_policy, cache, today, evaluator=evaluator)
-            cursor_context = checker.run_hook(
-                'cursor',
-                cursor_policy,
-                cache,
-                today,
-                cache_scope='cursor-context',
-                evaluator=evaluator,
-            )
-            repeated_context = checker.run_hook(
-                'cursor',
-                cursor_policy,
-                cache,
-                today,
-                cache_scope='cursor-context',
-                evaluator=evaluator,
+            cursor = checker.run_hook(
+                'cursor', cursor_policy, cache, today,
+                project_root=first_project, evaluator=evaluator,
             )
 
             self.assertTrue(first.ran)
             self.assertFalse(second.ran)
             self.assertTrue(other_project.ran)
             self.assertTrue(cursor.ran)
-            self.assertTrue(cursor_context.ran)
-            self.assertFalse(repeated_context.ran)
-            self.assertEqual(calls, ['codex', 'codex', 'cursor', 'cursor'])
+            self.assertEqual(calls, ['codex', 'codex', 'cursor'])
 
-    def test_daily_state_reruns_next_day_after_policy_change_and_with_force(self):
+    def test_project_root_prefers_agent_config_then_git_then_current_directory(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            repository = root / 'repository'
+            nested_project = repository / 'packages' / 'app'
+            working_directory = nested_project / 'lib'
+            working_directory.mkdir(parents=True)
+            (repository / '.git').mkdir()
+            (nested_project / '.agents').mkdir()
+            (nested_project / '.agents' / 'config.json').write_text(
+                '{}\n', encoding='utf-8'
+            )
+
+            self.assertEqual(
+                checker.resolve_project_root(working_directory),
+                nested_project.resolve(),
+            )
+            (nested_project / '.agents' / 'config.json').unlink()
+            self.assertEqual(
+                checker.resolve_project_root(working_directory),
+                repository.resolve(),
+            )
+
+        with mock.patch.object(Path, 'exists', return_value=False), mock.patch.object(
+            Path, 'is_file', return_value=False
+        ):
+            current = Path('/synthetic/project/subdirectory')
+            self.assertEqual(checker.resolve_project_root(current), current)
+
+    def test_mcp_readiness_aggregates_typed_plugin_and_project_checks(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry = root / 'registry.json'
+            registry.write_text(json.dumps({
+                'version': 1,
+                'servers': [{
+                    'id': 'playwright', 'platforms': ['codex'],
+                    'readiness': {'checks': [
+                        {'kind': 'runtime-version', 'runtime': 'node', 'minimum': '18.0.0'},
+                        {'kind': 'command-exists', 'command': 'npx'},
+                    ]},
+                }],
+            }), encoding='utf-8')
+            config = root / '.agents/config.json'
+            config.parent.mkdir()
+            config.write_text(json.dumps({
+                'version': 1,
+                'mcp': {'servers': [
+                    {
+                        'id': 'inspector', 'platforms': ['codex'],
+                        'readiness': {'checks': [{
+                            'kind': 'workspace-path',
+                            'path': 'cache/inspector.exe',
+                            'executable': True,
+                        }]},
+                    },
+                    {
+                        'id': 'private', 'platforms': ['codex'],
+                        'readiness': {'checks': [{
+                            'kind': 'environment-variable', 'name': 'MCP_TOKEN',
+                        }]},
+                    },
+                    {'id': 'sentry', 'platforms': ['codex']},
+                ]},
+            }), encoding='utf-8')
+
+            with mock.patch.object(checker, 'run_detector', return_value='17.9.0'), \
+                    mock.patch.object(checker.shutil, 'which', return_value=None), \
+                    mock.patch.dict(checker.os.environ, {}, clear=True):
+                findings = checker.check_mcp_readiness('codex', root, registry)
+
+            self.assertEqual(
+                [finding.code for finding in findings],
+                [
+                    'mcp-version-too-old',
+                    'mcp-prerequisite-missing',
+                    'mcp-prerequisite-missing',
+                    'mcp-prerequisite-missing',
+                ],
+            )
+            self.assertNotIn('sentry MCP', [finding.tool for finding in findings])
+
+    def test_mcp_readiness_filters_platforms_and_rejects_unsafe_profiles(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry = root / 'registry.json'
+            registry.write_text(json.dumps({
+                'version': 1,
+                'servers': [{
+                    'id': 'playwright', 'platforms': ['codex', 'cursor'],
+                    'readiness': {'checks': []},
+                }],
+            }), encoding='utf-8')
+            config = root / '.agents/config.json'
+            config.parent.mkdir()
+            config.write_text(json.dumps({
+                'version': 1,
+                'mcp': {'servers': [{
+                    'id': 'inspector', 'platforms': ['cursor'],
+                    'readiness': {'checks': [{
+                        'kind': 'workspace-path', 'path': 'cache/inspector.exe',
+                    }]},
+                }, {
+                    'id': 'unsafe', 'platforms': ['codex'],
+                    'readiness': {'checks': [
+                        {'kind': 'shell', 'command': 'echo unsafe'},
+                        {'kind': 'environment-variable', 'name': 'MISSING_TOKEN'},
+                    ]},
+                }]},
+            }), encoding='utf-8')
+
+            with mock.patch.dict(checker.os.environ, {}, clear=True):
+                codex = checker.check_mcp_readiness('codex', root, registry)
+                cursor = checker.check_mcp_readiness('cursor', root, registry)
+
+            self.assertEqual(
+                [finding.code for finding in codex],
+                ['detector-error', 'mcp-prerequisite-missing'],
+            )
+            self.assertEqual(
+                [(finding.tool, finding.code) for finding in cursor],
+                [('inspector MCP', 'mcp-prerequisite-missing')],
+            )
+
+    def test_default_daily_runner_combines_tool_and_mcp_findings_once(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = root / 'project'
+            project.mkdir()
+            (project / '.git').mkdir()
+            policy = root / 'codex.json'
+            policy.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            tool_finding = checker.Finding('tool-missing', 'tool', 'missing', 'install')
+            mcp_finding = checker.Finding(
+                'mcp-prerequisite-missing', 'MCP', 'missing', 'install'
+            )
+
+            with mock.patch.object(checker, 'check_policy', return_value=[tool_finding]) \
+                    as tool_check, mock.patch.object(
+                        checker, 'check_mcp_readiness', return_value=[mcp_finding]
+                    ) as mcp_check:
+                first = checker.run_hook(
+                    'codex', policy, root / 'cache',
+                    datetime(2026, 8, 10, 10), project_root=project,
+                )
+                second = checker.run_hook(
+                    'codex', policy, root / 'cache',
+                    datetime(2026, 8, 10, 11), project_root=project,
+                )
+
+            self.assertEqual(first.findings, (tool_finding, mcp_finding))
+            self.assertFalse(second.ran)
+            tool_check.assert_called_once()
+            mcp_check.assert_called_once()
+
+    def test_daily_state_ignores_policy_change_but_allows_force_and_next_day(self):
         checker = self.checker
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -504,10 +657,10 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 'codex', policy_path, cache, day + timedelta(days=1), evaluator=evaluator
             )
 
-            self.assertTrue(changed.ran)
+            self.assertFalse(changed.ran)
             self.assertTrue(forced.ran)
             self.assertTrue(next_day.ran)
-            self.assertEqual(len(calls), 4)
+            self.assertEqual(len(calls), 3)
 
     def test_findings_prompt_the_user_only_once_per_day(self):
         checker = self.checker
@@ -758,19 +911,24 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             cache.mkdir()
             policy_path = root / 'codex.json'
             policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
-            project_cache = cache / checker._project_cache_key(policy_path)
+            project = root / 'project'
+            project.mkdir()
+            (project / '.git').mkdir()
+            project_cache = cache / checker._project_cache_key(project)
             project_cache.mkdir()
             lock = project_cache / 'codex.lock'
             lock.write_text('live\n', encoding='utf-8')
             calls = []
 
             busy = checker.run_hook(
-                'codex', policy_path, cache, evaluator=lambda policy: calls.append(policy) or []
+                'codex', policy_path, cache, project_root=project,
+                evaluator=lambda policy: calls.append(policy) or [],
             )
             old = time.time() - 1_000
             os.utime(lock, (old, old))
             reclaimed = checker.run_hook(
-                'codex', policy_path, cache, evaluator=lambda policy: calls.append(policy) or []
+                'codex', policy_path, cache, project_root=project,
+                evaluator=lambda policy: calls.append(policy) or [],
             )
 
             self.assertFalse(busy.ran)
@@ -778,31 +936,36 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             self.assertEqual(len(calls), 1)
             self.assertFalse(lock.exists())
 
-    def test_malformed_state_and_unwritable_cache_fail_open(self):
+    def test_malformed_state_runs_once_and_unwritable_gate_skips_checks(self):
         checker = self.checker
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             policy_path = root / 'codex.json'
             policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
             cache = root / 'cache'
-            project_cache = cache / checker._project_cache_key(policy_path)
+            project = root / 'project'
+            project.mkdir()
+            (project / '.git').mkdir()
+            project_cache = cache / checker._project_cache_key(project)
             project_cache.mkdir(parents=True)
             (project_cache / 'codex.json').write_text('{bad', encoding='utf-8')
             calls = []
 
             malformed = checker.run_hook(
-                'codex', policy_path, cache, evaluator=lambda policy: calls.append(policy) or []
+                'codex', policy_path, cache, project_root=project,
+                evaluator=lambda policy: calls.append(policy) or [],
             )
             cache_file = root / 'not-a-directory'
             cache_file.write_text('occupied\n', encoding='utf-8')
             uncached = checker.run_hook(
-                'codex', policy_path, cache_file, evaluator=lambda policy: calls.append(policy) or []
+                'codex', policy_path, cache_file, project_root=project,
+                evaluator=lambda policy: calls.append(policy) or [],
             )
 
             self.assertTrue(malformed.ran)
-            self.assertTrue(uncached.ran)
-            self.assertFalse(uncached.internal_error)
-            self.assertEqual(len(calls), 2)
+            self.assertFalse(uncached.ran)
+            self.assertTrue(uncached.internal_error)
+            self.assertEqual(len(calls), 1)
 
 
 class RecommendedToolMaintainerTest(unittest.TestCase):

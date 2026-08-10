@@ -216,6 +216,15 @@ class PluginManifestTest(unittest.TestCase):
         self.assertEqual(cursor['hooks'], './hooks/cursor.json')
         self.assertEqual(cursor['rules'], './rules/cursor/')
         self.assertEqual(copilot['hooks'], './hooks/copilot.json')
+        self.assertEqual(codex['mcpServers'], './.mcp.json')
+        self.assertEqual(cursor['mcpServers'], './mcp/cursor.json')
+        self.assertEqual(copilot['mcpServers'], './mcp/copilot.json')
+        for manifest, expected in (
+            (codex, '.mcp.json'),
+            (cursor, 'mcp/cursor.json'),
+            (copilot, 'mcp/copilot.json'),
+        ):
+            self.assertTrue((REPO_ROOT / expected).is_file())
         for manifest in (codex, cursor, copilot):
             self.assertTrue((REPO_ROOT / manifest['skills']).is_dir())
             self.assertNotIn('agents', manifest)
@@ -297,16 +306,12 @@ class PluginManifestTest(unittest.TestCase):
         )
         self.assertEqual(
             set(load_json('hooks/cursor.json')['hooks']),
-            {'sessionStart', 'beforeSubmitPrompt'},
+            {'sessionStart'},
         )
         cursor_hooks = load_json('hooks/cursor.json')['hooks']
         self.assertIn(
             '--delivery context',
             cursor_hooks['sessionStart'][0]['command'],
-        )
-        self.assertNotIn(
-            '--delivery context',
-            cursor_hooks['beforeSubmitPrompt'][0]['command'],
         )
         self.assertEqual(
             set(load_json('hooks/copilot.json')['hooks']),
@@ -315,10 +320,7 @@ class PluginManifestTest(unittest.TestCase):
 
     def test_cursor_hook_uses_cross_platform_dispatcher(self):
         cursor_hooks = load_json('hooks/cursor.json')['hooks']
-        commands = {
-            cursor_hooks['sessionStart'][0]['command'],
-            cursor_hooks['beforeSubmitPrompt'][0]['command'],
-        }
+        commands = {cursor_hooks['sessionStart'][0]['command']}
         dispatcher = REPO_ROOT / 'runtime/recommended-tools/run_recommended_tools.cmd'
 
         self.assertTrue(dispatcher.is_file())

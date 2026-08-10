@@ -1,7 +1,7 @@
 # WenYue SmartKit
 
 `WenYue SmartKit` 是同时适配 Codex、Cursor 和 GitHub Copilot 的跨平台插件。它帮助项目统一
-Agent 规则、常用技能和协作方式，并在会话开始时检查推荐工具是否可用。
+Agent 规则、常用技能和协作方式，并在会话开始时检查推荐工具和已配置 MCP 的前置条件是否可用。
 
 ## 安装插件
 
@@ -34,12 +34,18 @@ copilot plugin install smartkit@wenyue
 需要更新 Copilot 插件时，先运行 `copilot plugin marketplace update wenyue`，再运行
 `copilot plugin update smartkit`。
 
-## 插件 Skills 与 Rules
+## 插件 Skills、MCP 与 Rules
 
 `skills/registry.json` 显式声明 SmartKit 自有 Skills 和 GitHub 外部 Skills。维护者使用
 `python scripts/update_external_skills.py --update` 更新所有外部源，或用 `--source owner/repository`
 更新单个源；`--check` 只读。省略 ref 时跟随仓库默认分支，也可显式选择分支、标签或 commit。
 更新使用环境中的 Git 凭据，校验许可证，并事务化替换聚合锁文件和快照。
+
+第三方 Plugin Skills 会经过审查、许可证校验和锁定，并作为快照随 SmartKit 一起交付，因为受支持
+的宿主从插件本地路径加载它们。Plugin MCP 使用不同的生命周期：`mcp/registry.json` 声明配置，
+`python scripts/sync_mcp_adapters.py` 生成三端 adapter，再由各宿主启动或连接外部 server。
+SmartKit 不复制 server 实现。SmartKit 1.1 在三端通过隔离、无界面的
+`@playwright/mcp@latest` 配置 Playwright MCP；浏览器工具调用继续遵守宿主正常的审批行为。
 
 `rules/registry.json` 定义插件 Rules 的顺序。`always` Rule 对所有任务生效；`file` Rule 根据项目根
 相对的 Git 风格 glob 激活。优先比较强度（`Mandatory` > `Default` > `Advisory`），再比较项目归属，
@@ -54,11 +60,11 @@ copilot plugin install smartkit@wenyue
 三个宿主都支持 Windows 和 Linux。初始化会为每个生成的 Agent 设置显式模型；宿主专属字段仍使用
 各自的原生形式。
 
-| 宿主 | 插件 Rule 分发 | 推荐工具 Hook | 原生 Agent 字段 |
-| --- | --- | --- | --- |
-| Codex | 会话、提示词和结构化工具 Hook | PowerShell / POSIX sh | `model_reasoning_effort`、`sandbox_mode` |
-| Cursor | 原生插件 Rules | polyglot 分发器 | `readonly` |
-| GitHub Copilot CLI | 会话、转换提示词和结构化工具 Hook | `powershell` / `bash` | `disable-model-invocation` |
+| 宿主 | 插件 Rule 分发 | 每日 readiness Hook | Plugin MCP | 原生 Agent 字段 |
+| --- | --- | --- | --- | --- |
+| Codex | 会话、提示词和结构化工具 Hook | PowerShell / POSIX sh | `.mcp.json` | `model_reasoning_effort`、`sandbox_mode` |
+| Cursor | 原生插件 Rules | 仅 session start 的 polyglot 分发器 | `mcp/cursor.json` | `readonly` |
+| GitHub Copilot CLI | 会话、转换提示词和结构化工具 Hook | `powershell` / `bash` | `mcp/copilot.json` | `disable-model-invocation` |
 
 ## 为每个项目执行设置
 
@@ -79,14 +85,29 @@ tracker。
 使用 `00–09`，模块 Rules 使用 `10–19`，领域 Rules 使用 `20–29`，包或项目插件 Rules 使用
 `30–39`。
 
+项目也可在同一份 version 1 配置中声明可选的 `mcp.servers` 数组。每个 server 具有稳定 ID 和类型化
+的 `http` 或 `stdio` transport，可以限定宿主范围，并使用小范围的类型化宿主 override。Setup 会
+生成 Codex `.codex/config.toml`、Cursor `.cursor/mcp.json` 和 Copilot `.vscode/mcp.json`，并只在
+`.agents/project-mcp.lock.json` 中记录受管 path/key。等价的已有条目会被接管；冲突的用户条目会让
+setup 停止；删除声明时只删除该 lock 记录的条目。环境变量仅按名称引用，不存储 secret 值。
+
 SmartKit 只管理自己生成的内容，并尽量保留项目原有文件和用户配置。应提交 `AGENTS.md`、
 `.agents/`、受管宿主 wrapper 和配置以及 `docs/agents/`；不要将它们加入 `.gitignore`。Session
 数据、缓存、日志和凭据留在仓库外，生成的项目文件不得包含 secret。
 
-## Hook、多智能体与工具维护
+## Hook、多智能体、MCP readiness 与工具维护
 
-插件会自动检查推荐工具和必要能力，例如 CodeGraph、Tokscale 与多智能体支持。检查只负责发现
-问题，不会自行安装工具或修改相关配置。
+插件会按 canonical project、当前宿主和本地日期，每天自动运行一次 readiness pipeline。第一步
+就是 daily gate；policy 变化不会绕过它，显式 `--force` 可以重跑。当前检查包括：
+
+- 推荐工具的安装状态和版本，包括 CodeGraph 与 Tokscale；
+- 必要的实际配置值，包括 Codex 多智能体支持；
+- Plugin MCP 的静态前置条件，目前是 Playwright 所需的 Node 18 或更高版本与 `npx`；
+- Project MCP 的类型化前置条件：命令是否存在、allowlist runtime 的最低版本、workspace 相对文件，
+  或环境变量名称。
+
+这些检查不会安装工具、修改 MCP 配置、启动 MCP server、探测网络或应用端口、触发 OAuth，也不
+要求 debug session 在线。因此，没有静态 readiness profile 的 HTTP MCP 不会执行连接检查。
 
 发现缺失或过期工具时，SmartKit 会先列出需要处理的项目并询问用户，只执行用户明确同意的维护
 操作。如果用户明确拒绝列出的操作，SmartKit 会直接跳过，不再重复询问，Agent 随后继续原任务。

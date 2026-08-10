@@ -36,6 +36,14 @@ Git safety.
 - Proceed without a Spec or Tickets when one accepted source already makes a single-scope task
   implementable and verifiable. Decide worktree isolation independently from planning artifacts.
 
+### Scratch Markdown Language
+
+- Write all prose in `.scratch/**/*.md` in Simplified Chinese.
+- Keep tracker-defined keys, headings, enum values, code, commands, paths, URLs, identifiers, exact
+  quotations, logs, error messages, and official names unchanged.
+- Do not repeat the same prose in another language unless the user explicitly requests bilingual
+  content.
+
 ## Worktree Workflow
 
 - For state-changing implementation, apply `create-worktree` when the user requests isolation, the

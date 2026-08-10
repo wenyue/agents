@@ -168,6 +168,7 @@ class SetupCliTest(unittest.TestCase):
                 request['external_sources'],
                 [],
             )
+            self.assertEqual(request['mcp_servers'], [])
             self.assertNotIn('hooks_enabled', request)
             self.assertEqual(
                 request['model_requests'],
@@ -226,6 +227,62 @@ class SetupCliTest(unittest.TestCase):
             self.assertTrue((session / 'generated/.agents/rules').is_dir())
             self.assertTrue((session / 'generated/.agents/skills').is_dir())
             self.assertEqual(self.snapshot_tree(target), {})
+
+    def test_http_project_mcp_round_trips_through_prepare_apply_and_check(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            config = target / '.agents/config.json'
+            config.parent.mkdir()
+            config.write_text(json.dumps({
+                'version': 1,
+                'mcp': {'servers': [{
+                    'id': 'sentry',
+                    'transport': 'http',
+                    'url': 'https://mcp.sentry.dev/mcp',
+                }]},
+            }), encoding='utf-8')
+            session = self.private_session(root)
+
+            self.assertEqual(self.prepare(target, session), 0)
+            request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
+            self.assertEqual(request['mcp_servers'], [{
+                'id': 'sentry',
+                'transport': 'http',
+                'platforms': ['codex', 'cursor', 'copilot'],
+                'url': 'https://mcp.sentry.dev/mcp',
+            }])
+            self.write_generated_outputs(session)
+            models = self.write_models(session)
+            invocation = [
+                '--target', str(target), '--session', str(session),
+                '--models', str(models), *self.source_args(),
+            ]
+            self.assertEqual(setup_project_agents.main(['apply', *invocation]), 0)
+            self.assertEqual(
+                tomllib.loads((target / '.codex/config.toml').read_text())[
+                    'mcp_servers'
+                ]['sentry'],
+                {'url': 'https://mcp.sentry.dev/mcp'},
+            )
+            self.assertEqual(
+                json.loads((target / '.cursor/mcp.json').read_text())[
+                    'mcpServers'
+                ]['sentry'],
+                {'type': 'http', 'url': 'https://mcp.sentry.dev/mcp'},
+            )
+            self.assertEqual(
+                json.loads((target / '.vscode/mcp.json').read_text())[
+                    'servers'
+                ]['sentry'],
+                {'type': 'http', 'url': 'https://mcp.sentry.dev/mcp'},
+            )
+            lock = json.loads(
+                (target / '.agents/project-mcp.lock.json').read_text()
+            )
+            self.assertEqual([server['id'] for server in lock['servers']], ['sentry'])
+            self.assertEqual(setup_project_agents.main(['check', *invocation]), 0)
 
     def test_apply_rejects_cross_target_replay_and_models_outside_its_session(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -302,7 +359,6 @@ class SetupCliTest(unittest.TestCase):
                                     'id': 'example/repository',
                                     'url': 'https://github.com/example/repository',
                                     'ref': 'main',
-                                    'license': {'spdx': 'MIT', 'path': 'LICENSE'},
                                     'skills': [{
                                         'id': 'example/external-check',
                                         'path': 'skills/external-check',

@@ -16,6 +16,45 @@ class Platform(str, Enum):
     COPILOT = 'copilot'
 
 
+class McpTransport(str, Enum):
+    STDIO = 'stdio'
+    HTTP = 'http'
+
+
+@dataclass(frozen=True)
+class McpReadinessCheck:
+    kind: str
+    command: str | None = None
+    runtime: str | None = None
+    minimum: str | None = None
+    path: PurePosixPath | None = None
+    executable: bool = False
+    name: str | None = None
+
+
+@dataclass(frozen=True)
+class McpOverride:
+    command: str | None = None
+    args: tuple[str, ...] | None = None
+    cwd: str | None = None
+    env: tuple[str, ...] | None = None
+    url: str | None = None
+
+
+@dataclass(frozen=True)
+class McpServerSpec:
+    id: str
+    transport: McpTransport
+    platforms: tuple[Platform, ...]
+    command: str | None = None
+    args: tuple[str, ...] = ()
+    cwd: str | None = None
+    env: tuple[str, ...] = ()
+    url: str | None = None
+    overrides: Mapping[Platform, McpOverride] = field(default_factory=dict)
+    readiness: tuple[McpReadinessCheck, ...] = ()
+
+
 @dataclass(frozen=True)
 class AssetSpec:
     id: str
@@ -35,6 +74,7 @@ class ProjectConfig:
     selected_skills: tuple[str, ...]
     selected_agents: tuple[str, ...]
     external_sources: tuple[ExternalSourceSpec, ...] = ()
+    mcp_servers: tuple[McpServerSpec, ...] = ()
 
     @property
     def external_skills(self) -> tuple[ExternalSkillSpec, ...]:
@@ -49,17 +89,10 @@ class ExternalSkillSpec:
 
 
 @dataclass(frozen=True)
-class ExternalLicenseSpec:
-    spdx: str
-    path: PurePosixPath
-
-
-@dataclass(frozen=True)
 class ExternalSourceSpec:
     id: str
     url: str
     ref: str | None
-    license: ExternalLicenseSpec
     skills: tuple[ExternalSkillSpec, ...]
 
 

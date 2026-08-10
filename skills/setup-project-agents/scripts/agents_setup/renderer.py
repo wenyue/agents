@@ -13,7 +13,16 @@ from .discovery import (
     discover_project_rules,
     discover_project_skills,
 )
-from .models import Catalog, DesiredField, DesiredFile, ProjectConfig
+from .models import (
+    Catalog,
+    DesiredField,
+    DesiredFile,
+    McpOverride,
+    McpServerSpec,
+    McpTransport,
+    Platform,
+    ProjectConfig,
+)
 from .project import ProjectError, confined_target
 from .structured import (
     StructuredConfigError,
@@ -105,6 +114,12 @@ _TRANSIENT_NAMES = frozenset({
 })
 _EXTERNAL_ID = re.compile(r'^[A-Za-z0-9_.-]+/[a-z0-9][a-z0-9-]*$')
 _EXTERNAL_LOCK = PurePosixPath('.agents/external-skills.lock.json')
+_MCP_LOCK = PurePosixPath('.agents/project-mcp.lock.json')
+_MCP_NATIVE = {
+    Platform.CODEX: (PurePosixPath('.codex/config.toml'), 'mcp_servers'),
+    Platform.CURSOR: (PurePosixPath('.cursor/mcp.json'), 'mcpServers'),
+    Platform.COPILOT: (PurePosixPath('.vscode/mcp.json'), 'servers'),
+}
 
 
 def _is_transient(path: Path) -> bool:
@@ -259,6 +274,200 @@ def _remove_dotted_field(document: dict[str, object], key: str) -> bool:
     return True
 
 
+def _existing_dotted_field(document: Mapping[str, object], key: str) -> tuple[bool, object | None]:
+    current: object = document
+    for segment in key.split('.'):
+        if not isinstance(current, Mapping) or segment not in current:
+            return False, None
+        current = current[segment]
+    return True, current
+
+
+def _set_dotted_field(document: dict[str, object], key: str, value: object) -> None:
+    segments = key.split('.')
+    current = document
+    for segment in segments[:-1]:
+        child = current.get(segment)
+        if child is None:
+            child = {}
+            current[segment] = child
+        if not isinstance(child, dict):
+            raise RenderError(f'MCP native parent field is not an object: {key}')
+        current = child
+    current[segments[-1]] = value
+
+
+def _load_project_mcp_lock(
+    target_root: Path,
+) -> dict[str, dict[Platform, tuple[PurePosixPath, str]]]:
+    try:
+        path = confined_target(target_root, _MCP_LOCK)
+    except ProjectError as error:
+        raise RenderError(str(error)) from error
+    if not path.exists():
+        return {}
+    if path.is_symlink() or not path.is_file():
+        raise RenderError('existing Project MCP lock is unsafe')
+    try:
+        document = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RenderError('existing Project MCP lock is invalid') from error
+    if not isinstance(document, dict) or set(document) != {'version', 'servers'}:
+        raise RenderError('existing Project MCP lock is invalid')
+    if document.get('version') != 1 or not isinstance(document.get('servers'), list):
+        raise RenderError('existing Project MCP lock is invalid')
+    result: dict[str, dict[Platform, tuple[PurePosixPath, str]]] = {}
+    for raw_server in document['servers']:
+        if (
+            not isinstance(raw_server, dict)
+            or set(raw_server) != {'id', 'entries'}
+            or not isinstance(raw_server.get('id'), str)
+            or not isinstance(raw_server.get('entries'), dict)
+        ):
+            raise RenderError('existing Project MCP lock is invalid')
+        server_id = raw_server['id']
+        if server_id in result:
+            raise RenderError('existing Project MCP lock has duplicate server ids')
+        entries: dict[Platform, tuple[PurePosixPath, str]] = {}
+        for raw_platform, raw_entry in raw_server['entries'].items():
+            try:
+                platform = Platform(raw_platform)
+            except (TypeError, ValueError) as error:
+                raise RenderError('existing Project MCP lock is invalid') from error
+            expected_path, expected_root = _MCP_NATIVE[platform]
+            if (
+                not isinstance(raw_entry, dict)
+                or set(raw_entry) != {'path', 'key'}
+                or raw_entry.get('path') != expected_path.as_posix()
+                or raw_entry.get('key') != f'{expected_root}.{server_id}'
+            ):
+                raise RenderError('existing Project MCP lock is invalid')
+            entries[platform] = (expected_path, raw_entry['key'])
+        result[server_id] = entries
+    return result
+
+
+def _effective_mcp_server(
+    server: McpServerSpec,
+    platform: Platform,
+) -> tuple[str | None, tuple[str, ...], str | None, tuple[str, ...], str | None]:
+    override = server.overrides.get(platform, McpOverride())
+    return (
+        override.command if override.command is not None else server.command,
+        override.args if override.args is not None else server.args,
+        override.cwd if override.cwd is not None else server.cwd,
+        override.env if override.env is not None else server.env,
+        override.url if override.url is not None else server.url,
+    )
+
+
+def _render_mcp_entry(server: McpServerSpec, platform: Platform) -> dict[str, object]:
+    command, args, cwd, env, url = _effective_mcp_server(server, platform)
+    if server.transport is McpTransport.HTTP:
+        assert url is not None
+        return {
+            **({'type': 'http'} if platform is not Platform.CODEX else {}),
+            'url': url,
+        }
+    assert command is not None
+    entry: dict[str, object] = {
+        **({'type': 'stdio'} if platform is not Platform.CODEX else {}),
+        'command': command,
+        'args': list(args),
+    }
+    if cwd is not None:
+        entry['cwd'] = cwd
+    if env:
+        if platform is Platform.CODEX:
+            entry['env_vars'] = list(env)
+        else:
+            entry['env'] = {name: '${env:' + name + '}' for name in env}
+    return entry
+
+
+def _mcp_entries_equal(current: object, desired: object, platform: Platform) -> bool:
+    if current == desired:
+        return True
+    if platform is not Platform.CURSOR or not isinstance(current, Mapping):
+        return False
+    normalized = dict(current)
+    if 'type' not in normalized:
+        if 'command' in normalized and 'url' not in normalized:
+            normalized['type'] = 'stdio'
+        elif 'url' in normalized and 'command' not in normalized:
+            normalized['type'] = 'http'
+    return normalized == desired
+
+
+def _render_project_mcp(
+    target_root: Path,
+    config: ProjectConfig,
+    native_documents: dict[PurePosixPath, dict[str, object]],
+    native_templates: dict[PurePosixPath, dict[str, object]],
+    delete_paths: set[PurePosixPath],
+) -> bytes | None:
+    previous = _load_project_mcp_lock(target_root)
+
+    def native_document(path: PurePosixPath) -> dict[str, object]:
+        if path in native_documents:
+            return native_documents[path]
+        format_name = _format_for(path)
+        assert format_name is not None
+        try:
+            target_path = confined_target(target_root, path)
+        except ProjectError as error:
+            raise RenderError(str(error)) from error
+        document = _load_structured(target_path, format_name)
+        native_documents[path] = document
+        return document
+
+    owned = {
+        (platform, path, key)
+        for entries in previous.values()
+        for platform, (path, key) in entries.items()
+    }
+    touched_paths: set[PurePosixPath] = set()
+    for entries in previous.values():
+        for path, key in entries.values():
+            document = native_document(path)
+            _remove_dotted_field(document, key)
+            touched_paths.add(path)
+
+    lock_servers: list[dict[str, object]] = []
+    for server in config.mcp_servers:
+        lock_entries: dict[str, object] = {}
+        for platform in server.platforms:
+            path, root = _MCP_NATIVE[platform]
+            key = f'{root}.{server.id}'
+            desired = _render_mcp_entry(server, platform)
+            document = native_document(path)
+            exists, current = _existing_dotted_field(document, key)
+            if exists and (platform, path, key) not in owned:
+                if not _mcp_entries_equal(current, desired, platform):
+                    raise RenderError(
+                        f'Project MCP entry conflicts with user configuration: '
+                        f'{path.as_posix()}:{key}'
+                    )
+                _remove_dotted_field(document, key)
+            _set_dotted_field(document, key, desired)
+            template = native_templates.setdefault(path, {})
+            _set_dotted_field(template, key, desired)
+            touched_paths.add(path)
+            lock_entries[platform.value] = {'path': path.as_posix(), 'key': key}
+        lock_servers.append({'id': server.id, 'entries': lock_entries})
+
+    for path in touched_paths:
+        if not native_documents[path] and path not in native_templates:
+            native_documents.pop(path)
+            delete_paths.add(path)
+        else:
+            delete_paths.discard(path)
+
+    if not lock_servers:
+        return None
+    return (json.dumps({'version': 1, 'servers': lock_servers}, indent=2) + '\n').encode()
+
+
 def render_desired_state(
     source_root: Path,
     target_root: Path,
@@ -277,6 +486,7 @@ def render_desired_state(
     delete_paths: set[PurePosixPath] = set(catalog.retired_assets)
     known_file_targets = _known_wrapper_targets(catalog)
     known_file_targets.add(_EXTERNAL_LOCK)
+    known_file_targets.add(_MCP_LOCK)
     assets_by_id = {asset.id: asset for asset in catalog.assets}
     for asset in catalog.assets:
         if asset.control_plane or asset.target is None:
@@ -418,6 +628,16 @@ def render_desired_state(
         if not lock.is_file() or lock.is_symlink():
             raise RenderError('external Skill lock is missing or unsafe')
         files[_EXTERNAL_LOCK] = lock.read_bytes()
+
+    mcp_lock = _render_project_mcp(
+        target_root,
+        config,
+        native_documents,
+        native_templates,
+        delete_paths,
+    )
+    if mcp_lock is not None:
+        files[_MCP_LOCK] = mcp_lock
 
     for retired in catalog.retired_fields:
         format_name = _format_for(retired.path)

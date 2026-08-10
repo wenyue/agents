@@ -1,6 +1,6 @@
 {
   "name": "smartkit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Install and maintain shared project-agent workflows across repositories.",
   "author": {
     "name": "wenyue",
@@ -15,6 +15,7 @@
   ],
   "skills": "./skills/",
   "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "WenYue SmartKit",
     "shortDescription": "Set up and maintain project agent tooling",
@@ -23,7 +24,8 @@
     "category": "Developer Tools",
     "capabilities": [
       "Read",
-      "Write"
+      "Write",
+      "Interactive"
     ],
     "websiteURL": "https://github.com/wenyue/agents",
     "defaultPrompt": [

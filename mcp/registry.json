@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "id": "playwright",
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--isolated",
+        "--headless"
+      ],
+      "platforms": [
+        "codex",
+        "cursor",
+        "copilot"
+      ],
+      "tools": ["*"],
+      "readiness": {
+        "checks": [
+          {
+            "kind": "runtime-version",
+            "runtime": "node",
+            "minimum": "18.0.0"
+          },
+          {
+            "kind": "command-exists",
+            "command": "npx"
+          }
+        ]
+      }
+    }
+  ]
+}
