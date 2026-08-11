@@ -23,16 +23,16 @@ from pathlib import Path, PurePosixPath
 from typing import Mapping
 
 from .catalog import ContractError, load_catalog
+from .models import AssetSpec, Catalog
 
 
 CANONICAL_REPOSITORY = 'https://github.com/wenyue/agents.git'
 CANONICAL_REF = 'master'
 _COMMIT = re.compile(r'^[0-9a-fA-F]{40}$')
-_ENTRYPOINT = PurePosixPath(
-    'skills/setup-project-agents/scripts/setup_project_agents.py'
-)
-_VENDORED_TOMLI_FILES = tuple(
-    PurePosixPath('skills/setup-project-agents/scripts/_vendor') / relative
+_CONTROL_PLANE_SKILL_ID = 'smartkit/setup-project-agents'
+_CONTROL_PLANE_ENTRYPOINT = PurePosixPath('scripts/setup_project_agents.py')
+_CONTROL_PLANE_VENDORED_FILES = tuple(
+    PurePosixPath('scripts/_vendor') / relative
     for relative in (
         '__init__.py',
         'tomli/LICENSE',
@@ -159,15 +159,53 @@ def _load_manifest(path: Path, version: str, expected_roots: Mapping[str, str]) 
         raise InvalidFetchedSource(f'native manifest has unsupported root: {path}')
 
 
-def _validate_catalog_sources(root: Path, catalog_sources: tuple[PurePosixPath, ...]) -> None:
-    for relative in catalog_sources:
+def _validate_catalog_sources(root: Path, catalog_assets: tuple[AssetSpec, ...]) -> None:
+    for asset in catalog_assets:
+        relative = asset.source
         current = root
         for part in relative.parts:
             current /= part
             if _is_link_like(current):
                 raise InvalidFetchedSource(f'source path contains a symlink: {current}')
-        if not current.exists():
+        if asset.kind == 'agent':
+            if not current.is_dir():
+                raise InvalidFetchedSource(
+                    f'Plugin Agent source is not a directory: {relative.as_posix()}'
+                )
+            children = tuple(current.iterdir())
+            if not children or any(
+                not child.is_file() or child.suffix != '.toml'
+                for child in children
+            ):
+                raise InvalidFetchedSource(
+                    f'Plugin Agent source must contain only direct TOML adapters: '
+                    f'{relative.as_posix()}'
+                )
+        elif not current.exists():
             raise InvalidFetchedSource(f'catalog source is missing: {relative.as_posix()}')
+
+
+def _control_plane_source(catalog: Catalog) -> PurePosixPath:
+    control_plane = [
+        asset
+        for asset in catalog.assets
+        if asset.control_plane and asset.skill_id == _CONTROL_PLANE_SKILL_ID
+    ]
+    if len(control_plane) != 1:
+        raise InvalidFetchedSource('source catalog must declare one setup control plane')
+    return control_plane[0].source
+
+
+def setup_entrypoint(source_root: Path) -> Path:
+    root = Path(source_root)
+    try:
+        catalog = load_catalog(root)
+    except ContractError as error:
+        raise InvalidFetchedSource(f'invalid source catalog: {error}') from error
+    return _safe_required(
+        root,
+        _control_plane_source(catalog) / _CONTROL_PLANE_ENTRYPOINT,
+    )
 
 
 def _validate_source(source_root: Path, *, fd_root: bool) -> Path:
@@ -189,9 +227,6 @@ def _validate_source(source_root: Path, *, fd_root: bool) -> Path:
     if git_dir.exists() or _is_link_like(git_dir):
         _safe_required(root, PurePosixPath('.git'), directory=True)
 
-    entrypoint = _safe_required(root, _ENTRYPOINT)
-    for relative in _VENDORED_TOMLI_FILES:
-        _safe_required(root, relative)
     try:
         catalog = load_catalog(root)
     except ContractError as error:
@@ -203,17 +238,11 @@ def _validate_source(source_root: Path, *, fd_root: bool) -> Path:
         or catalog.ref != CANONICAL_REF
     ):
         raise InvalidFetchedSource('source catalog identity/version/ref mismatch')
-    _validate_catalog_sources(root, tuple(asset.source for asset in catalog.assets))
-    control_plane = [
-        asset
-        for asset in catalog.assets
-        if asset.id == 'setup-project-agents'
-        and asset.control_plane
-        and asset.target is None
-        and asset.source == PurePosixPath('skills/setup-project-agents')
-    ]
-    if len(control_plane) != 1 or not entrypoint.is_relative_to(root / control_plane[0].source):
-        raise InvalidFetchedSource('setup entrypoint is not in the control plane')
+    _validate_catalog_sources(root, catalog.assets)
+    control_plane_source = _control_plane_source(catalog)
+    _safe_required(root, control_plane_source / _CONTROL_PLANE_ENTRYPOINT)
+    for relative in _CONTROL_PLANE_VENDORED_FILES:
+        _safe_required(root, control_plane_source / relative)
     return root
 
 

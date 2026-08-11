@@ -28,6 +28,7 @@ from .external_contract import (
     ExternalContractError,
     validate_ref,
 )
+from .skill_registry import SkillRegistryError, load_skill_registry
 
 
 _SEMVER = re.compile(
@@ -45,7 +46,10 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     | {f'COM{number}' for number in range(1, 10)}
     | {f'LPT{number}' for number in range(1, 10)}
 )
-_ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode', 'control_plane', 'metadata'})
+_ASSET_FIELDS = frozenset({
+    'id', 'kind', 'source', 'skill', 'target', 'platforms', 'mode',
+    'control_plane', 'metadata',
+})
 _CATALOG_FIELDS = frozenset({'plugin', 'assets'})
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
 _PROJECT_CONFIG_FIELDS = frozenset({'$schema', 'version', 'skills', 'mcp', 'agents'})
@@ -440,15 +444,30 @@ def _operating_systems(value: object, label: str) -> tuple[OperatingSystem, ...]
     return tuple(result)
 
 
-def parse_asset(value: Mapping[str, object]) -> AssetSpec:
+def parse_asset(
+    value: Mapping[str, object],
+    *,
+    custom_skill_sources: Mapping[str, PurePosixPath] | None = None,
+) -> AssetSpec:
     asset = _object(value, 'asset')
     _fields(asset, _ASSET_FIELDS, 'asset')
     asset_id = _name(_required(asset, 'id', 'asset'), 'asset id')
     kind = _name(_required(asset, 'kind', 'asset'), 'asset kind')
-    source_value = _required(asset, 'source', 'asset')
-    if not isinstance(source_value, str):
-        raise ContractError('asset source must be a relative path')
-    source = safe_relative(source_value, 'asset source')
+    source_value = asset.get('source')
+    skill_id = asset.get('skill')
+    if skill_id is not None:
+        if not isinstance(skill_id, str) or not skill_id:
+            raise ContractError('asset skill must be a Plugin Skill id')
+        if source_value is not None:
+            raise ContractError('asset cannot declare both source and skill')
+        resolved = (custom_skill_sources or {}).get(skill_id)
+        if resolved is None:
+            raise ContractError(f'asset references unknown custom Skill: {skill_id}')
+        source = resolved
+    else:
+        if not isinstance(source_value, str):
+            raise ContractError('asset source must be a relative path')
+        source = safe_relative(source_value, 'asset source')
     target_value = asset.get('target')
     if target_value is not None and not isinstance(target_value, str):
         raise ContractError('asset target must be a relative path')
@@ -460,25 +479,25 @@ def parse_asset(value: Mapping[str, object]) -> AssetSpec:
         raise ContractError('asset control_plane must be a boolean')
     if control_plane and target is not None:
         raise ContractError('a control-plane asset cannot have a project target')
+    if control_plane and (kind != 'skill' or skill_id is None):
+        raise ContractError('a control-plane asset must reference one custom Skill')
+    if not control_plane and skill_id is not None:
+        raise ContractError('only a control-plane asset may reference a custom Skill')
     if kind == 'agent':
         if (
             target is None
-            or len(source.parts) != 3
-            or source.parts[:2] != ('agents', 'codex')
-            or len(target.parts) != 3
-            or target.parts[:2] != ('.codex', 'agents')
-            or source.name != target.name
-            or source.suffix != '.toml'
+            or source != PurePosixPath('agents/codex')
+            or target != PurePosixPath('.codex/agents')
             or platforms != (Platform.CODEX,)
             or mode != 'copy'
         ):
             raise ContractError(
-                'a plugin Agent asset must copy one matching agents/codex/*.toml '
-                'source to .codex/agents/*.toml for the codex platform'
+                'a plugin Agent asset must copy agents/codex to .codex/agents '
+                'for the codex platform'
             )
     return AssetSpec(
         asset_id, kind, source, target, platforms, mode, control_plane,
-        _metadata(asset.get('metadata'), kind, target),
+        _metadata(asset.get('metadata'), kind, target), skill_id,
     )
 
 
@@ -516,10 +535,24 @@ def load_catalog(source_root: Path) -> Catalog:
         raise ContractError('catalog plugin repository must be a string')
     if not isinstance(ref, str) or not ref:
         raise ContractError('catalog plugin ref must be a string')
+    try:
+        skill_registry = load_skill_registry(root)
+    except SkillRegistryError as error:
+        raise ContractError(str(error)) from error
+    custom_skill_sources = {
+        item.id: PurePosixPath('skills') / item.path
+        for item in skill_registry.custom
+    }
     asset_values = _required(document, 'assets', 'catalog')
     if not isinstance(asset_values, list):
         raise ContractError('catalog assets must be an array')
-    assets = tuple(parse_asset(_object(item, 'catalog asset')) for item in asset_values)
+    assets = tuple(
+        parse_asset(
+            _object(item, 'catalog asset'),
+            custom_skill_sources=custom_skill_sources,
+        )
+        for item in asset_values
+    )
     if len({asset.id for asset in assets}) != len(assets):
         raise ContractError('catalog has duplicate asset ids')
     targets = [asset.target for asset in assets if asset.target is not None]

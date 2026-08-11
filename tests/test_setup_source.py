@@ -78,6 +78,17 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
     }
     for relative, document in manifests.items():
         (root / relative).write_text(json.dumps(document), encoding='utf-8')
+    (root / 'skills' / 'registry.json').write_text(
+        json.dumps({
+            'version': 1,
+            'custom': [{
+                'id': 'smartkit/setup-project-agents',
+                'path': 'setup-project-agents',
+            }],
+            'external_sources': [],
+        }),
+        encoding='utf-8',
+    )
     (root / 'setup-assets' / 'catalog' / 'assets.json').write_text(
         json.dumps(
             {
@@ -89,9 +100,9 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
                 },
                 'assets': [
                     {
-                        'id': 'setup-project-agents',
+                        'id': 'control-plane',
                         'kind': 'skill',
-                        'source': 'skills/setup-project-agents',
+                        'skill': 'smartkit/setup-project-agents',
                         'control_plane': True,
                     }
                 ],
@@ -236,6 +247,38 @@ class SetupSourceTest(unittest.TestCase):
 
     def test_validate_source_accepts_the_actual_plugin_root(self):
         self.assertEqual(validate_source(REPO_ROOT), REPO_ROOT)
+
+    def test_validate_source_requires_a_direct_toml_plugin_agent_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / 'source'
+            write_valid_source(source)
+            catalog_path = source / 'setup-assets/catalog/assets.json'
+            catalog = json.loads(catalog_path.read_text(encoding='utf-8'))
+            catalog['assets'].append({
+                'id': 'plugin-agents-codex',
+                'kind': 'agent',
+                'source': 'agents/codex',
+                'target': '.codex/agents',
+                'platforms': ['codex'],
+                'mode': 'copy',
+            })
+            catalog_path.write_text(json.dumps(catalog), encoding='utf-8')
+            agent_source = source / 'agents/codex'
+            agent_source.parent.mkdir()
+            agent_source.write_text('not a directory\n', encoding='utf-8')
+
+            with self.assertRaisesRegex(
+                InvalidFetchedSource, 'Plugin Agent source is not a directory'
+            ):
+                validate_source(source)
+
+            agent_source.unlink()
+            agent_source.mkdir()
+            (agent_source / 'README.md').write_text('not an adapter\n', encoding='utf-8')
+            with self.assertRaisesRegex(
+                InvalidFetchedSource, 'only direct TOML adapters'
+            ):
+                validate_source(source)
 
     def test_validate_source_requires_complete_vendored_tomli(self):
         with tempfile.TemporaryDirectory() as temp_dir:

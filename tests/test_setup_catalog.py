@@ -2,7 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -301,19 +301,22 @@ class SetupCatalogTest(unittest.TestCase):
         }
         for asset in catalog.assets:
             with self.subTest(asset=asset.id):
-                if asset.id == 'setup-project-agents':
+                if asset.id == 'control-plane':
+                    self.assertEqual(asset.skill_id, 'smartkit/setup-project-agents')
                     self.assertEqual(asset.source.as_posix(), 'skills/setup-project-agents')
+                    self.assertTrue(asset.control_plane)
+                    self.assertIsNone(asset.target)
                 elif asset.source.as_posix() in matt_blueprints:
                     self.assertEqual(asset.kind, 'blueprint')
                     self.assertTrue(asset.target.as_posix().startswith('docs/agents/'))
                 elif asset.kind == 'agent':
                     self.assertEqual(
                         asset.source.as_posix(),
-                        'agents/codex/change-set-verifier.toml',
+                        'agents/codex',
                     )
                     self.assertEqual(
                         asset.target.as_posix(),
-                        '.codex/agents/change-set-verifier.toml',
+                        '.codex/agents',
                     )
                     self.assertEqual(
                         tuple(platform.value for platform in asset.platforms),
@@ -366,21 +369,38 @@ class SetupCatalogTest(unittest.TestCase):
                 }
             )
 
+        with self.assertRaisesRegex(ContractError, 'control-plane'):
+            parse_asset(
+                {
+                    'id': 'control-plane',
+                    'kind': 'skill',
+                    'skill': 'smartkit/setup-project-agents',
+                    'target': '.agents/skills/setup-project-agents',
+                    'control_plane': True,
+                },
+                custom_skill_sources={
+                    'smartkit/setup-project-agents': PurePosixPath(
+                        'skills/setup-project-agents'
+                    )
+                },
+            )
+
     def test_plugin_agent_asset_contract_is_codex_only(self):
         valid = {
-            'id': 'plugin-agent-change-set-verifier-codex',
+            'id': 'plugin-agents-codex',
             'kind': 'agent',
-            'source': 'agents/codex/change-set-verifier.toml',
-            'target': '.codex/agents/change-set-verifier.toml',
+            'source': 'agents/codex',
+            'target': '.codex/agents',
             'platforms': ['codex'],
             'mode': 'copy',
         }
         self.assertEqual(parse_asset(valid).target.as_posix(), valid['target'])
 
         invalid = (
-            {'source': 'agents/cursor/change-set-verifier.toml'},
-            {'target': '.cursor/agents/change-set-verifier.toml'},
-            {'target': '.codex/agents/other.toml'},
+            {'source': 'agents/cursor'},
+            {'source': 'agents/codex/change-set-verifier.toml'},
+            {'target': '.cursor/agents'},
+            {'target': '.codex/agents/change-set-verifier.toml'},
             {'platforms': ['cursor']},
             {'platforms': ['codex', 'cursor']},
             {'mode': 'render'},
@@ -390,6 +410,27 @@ class SetupCatalogTest(unittest.TestCase):
                 candidate = {**valid, **override}
                 with self.assertRaisesRegex(ContractError, 'plugin Agent asset'):
                     parse_asset(candidate)
+
+    def test_control_plane_resolves_custom_skill_id_through_registry_mapping(self):
+        asset = {
+            'id': 'control-plane',
+            'kind': 'skill',
+            'skill': 'smartkit/setup-project-agents',
+            'control_plane': True,
+        }
+        parsed = parse_asset(
+            asset,
+            custom_skill_sources={
+                'smartkit/setup-project-agents': PurePosixPath(
+                    'skills/setup-project-agents'
+                )
+            },
+        )
+
+        self.assertEqual(parsed.skill_id, 'smartkit/setup-project-agents')
+        self.assertEqual(parsed.source, PurePosixPath('skills/setup-project-agents'))
+        with self.assertRaisesRegex(ContractError, 'unknown custom Skill'):
+            parse_asset(asset, custom_skill_sources={})
 
     def test_asset_metadata_is_strictly_typed_and_available_to_renderers(self):
         parsed = parse_asset(
@@ -490,17 +531,6 @@ class SetupCatalogTest(unittest.TestCase):
                 'metadata': {'section': 'project'},
             })
 
-        with self.assertRaisesRegex(ContractError, 'control-plane'):
-            parse_asset(
-                {
-                    'id': 'setup-project-agents',
-                    'kind': 'skill',
-                    'source': 'skills/setup-project-agents',
-                    'target': '.agents/skills/setup-project-agents',
-                    'control_plane': True,
-                }
-            )
-
     def test_catalog_and_config_reject_unknown_top_level_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -548,6 +578,11 @@ class SetupCatalogTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / 'setup-assets' / 'catalog').mkdir(parents=True)
+            (root / 'skills').mkdir()
+            (root / 'skills' / 'registry.json').write_text(
+                json.dumps({'version': 1, 'custom': [], 'external_sources': []}),
+                encoding='utf-8',
+            )
             catalog_path = root / 'setup-assets' / 'catalog' / 'assets.json'
 
             for version in (

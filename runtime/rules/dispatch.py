@@ -12,71 +12,17 @@ import sys
 import tempfile
 from pathlib import Path, PurePosixPath
 
+from contract import RuleConfigError, load_registry
+
 
 PATH_TOKEN = re.compile(
     r'(?<![A-Za-z0-9_.-])([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.[A-Za-z0-9]+)'
 )
 
 
-class RuleConfigError(RuntimeError):
-    pass
-
-
 def plugin_root() -> Path:
     configured = os.environ.get('PLUGIN_ROOT') or os.environ.get('CURSOR_PLUGIN_ROOT')
     return Path(configured).resolve() if configured else Path(__file__).resolve().parents[2]
-
-
-def load_registry(root: Path) -> list[dict[str, object]]:
-    try:
-        document = json.loads((root / 'rules/registry.json').read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise RuleConfigError(f'cannot load rules/registry.json: {error}') from error
-    if not isinstance(document, dict) or document.get('version') != 1:
-        raise RuleConfigError('Rule registry version must be 1')
-    rules = document.get('rules')
-    if not isinstance(rules, list) or not rules:
-        raise RuleConfigError('Rule registry requires a non-empty rules array')
-    ids: set[str] = set()
-    for index, rule in enumerate(rules):
-        if not isinstance(rule, dict) or set(rule) != {'id', 'source', 'strength', 'trigger'}:
-            raise RuleConfigError(f'invalid Rule at index {index}')
-        rule_id = rule['id']
-        if not isinstance(rule_id, str) or rule_id in ids:
-            raise RuleConfigError(f'duplicate or invalid Rule id at index {index}')
-        ids.add(rule_id)
-        if rule['strength'] not in {'Mandatory', 'Default', 'Advisory'}:
-            raise RuleConfigError(f'invalid strength for {rule_id}')
-        source = rule['source']
-        if not isinstance(source, str) or '\\' in source:
-            raise RuleConfigError(f'invalid source for {rule_id}')
-        relative = PurePosixPath(source)
-        if relative.is_absolute() or '..' in relative.parts:
-            raise RuleConfigError(f'invalid source for {rule_id}')
-        trigger = rule['trigger']
-        if not isinstance(trigger, dict) or trigger.get('type') not in {'always', 'file'}:
-            raise RuleConfigError(f'invalid trigger for {rule_id}')
-        if trigger['type'] == 'always' and set(trigger) != {'type'}:
-            raise RuleConfigError(f'invalid always trigger for {rule_id}')
-        if trigger['type'] == 'file':
-            if set(trigger) != {'type', 'include_globs'}:
-                raise RuleConfigError(f'invalid file trigger for {rule_id}')
-            includes = trigger['include_globs']
-            if not isinstance(includes, list) or not includes or not all(
-                isinstance(item, str) and item and '\\' not in item
-                for item in includes
-            ):
-                raise RuleConfigError(f'invalid include_globs for {rule_id}')
-        if not root.joinpath('rules', *relative.parts).is_file():
-            raise RuleConfigError(f'missing source for {rule_id}')
-    first = rules[0]
-    if (
-        first['id'] != 'smartkit/core-rule-config'
-        or first['strength'] != 'Mandatory'
-        or first['trigger'] != {'type': 'always'}
-    ):
-        raise RuleConfigError('the first Rule must be mandatory always core-rule-config')
-    return rules
 
 
 def _paths(value: object) -> set[str]:
@@ -189,23 +135,51 @@ def _state_path(
     return base / 'rule-sessions' / f'{digest}.json'
 
 
-def _loaded_rules(path: Path) -> set[str]:
+def _empty_session_state() -> dict[str, object]:
+    return {
+        'activated_file_rule_ids': [],
+        'context_generation': 0,
+        'restored_generation': 0,
+    }
+
+
+def _session_state(path: Path) -> dict[str, object]:
     if not path.exists():
-        return set()
+        return _empty_session_state()
     try:
         value = json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+    except OSError as error:
         raise RuleConfigError(f'cannot read Rule activation state: {error}') from error
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise RuleConfigError('Rule activation state is invalid')
-    return set(value)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return _empty_session_state()
+    if not isinstance(value, dict) or set(value) != {
+        'activated_file_rule_ids',
+        'context_generation',
+        'restored_generation',
+    }:
+        return _empty_session_state()
+    activated = value['activated_file_rule_ids']
+    context_generation = value['context_generation']
+    restored_generation = value['restored_generation']
+    if (
+        not isinstance(activated, list)
+        or not all(isinstance(item, str) for item in activated)
+        or len(set(activated)) != len(activated)
+        or not isinstance(context_generation, int)
+        or context_generation < 0
+        or not isinstance(restored_generation, int)
+        or restored_generation < 0
+        or restored_generation > context_generation
+    ):
+        return _empty_session_state()
+    return value
 
 
-def _store_loaded_rules(path: Path, loaded: set[str]) -> None:
+def _store_session_state(path: Path, state: dict[str, object]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(f'.{os.getpid()}.tmp')
-        temporary.write_text(json.dumps(sorted(loaded)) + '\n', encoding='utf-8')
+        temporary.write_text(json.dumps(state, sort_keys=True) + '\n', encoding='utf-8')
         os.replace(temporary, path)
     except OSError as error:
         raise RuleConfigError(f'cannot write Rule activation state: {error}') from error
@@ -219,19 +193,78 @@ def delivery(
     *,
     state_root: Path | None = None,
 ) -> dict[str, object]:
+    state_path = _state_path(root, payload, platform, state_root)
+    state = _session_state(state_path)
+    activated = set(state['activated_file_rule_ids'])
+    restore_required = state['restored_generation'] < state['context_generation']
+
+    if event == 'compact':
+        if platform != 'copilot':
+            raise RuleConfigError('compact Rule delivery is supported only for Copilot')
+        state['context_generation'] = int(state['context_generation']) + 1
+        _store_session_state(state_path, state)
+        return {}
+
+    if event == 'stop':
+        if platform != 'copilot':
+            raise RuleConfigError('stop Rule delivery is supported only for Copilot')
+        if not restore_required:
+            return {}
+        registered = load_registry(root)
+        restored = [
+            rule for rule in registered
+            if not _is_file_rule(rule) or rule['id'] in activated
+        ]
+        context = _context(root, restored)
+        state['restored_generation'] = state['context_generation']
+        _store_session_state(state_path, state)
+        return {
+            'decision': 'block',
+            'reason': (
+                f'{context}\nSmartKit restored Rules after context compaction. '
+                'Review the proposed answer against them, revise it if needed, '
+                'and then finish the turn.'
+            ),
+        }
+
+    if event == 'tool' and platform == 'copilot' and restore_required:
+        registered = load_registry(root)
+        paths = _paths(payload)
+        activated.update(
+            str(rule['id'])
+            for rule in registered
+            if _is_file_rule(rule) and _matches(rule['trigger'], paths)
+        )
+        restored = [
+            rule for rule in registered
+            if not _is_file_rule(rule) or rule['id'] in activated
+        ]
+        context = _context(root, restored)
+        state['activated_file_rule_ids'] = sorted(activated)
+        state['restored_generation'] = state['context_generation']
+        _store_session_state(state_path, state)
+        return {
+            'permissionDecision': 'deny',
+            'permissionDecisionReason': (
+                f'{context}\nSmartKit restored Rules after context compaction. '
+                'Apply them, then retry the same tool call.'
+            ),
+        }
     if event == 'tool' and not _paths(payload):
         return {}
 
     selected = _selected_rules(root, payload, event)
-    state_path = _state_path(root, payload, platform, state_root)
-    loaded = _loaded_rules(state_path)
+
     if event == 'session':
         registered = load_registry(root)
         restored = [
             rule for rule in registered
-            if rule['id'] in loaded and _is_file_rule(rule)
+            if rule['id'] in activated and _is_file_rule(rule)
         ]
         context = _context(root, [*selected, *restored])
+        if restore_required:
+            state['restored_generation'] = state['context_generation']
+            _store_session_state(state_path, state)
         if platform == 'copilot':
             return {'additionalContext': context}
         return {'hookSpecificOutput': {
@@ -240,14 +273,25 @@ def delivery(
         }}
 
     if event == 'prompt':
-        activated = [
+        newly_activated = [
             rule for rule in selected
-            if _is_file_rule(rule) and rule['id'] not in loaded
+            if _is_file_rule(rule) and rule['id'] not in activated
         ]
-        if activated:
-            loaded.update(str(rule['id']) for rule in activated)
-            _store_loaded_rules(state_path, loaded)
-        context = _context(root, activated)
+        activated_ids = set(state['activated_file_rule_ids'])
+        activated_ids.update(str(rule['id']) for rule in newly_activated)
+        if restore_required:
+            registered = load_registry(root)
+            delivered = [
+                rule for rule in registered
+                if not _is_file_rule(rule) or rule['id'] in activated_ids
+            ]
+            state['restored_generation'] = state['context_generation']
+        else:
+            delivered = newly_activated
+        if newly_activated or restore_required:
+            state['activated_file_rule_ids'] = sorted(activated_ids)
+            _store_session_state(state_path, state)
+        context = _context(root, delivered)
         if platform == 'copilot':
             original = ''
             if isinstance(payload, dict):
@@ -264,33 +308,34 @@ def delivery(
     if event == 'tool':
         missing = [
             rule for rule in selected
-            if _is_file_rule(rule) and rule['id'] not in loaded
+            if _is_file_rule(rule) and rule['id'] not in activated
         ]
         if missing:
-            loaded.update(str(rule['id']) for rule in missing)
-            _store_loaded_rules(state_path, loaded)
+            activated.update(str(rule['id']) for rule in missing)
+            state['activated_file_rule_ids'] = sorted(activated)
+            _store_session_state(state_path, state)
             context = _context(root, missing)
-            if not _is_write_tool(payload):
-                if platform == 'copilot':
-                    return {'additionalContext': context}
-                return {'hookSpecificOutput': {
-                    'hookEventName': 'PreToolUse',
-                    'additionalContext': context,
-                }}
             reason = (
-                'SmartKit loaded file Rules required by this tool call. '
-                'Retry the same operation after applying the injected Rules.'
+                f'{context}\nSmartKit loaded file Rules required by this tool call. '
+                'Apply them, then retry the same operation.'
             )
             if platform == 'copilot':
                 return {
                     'permissionDecision': 'deny',
                     'permissionDecisionReason': reason,
-                    'additionalContext': context,
                 }
+            if not _is_write_tool(payload):
+                return {'hookSpecificOutput': {
+                    'hookEventName': 'PreToolUse',
+                    'additionalContext': context,
+                }}
             return {'hookSpecificOutput': {
                 'hookEventName': 'PreToolUse',
                 'permissionDecision': 'deny',
-                'permissionDecisionReason': reason,
+                'permissionDecisionReason': (
+                    'SmartKit loaded file Rules required by this tool call. '
+                    'Retry the same operation after applying the injected Rules.'
+                ),
                 'additionalContext': context,
             }}
         return {}
@@ -300,7 +345,11 @@ def delivery(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument('--platform', choices=('codex', 'copilot'), required=True)
-    parser.add_argument('--event', choices=('session', 'prompt', 'tool'), required=True)
+    parser.add_argument(
+        '--event',
+        choices=('session', 'prompt', 'tool', 'compact', 'stop'),
+        required=True,
+    )
     return parser.parse_args()
 
 

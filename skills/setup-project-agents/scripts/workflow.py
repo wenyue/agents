@@ -14,6 +14,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import bootstrap
+from agents_setup.source import InvalidFetchedSource, setup_entrypoint
 
 
 _SESSION_PREFIX = 'setup-project-agents-'
@@ -230,9 +231,13 @@ def _run_pinned(
     source: Path,
     commit: str,
 ) -> Mapping[str, object]:
+    try:
+        entrypoint = setup_entrypoint(source)
+    except InvalidFetchedSource as error:
+        raise WorkflowError(f'pinned setup source is invalid: {error}') from error
     command = (
         sys.executable,
-        str(source / 'skills/setup-project-agents/scripts/setup_project_agents.py'),
+        str(entrypoint),
         phase,
         '--target', str(target),
         '--session', str(session),

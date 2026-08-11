@@ -13,6 +13,7 @@ from agents_setup.source import (
     SourceSnapshot,
     SourceUnavailable,
     fetch_canonical,
+    setup_entrypoint,
     validate_source,
 )
 
@@ -72,9 +73,15 @@ def main(argv: Sequence[str] | None = None, *, installed_root: Path | None = Non
         print(f'ERROR: fetched canonical source is invalid: {error}', file=sys.stderr)
         return 1
 
+    try:
+        entrypoint = setup_entrypoint(snapshot.root)
+    except InvalidFetchedSource as error:
+        print(f'ERROR: pinned setup source is invalid: {error}', file=sys.stderr)
+        return 1
+
     argv = [
         sys.executable,
-        str(snapshot.root / 'skills/setup-project-agents/scripts/setup_project_agents.py'),
+        str(entrypoint),
         *forwarded,
         '--source-root',
         str(snapshot.root),

@@ -31,9 +31,13 @@ from agents_setup.external_contract import (  # noqa: E402
     validate_ref,
     validate_source_identity,
 )
+from agents_setup.skill_registry import (  # noqa: E402
+    CustomSkill,
+    SkillRegistryError,
+    load_skill_registry,
+)
 
 
-REGISTRY_PATH = PurePosixPath('skills/registry.json')
 LOCK_PATH = PurePosixPath('vendor/external-skills.lock.json')
 NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')
 STABLE_ID = re.compile(r'^[A-Za-z0-9_.-]+/[a-z0-9][a-z0-9-]*$')
@@ -42,11 +46,6 @@ FRONTMATTER_NAME = re.compile(r'(?m)^name:\s*["\']?([^\s"\']+)["\']?\s*$')
 
 class UpdateError(RuntimeError):
     """Raised when configured external Skills cannot converge safely."""
-
-
-class CustomSkill(NamedTuple):
-    id: str
-    name: str
 
 
 class ExternalSkill(NamedTuple):
@@ -163,25 +162,13 @@ def _skill_name(skill_id: str, path: PurePosixPath, label: str) -> str:
 
 
 def load_registry(root: Path) -> Registry:
-    document = _read_json(root.joinpath(*REGISTRY_PATH.parts), 'Skill registry')
-    _fields(document, {'version', 'custom', 'external_sources'}, 'Skill registry')
-    if document.get('version') != 1:
-        raise UpdateError('Skill registry version must be 1')
-
-    custom: list[CustomSkill] = []
-    for index, raw in enumerate(_array(_required(document, 'custom', 'Skill registry'), 'custom')):
-        item = _object(raw, f'custom[{index}]')
-        _fields(item, {'id', 'path'}, 'custom Skill')
-        skill_id = _stable_id(_required(item, 'id', 'custom Skill'), 'custom Skill id')
-        path = _safe_relative(_required(item, 'path', 'custom Skill'), 'custom Skill path')
-        if len(path.parts) != 1:
-            raise UpdateError('custom Skill path must be one directory below skills')
-        custom.append(CustomSkill(skill_id, _skill_name(skill_id, path, 'custom Skill')))
+    try:
+        shared = load_skill_registry(root)
+    except SkillRegistryError as error:
+        raise UpdateError(str(error)) from error
 
     sources: list[ExternalSource] = []
-    for source_index, raw_source in enumerate(
-        _array(_required(document, 'external_sources', 'Skill registry'), 'external_sources')
-    ):
+    for source_index, raw_source in enumerate(shared.external_sources):
         item = _object(raw_source, f'external_sources[{source_index}]')
         _fields(item, {'id', 'url', 'ref', 'license', 'skills'}, 'external source')
         source_id = _stable_id(_required(item, 'id', 'external source'), 'external source id')
@@ -229,8 +216,12 @@ def load_registry(root: Path) -> Registry:
             raise UpdateError(f'external source has no selected Skills: {source_id}')
         sources.append(ExternalSource(source_id, url, ref, license_spec, tuple(skills)))
 
-    ids = [item.id for item in custom] + [item.id for source in sources for item in source.skills]
-    names = [item.name for item in custom] + [item.name for source in sources for item in source.skills]
+    ids = [item.id for item in shared.custom] + [
+        item.id for source in sources for item in source.skills
+    ]
+    names = [item.name for item in shared.custom] + [
+        item.name for source in sources for item in source.skills
+    ]
     source_ids = [item.id for item in sources]
     if len(ids) != len(set(ids)):
         raise UpdateError('Skill registry has duplicate Skill ids')
@@ -238,7 +229,7 @@ def load_registry(root: Path) -> Registry:
         raise UpdateError('Skill registry has duplicate destination names')
     if len(source_ids) != len(set(source_ids)):
         raise UpdateError('Skill registry has duplicate source ids')
-    return Registry(tuple(custom), tuple(sources))
+    return Registry(shared.custom, tuple(sources))
 
 
 def _sha256_bytes(content: bytes) -> str:

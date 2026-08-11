@@ -16,6 +16,7 @@
             "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform codex --event session",
             "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform codex --event session",
             "timeout": 30,
+            "additionalContextLimit": 10000,
             "statusMessage": "Loading SmartKit plugin rules"
           }
         ]
@@ -28,7 +29,8 @@
             "type": "command",
             "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform codex --event prompt",
             "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform codex --event prompt",
-            "timeout": 30
+            "timeout": 30,
+            "additionalContextLimit": 10000
           }
         ]
       }
@@ -40,7 +42,8 @@
             "type": "command",
             "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform codex --event tool",
             "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform codex --event tool",
-            "timeout": 30
+            "timeout": 30,
+            "additionalContextLimit": 10000
           }
         ]
       }

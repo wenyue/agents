@@ -23,11 +23,27 @@
         "timeoutSec": 30
       }
     ],
+    "preCompact": [
+      {
+        "type": "command",
+        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform copilot --event compact",
+        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform copilot --event compact",
+        "timeoutSec": 30
+      }
+    ],
     "preToolUse": [
       {
         "type": "command",
         "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform copilot --event tool",
         "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform copilot --event tool",
+        "timeoutSec": 30
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform copilot --event stop",
+        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform copilot --event stop",
         "timeoutSec": 30
       }
     ]

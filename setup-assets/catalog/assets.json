@@ -7,9 +7,9 @@
   },
   "assets": [
     {
-      "id": "setup-project-agents",
+      "id": "control-plane",
       "kind": "skill",
-      "source": "skills/setup-project-agents",
+      "skill": "smartkit/setup-project-agents",
       "control_plane": true
     },
     {
@@ -136,10 +136,10 @@
       "mode": "render"
     },
     {
-      "id": "plugin-agent-change-set-verifier-codex",
+      "id": "plugin-agents-codex",
       "kind": "agent",
-      "source": "agents/codex/change-set-verifier.toml",
-      "target": ".codex/agents/change-set-verifier.toml",
+      "source": "agents/codex",
+      "target": ".codex/agents",
       "platforms": [
         "codex"
       ],

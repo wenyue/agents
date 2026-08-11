@@ -1165,7 +1165,7 @@ class SetupRendererTest(unittest.TestCase):
                 self.catalog,
                 assets=tuple(
                     asset for asset in self.catalog.assets
-                    if asset.id != 'plugin-agent-change-set-verifier-codex'
+                    if asset.id != 'plugin-agents-codex'
                 ),
             )
             removed = render_desired_state(
@@ -1176,6 +1176,89 @@ class SetupRendererTest(unittest.TestCase):
                 generated,
             )
             self.assertIn(relative, removed.delete_paths)
+
+    def test_codex_plugin_agent_directory_tracks_add_rename_and_delete_per_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'source'
+            agents = source / 'agents/codex'
+            agents.mkdir(parents=True)
+            (agents / 'old.toml').write_text('name = "old"\n', encoding='utf-8')
+            (agents / 'keep.toml').write_text('name = "keep"\n', encoding='utf-8')
+            catalog = Catalog(
+                'smartkit',
+                '0.1.0',
+                'https://example.invalid/agents.git',
+                'main',
+                (
+                    AssetSpec(
+                        'plugin-agents-codex',
+                        'agent',
+                        PurePosixPath('agents/codex'),
+                        PurePosixPath('.codex/agents'),
+                        (Platform.CODEX,),
+                    ),
+                ),
+            )
+            generated = root / 'generated'
+            generated.mkdir()
+            target = root / 'target'
+
+            first = render_desired_state(
+                source, target, catalog, self.config(), generated,
+            )
+            self.materialize(target, first.files)
+            unmanaged = target / '.codex/agents/user-owned.toml'
+            unmanaged.write_text('name = "user-owned"\n', encoding='utf-8')
+
+            (agents / 'old.toml').rename(agents / 'renamed.toml')
+            (agents / 'keep.toml').unlink()
+            (agents / 'added.toml').write_text('name = "added"\n', encoding='utf-8')
+            second = render_desired_state(
+                source, target, catalog, self.config(), generated,
+            )
+
+            self.assertEqual(
+                {
+                    path.as_posix()
+                    for path in second.delete_paths
+                },
+                {
+                    '.codex/agents/keep.toml',
+                    '.codex/agents/old.toml',
+                },
+            )
+            self.assertIn('.codex/agents/added.toml', second.files_by_path)
+            self.assertIn('.codex/agents/renamed.toml', second.files_by_path)
+            self.assertNotIn(
+                PurePosixPath('.codex/agents/user-owned.toml'),
+                second.delete_paths,
+            )
+
+    def test_project_agent_id_cannot_shadow_codex_plugin_agent_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            agent_source = target / '.agents/agents/change-set-verifier.md'
+            agent_source.parent.mkdir(parents=True)
+            agent_source.write_text('# Project verifier\n', encoding='utf-8')
+            config_path = target / '.agents/config.json'
+            config_path.write_text(json.dumps({
+                'version': 1,
+                'agents': [{
+                    'id': 'change-set-verifier',
+                    'source': '.agents/agents/change-set-verifier.md',
+                    'description': 'Project verifier',
+                    'platforms': {'codex': {'sandbox_mode': 'workspace-write'}},
+                }],
+            }), encoding='utf-8')
+            config = load_project_config(config_path, catalog=self.catalog)
+
+            with self.assertRaisesRegex(
+                RenderError,
+                'Project Agent id conflicts with Codex Plugin Agent default',
+            ):
+                self.render_with_config(target, self.generated_tree(root), config)
 
     def test_project_agents_render_thin_host_adapters_and_preserve_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:

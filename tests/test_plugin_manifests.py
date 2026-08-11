@@ -329,7 +329,13 @@ class PluginManifestTest(unittest.TestCase):
         )
         self.assertEqual(
             set(load_json('hooks/copilot.json')['hooks']),
-            {'sessionStart', 'userPromptTransformed', 'preToolUse'},
+            {
+                'sessionStart',
+                'userPromptTransformed',
+                'preCompact',
+                'preToolUse',
+                'agentStop',
+            },
         )
 
     def test_cursor_hook_uses_cross_platform_dispatcher(self):

@@ -208,6 +208,12 @@ def _render_project_agents(
         preserved.append(agent.source)
         reference = agent.source.as_posix()
         if agent.codex is not None:
+            target = PurePosixPath('.codex/agents') / f'{agent.id}.toml'
+            if target in files:
+                raise RenderError(
+                    f'Project Agent id conflicts with Codex Plugin Agent default: '
+                    f'{agent.id}'
+                )
             lines = [
                 f'name = {_quoted(agent.id)}',
                 f'description = {_quoted(agent.description)}',
@@ -228,7 +234,7 @@ def _render_project_agents(
             ))
             _copy_file(
                 files,
-                PurePosixPath('.codex/agents') / f'{agent.id}.toml',
+                target,
                 ('\n'.join(lines) + '\n').encode(),
             )
         if agent.cursor is not None:

@@ -73,6 +73,52 @@ class SyncAgentAdaptersTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertFalse((root / 'agents/codex/example.toml').exists())
 
+    def test_update_tracks_agent_registry_rename_and_delete_across_hosts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'agents/source/example.md'
+            source.parent.mkdir(parents=True)
+            source.write_text('Verify it.\n', encoding='utf-8')
+            registry = root / 'agents/registry.json'
+
+            def write_registry(agent_id: str | None) -> None:
+                agents = [] if agent_id is None else [{
+                    'id': agent_id,
+                    'source': 'source/example.md',
+                    'description': 'Example verifier.',
+                    'platforms': {
+                        'codex': {'sandbox_mode': 'read-only'},
+                        'cursor': {'readonly': True},
+                        'copilot': {'disable_model_invocation': False},
+                    },
+                }]
+                registry.write_text(
+                    json.dumps({'version': 1, 'agents': agents}),
+                    encoding='utf-8',
+                )
+
+            write_registry('old-name')
+            self.assertEqual(self.module.synchronize(root, write=True), (
+                Path('agents/codex/old-name.toml'),
+                Path('agents/cursor/old-name.md'),
+                Path('agents/copilot/old-name.agent.md'),
+            ))
+
+            write_registry('new-name')
+            self.module.synchronize(root, write=True)
+            self.assertFalse((root / 'agents/codex/old-name.toml').exists())
+            self.assertFalse((root / 'agents/cursor/old-name.md').exists())
+            self.assertFalse((root / 'agents/copilot/old-name.agent.md').exists())
+            self.assertTrue((root / 'agents/codex/new-name.toml').is_file())
+            self.assertTrue((root / 'agents/cursor/new-name.md').is_file())
+            self.assertTrue((root / 'agents/copilot/new-name.agent.md').is_file())
+
+            write_registry(None)
+            self.module.synchronize(root, write=True)
+            self.assertFalse((root / 'agents/codex/new-name.toml').exists())
+            self.assertFalse((root / 'agents/cursor/new-name.md').exists())
+            self.assertFalse((root / 'agents/copilot/new-name.agent.md').exists())
+
     def test_registry_rejects_unknown_fields_and_unsafe_sources(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

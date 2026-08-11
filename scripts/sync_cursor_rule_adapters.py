@@ -7,32 +7,23 @@ import sys
 from pathlib import Path
 
 
-class AdapterError(RuntimeError):
-    pass
+RULE_RUNTIME = Path(__file__).resolve().parents[1] / 'runtime/rules'
+if str(RULE_RUNTIME) not in sys.path:
+    sys.path.insert(0, str(RULE_RUNTIME))
+
+from contract import RuleConfigError, load_registry  # noqa: E402
+
+
+AdapterError = RuleConfigError
 
 
 def desired_adapters(root: Path) -> dict[str, str]:
-    try:
-        registry = json.loads((root / 'rules/registry.json').read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise AdapterError(f'cannot read Rule registry: {error}') from error
-    rules = registry.get('rules') if isinstance(registry, dict) else None
-    if registry.get('version') != 1 or not isinstance(rules, list):
-        raise AdapterError('Rule registry has an invalid shape')
     adapters: dict[str, str] = {}
-    for rule in rules:
-        if not isinstance(rule, dict):
-            raise AdapterError('Rule registry has an invalid Rule')
-        rule_id = rule.get('id')
-        source = rule.get('source')
-        trigger = rule.get('trigger')
-        if (
-            not isinstance(rule_id, str)
-            or not rule_id.startswith('smartkit/')
-            or not isinstance(source, str)
-            or not isinstance(trigger, dict)
-        ):
-            raise AdapterError('Rule registry has an invalid Rule')
+    for rule in load_registry(root):
+        rule_id = str(rule['id'])
+        source = str(rule['source'])
+        trigger = rule['trigger']
+        assert isinstance(trigger, dict)
         name = rule_id.split('/', 1)[1]
         if trigger.get('type') == 'always':
             frontmatter = 'alwaysApply: true'
