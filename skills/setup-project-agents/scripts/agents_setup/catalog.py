@@ -16,6 +16,7 @@ from .models import (
     ExternalSourceSpec,
     ExternalSkillSpec,
     McpOverride,
+    McpReadiness,
     McpServerSpec,
     McpTransport,
     OperatingSystem,
@@ -51,16 +52,19 @@ _PROJECT_CONFIG_FIELDS = frozenset({'$schema', 'version', 'skills', 'mcp', 'agen
 _EXTERNAL_SOURCE_FIELDS = frozenset({'source', 'ref', 'include'})
 _MCP_SERVER_FIELDS = frozenset({
     'id', 'platforms', 'command', 'args', 'cwd', 'env', 'url', 'overrides',
+    'readiness',
 })
 _MCP_OVERRIDE_FIELDS = frozenset({'when', 'set'})
 _MCP_OVERRIDE_SELECTOR_FIELDS = frozenset({'platforms', 'operatingSystems'})
 _MCP_OVERRIDE_VALUE_FIELDS = frozenset({'command', 'args', 'cwd', 'env', 'url'})
+_MCP_READINESS_FIELDS = frozenset({'platforms', 'operatingSystems', 'checks'})
 _PROJECT_AGENT_FIELDS = frozenset({'id', 'source', 'description', 'platforms'})
 _PROJECT_AGENT_PLATFORM_FIELDS = frozenset({'codex', 'cursor', 'copilot'})
 _CODEX_AGENT_FIELDS = frozenset({'model', 'model_reasoning_effort', 'sandbox_mode'})
 _CURSOR_AGENT_FIELDS = frozenset({'model', 'readonly'})
 _COPILOT_AGENT_FIELDS = frozenset({'model', 'disable_model_invocation'})
 _ENVIRONMENT_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+_RUNTIME_VERSION = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+$')
 _MATT_BLUEPRINTS = {
     PurePosixPath('docs/agents/issue-tracker.md'): PurePosixPath(
         'skills/setup-matt-pocock-skills/issue-tracker-local.md'
@@ -209,6 +213,80 @@ def _mcp_override(
     return McpOverride(platforms, operating_systems, command, args, cwd, env, url)
 
 
+def _mcp_readiness_check(value: object, label: str) -> Mapping[str, object]:
+    check = _object(value, label)
+    kind = check.get('kind')
+    if kind == 'command-exists':
+        _fields(check, frozenset({'kind', 'command'}), label)
+        return {
+            'kind': kind,
+            'command': _mcp_text(_required(check, 'command', label), f'{label}.command'),
+        }
+    if kind == 'runtime-version':
+        _fields(check, frozenset({'kind', 'runtime', 'minimum'}), label)
+        if _required(check, 'runtime', label) != 'node':
+            raise ContractError(f'{label}.runtime is unsupported')
+        minimum = _mcp_text(_required(check, 'minimum', label), f'{label}.minimum')
+        if _RUNTIME_VERSION.fullmatch(minimum) is None:
+            raise ContractError(f'{label}.minimum must be a numeric version')
+        return {'kind': kind, 'runtime': 'node', 'minimum': minimum}
+    if kind == 'workspace-path':
+        _fields(check, frozenset({'kind', 'path', 'executable'}), label)
+        path = safe_relative(
+            _mcp_text(_required(check, 'path', label), f'{label}.path'),
+            f'{label}.path',
+        )
+        executable = check.get('executable', False)
+        if type(executable) is not bool:
+            raise ContractError(f'{label}.executable must be a boolean')
+        return {
+            'kind': kind,
+            'path': path.as_posix(),
+            **({'executable': True} if executable else {}),
+        }
+    if kind == 'environment-variable':
+        _fields(check, frozenset({'kind', 'name'}), label)
+        name = _mcp_text(_required(check, 'name', label), f'{label}.name')
+        if _ENVIRONMENT_NAME.fullmatch(name) is None:
+            raise ContractError(f'{label}.name is invalid')
+        return {'kind': kind, 'name': name}
+    raise ContractError(f'{label}.kind is unsupported')
+
+
+def _mcp_readiness(
+    value: object,
+    *,
+    label: str,
+    enabled_platforms: tuple[Platform, ...],
+) -> McpReadiness:
+    document = _object(value, label)
+    _fields(document, _MCP_READINESS_FIELDS, label)
+    platforms = None
+    if 'platforms' in document:
+        platforms = _platforms(document['platforms'], f'{label}.platforms', ())
+        if not platforms:
+            raise ContractError(f'{label}.platforms must not be empty')
+        if set(platforms) - set(enabled_platforms):
+            raise ContractError(
+                f'{label}.platforms includes a platform not enabled by the server'
+            )
+    operating_systems = (
+        _operating_systems(document['operatingSystems'], f'{label}.operatingSystems')
+        if 'operatingSystems' in document else None
+    )
+    raw_checks = document.get('checks')
+    if raw_checks is not None and not isinstance(raw_checks, list):
+        raise ContractError(f'{label}.checks must be an array')
+    checks = (
+        tuple(
+            _mcp_readiness_check(check, f'{label}.checks[{index}]')
+            for index, check in enumerate(raw_checks)
+        )
+        if raw_checks is not None else None
+    )
+    return McpReadiness(platforms, operating_systems, checks)
+
+
 def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
     if value is None:
         return ()
@@ -255,6 +333,14 @@ def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
             )
             for override_index, raw_override in enumerate(raw_overrides)
         )
+        readiness = (
+            _mcp_readiness(
+                document['readiness'],
+                label=f'{label}.readiness',
+                enabled_platforms=platforms,
+            )
+            if 'readiness' in document else None
+        )
         result.append(McpServerSpec(
             server_id,
             transport,
@@ -265,6 +351,7 @@ def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
             env=env or (),
             url=url,
             overrides=overrides,
+            readiness=readiness,
         ))
     ids = [server.id for server in result]
     if len(ids) != len(set(ids)):

@@ -144,6 +144,11 @@ class SetupRendererTest(unittest.TestCase):
                     'args': ['--port', '8181', '--flag', '--flag'],
                     'cwd': 'cache',
                     'env': ['INSPECTOR_TOKEN'],
+                    'readiness': {
+                        'platforms': ['codex'],
+                        'operatingSystems': ['windows'],
+                        'checks': [],
+                    },
                     'overrides': [
                         {
                             'when': {'operatingSystems': ['windows']},

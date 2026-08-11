@@ -99,6 +99,27 @@ class SetupCatalogTest(unittest.TestCase):
                             'command': 'cache/inspector.exe',
                             'args': ['--port', '8181'],
                             'env': ['INSPECTOR_TOKEN'],
+                            'readiness': {
+                                'platforms': ['codex', 'cursor'],
+                                'operatingSystems': ['windows'],
+                                'checks': [
+                                    {'kind': 'command-exists', 'command': 'inspector'},
+                                    {
+                                        'kind': 'runtime-version',
+                                        'runtime': 'node',
+                                        'minimum': '18.0.0',
+                                    },
+                                    {
+                                        'kind': 'workspace-path',
+                                        'path': 'cache/inspector.exe',
+                                        'executable': True,
+                                    },
+                                    {
+                                        'kind': 'environment-variable',
+                                        'name': 'INSPECTOR_TOKEN',
+                                    },
+                                ],
+                            },
                             'overrides': [
                                 {
                                     'when': {
@@ -141,6 +162,24 @@ class SetupCatalogTest(unittest.TestCase):
             )
             self.assertIsNone(inspector.overrides[1].platforms)
             self.assertEqual(inspector.transport.value, 'stdio')
+            self.assertEqual(
+                [platform.value for platform in inspector.readiness.platforms or ()],
+                ['codex', 'cursor'],
+            )
+            self.assertEqual(
+                [item.value for item in inspector.readiness.operating_systems or ()],
+                ['windows'],
+            )
+            self.assertEqual(
+                [check['kind'] for check in inspector.readiness.checks or ()],
+                [
+                    'command-exists',
+                    'runtime-version',
+                    'workspace-path',
+                    'environment-variable',
+                ],
+            )
+            self.assertIsNone(config.mcp_servers[1].readiness)
 
     def test_project_config_rejects_untyped_or_inconsistent_mcp_contracts(self):
         invalid_servers = (
@@ -196,6 +235,28 @@ class SetupCatalogTest(unittest.TestCase):
                     'when': {'operatingSystems': ['windows']},
                     'set': {},
                 }],
+            },
+            {
+                'id': 'bad', 'command': 'x', 'platforms': ['codex'],
+                'readiness': {'platforms': ['cursor']},
+            },
+            {
+                'id': 'bad', 'command': 'x',
+                'readiness': {'operatingSystems': ['macos']},
+            },
+            {
+                'id': 'bad', 'command': 'x',
+                'readiness': {'checks': {'kind': 'command-exists', 'command': 'x'}},
+            },
+            {
+                'id': 'bad', 'command': 'x',
+                'readiness': {'checks': [{'kind': 'workspace-path', 'path': '../x'}]},
+            },
+            {
+                'id': 'bad', 'command': 'x',
+                'readiness': {
+                    'checks': [{'kind': 'environment-variable', 'name': 'BAD-NAME'}]
+                },
             },
         )
         for server in invalid_servers:

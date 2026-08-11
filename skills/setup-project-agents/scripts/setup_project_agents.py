@@ -193,6 +193,23 @@ def _request(
                         for override in server.overrides
                     ]
                 } if server.overrides else {}),
+                **({
+                    'readiness': {
+                        **({
+                            'platforms': [
+                                platform.value for platform in server.readiness.platforms
+                            ]
+                        } if server.readiness.platforms is not None else {}),
+                        **({
+                            'operatingSystems': [
+                                item.value for item in server.readiness.operating_systems
+                            ]
+                        } if server.readiness.operating_systems is not None else {}),
+                        **({
+                            'checks': [dict(check) for check in server.readiness.checks]
+                        } if server.readiness.checks is not None else {}),
+                    }
+                } if server.readiness is not None else {}),
             }
             for server in config.mcp_servers
         ],

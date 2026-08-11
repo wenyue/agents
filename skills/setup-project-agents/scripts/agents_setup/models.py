@@ -38,6 +38,13 @@ class McpOverride:
 
 
 @dataclass(frozen=True)
+class McpReadiness:
+    platforms: tuple[Platform, ...] | None = None
+    operating_systems: tuple[OperatingSystem, ...] | None = None
+    checks: tuple[Mapping[str, object], ...] | None = None
+
+
+@dataclass(frozen=True)
 class McpServerSpec:
     id: str
     transport: McpTransport
@@ -48,6 +55,7 @@ class McpServerSpec:
     env: tuple[str, ...] = ()
     url: str | None = None
     overrides: tuple[McpOverride, ...] = ()
+    readiness: McpReadiness | None = None
 
 
 @dataclass(frozen=True)

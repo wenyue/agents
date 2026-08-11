@@ -102,6 +102,24 @@ Setup 会保留不受其管理的宿主配置；受管条目发生冲突或被�
 }
 ```
 
+### Project MCP readiness
+
+Project MCP 的前置条件检查默认自动执行。当检查只适用于特定宿主或操作系统时，使用
+`readiness.platforms` 或 `readiness.operatingSystems` 限定范围：
+
+```json
+{
+  "id": "inspector",
+  "command": "cache/inspector.exe",
+  "readiness": {
+    "operatingSystems": ["windows"]
+  }
+}
+```
+
+添加 `readiness.checks` 可替换自动检查，设为 `[]` 则禁用检查。支持的检查种类包括
+`command-exists`、`runtime-version`、`workspace-path` 和 `environment-variable`。
+
 SmartKit 只管理自己生成的内容，并尽量保留项目原有文件和用户配置。应提交 `AGENTS.md`、
 `.agents/`、受管宿主 wrapper 和配置以及 `docs/agents/`；不要将它们加入 `.gitignore`。Session
 数据、缓存、日志和凭据留在仓库外，生成的项目文件不得包含 secret。
@@ -113,9 +131,7 @@ SmartKit 只管理自己生成的内容，并尽量保留项目原有文件和�
 
 - 推荐工具的安装状态和版本，包括 CodeGraph 与 Tokscale；
 - 必要的实际配置值，包括 Codex 多智能体支持；
-- Plugin MCP 的静态前置条件，目前是 Playwright 所需的 Node 18 或更高版本与 `npx`；
-- Project MCP 推导出的前置条件：裸命令是否存在、workspace 相对命令路径是否可执行，以及声明的
-  环境变量名称。
+- 适用于当前宿主平台和操作系统的 MCP 前置条件。
 
 这些检查不会安装工具、修改 MCP 配置、启动 MCP server、探测网络或应用端口、触发 OAuth，也不
 要求 debug session 在线。因此，Project HTTP MCP 不会执行连接检查。

@@ -469,7 +469,18 @@ def _mcp_servers_from_registry(path: Path, platform: str) -> list[dict[str, Any]
         ):
             raise PolicyError('plugin MCP registry is invalid')
         if platform in platforms:
-            servers.append(raw_server)
+            checks = _effective_readiness_checks(
+                raw_server,
+                raw_server,
+                platform=platform,
+                enabled_platforms=platforms,
+                label='plugin MCP registry',
+            )
+            if checks is not None:
+                servers.append({
+                    'id': raw_server.get('id'),
+                    'readiness': {'checks': checks},
+                })
     return servers
 
 
@@ -479,6 +490,68 @@ def _current_operating_system() -> str:
     if sys.platform.startswith('linux'):
         return 'linux'
     raise PolicyError(f'MCP operating system is unsupported: {sys.platform}')
+
+
+def _inferred_readiness_checks(effective: dict[str, Any]) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    command = effective.get('command')
+    if isinstance(command, str):
+        if '/' in command or '\\' in command:
+            workspace_prefix = '${workspaceFolder}/'
+            path = (
+                command[len(workspace_prefix):]
+                if command.startswith(workspace_prefix)
+                else command
+            )
+            checks.append({
+                'kind': 'workspace-path', 'path': path, 'executable': True,
+            })
+        else:
+            checks.append({'kind': 'command-exists', 'command': command})
+    env = effective.get('env', [])
+    if not isinstance(env, list):
+        raise PolicyError('MCP configuration is invalid')
+    checks.extend({'kind': 'environment-variable', 'name': name} for name in env)
+    return checks
+
+
+def _effective_readiness_checks(
+    declared: dict[str, Any],
+    effective: dict[str, Any],
+    *,
+    platform: str,
+    enabled_platforms: list[str],
+    label: str,
+) -> list[object] | None:
+    readiness = declared.get('readiness')
+    if readiness is None:
+        return _inferred_readiness_checks(effective)
+    if (
+        not isinstance(readiness, dict)
+        or set(readiness) - {'platforms', 'operatingSystems', 'checks'}
+    ):
+        raise PolicyError(f'{label} readiness is invalid')
+    selected_platforms = enabled_platforms
+    if 'platforms' in readiness:
+        selected_platforms = _override_selector_values(
+            readiness['platforms'], allowed={'codex', 'cursor', 'copilot'}
+        )
+        if set(selected_platforms) - set(enabled_platforms):
+            raise PolicyError(f'{label} readiness is invalid')
+    if platform not in selected_platforms:
+        return None
+    if 'operatingSystems' in readiness:
+        selected_operating_systems = _override_selector_values(
+            readiness['operatingSystems'], allowed={'windows', 'linux'}
+        )
+        if _current_operating_system() not in selected_operating_systems:
+            return None
+    if 'checks' not in readiness:
+        return _inferred_readiness_checks(effective)
+    checks = readiness['checks']
+    if not isinstance(checks, list):
+        raise PolicyError(f'{label} readiness is invalid')
+    return checks
 
 
 def _override_selector_values(
@@ -610,28 +683,18 @@ def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[st
             has_url = isinstance(url, str) and bool(url)
             if has_command == has_url:
                 raise PolicyError('project MCP configuration is invalid')
-            checks: list[dict[str, Any]] = []
-            if isinstance(command, str):
-                if '/' in command or '\\' in command:
-                    workspace_prefix = '${workspaceFolder}/'
-                    path = (
-                        command[len(workspace_prefix):]
-                        if command.startswith(workspace_prefix)
-                        else command
-                    )
-                    checks.append({
-                        'kind': 'workspace-path', 'path': path, 'executable': True,
-                    })
-                else:
-                    checks.append({'kind': 'command-exists', 'command': command})
-            env = effective.get('env', [])
-            if not isinstance(env, list):
-                raise PolicyError('project MCP configuration is invalid')
-            checks.extend({'kind': 'environment-variable', 'name': name} for name in env)
-            servers.append({
-                'id': raw_server.get('id'),
-                'readiness': {'checks': checks},
-            })
+            checks = _effective_readiness_checks(
+                raw_server,
+                effective,
+                platform=platform,
+                enabled_platforms=platforms,
+                label='project MCP configuration',
+            )
+            if checks is not None:
+                servers.append({
+                    'id': raw_server.get('id'),
+                    'readiness': {'checks': checks},
+                })
     return servers
 
 

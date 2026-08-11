@@ -23,7 +23,9 @@ requests that change.
 
 Use the version 1 schema declared by `.agents/config.json`. A configured Agent source must be the
 matching `.agents/agents/<id>.md` file. MCP entries declare exactly one of `url` or `command`; ordered
-`when`/`set` overrides may select host platforms and operating systems.
+`when`/`set` overrides may select host platforms and operating systems. Optional MCP readiness may
+select the host platforms and operating systems where checks apply and may replace inferred checks
+with an explicit safe check list.
 
 Project-owned canonical inputs remain editable project content. Files and structured fields
 produced by setup are setup-owned. Plugin Rules, Skills, Agents, and MCP are installed with

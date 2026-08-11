@@ -224,6 +224,11 @@ class SetupCliTest(unittest.TestCase):
                         'when': {'platforms': ['cursor']},
                         'set': {'url': 'https://cursor.sentry.dev/mcp'},
                     }],
+                    'readiness': {
+                        'platforms': ['codex'],
+                        'operatingSystems': ['linux'],
+                        'checks': [],
+                    },
                 }],
             }), encoding='utf-8')
             session = self.private_session(root)
@@ -238,6 +243,11 @@ class SetupCliTest(unittest.TestCase):
                     'when': {'platforms': ['cursor']},
                     'set': {'url': 'https://cursor.sentry.dev/mcp'},
                 }],
+                'readiness': {
+                    'platforms': ['codex'],
+                    'operatingSystems': ['linux'],
+                    'checks': [],
+                },
             }])
             self.write_generated_outputs(session)
             invocation = [

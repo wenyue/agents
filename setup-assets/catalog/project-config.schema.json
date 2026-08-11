@@ -49,7 +49,8 @@
           "overrides": {
             "type": "array",
             "items": {"$ref": "#/$defs/mcpOverride"}
-          }
+          },
+          "readiness": {"$ref": "#/$defs/mcpReadiness"}
         },
         "oneOf": [
           {"required": ["command"], "not": {"required": ["url"]}},
@@ -164,6 +165,70 @@
         "env": {"$ref": "#/$defs/environmentNames"},
         "url": {"type": "string", "pattern": "^https?://"}
       }
+    },
+    "mcpReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["codex", "cursor", "copilot"]}
+        },
+        "operatingSystems": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["windows", "linux"]}
+        },
+        "checks": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/mcpReadinessCheck"}
+        }
+      }
+    },
+    "mcpReadinessCheck": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "command"],
+          "properties": {
+            "kind": {"const": "command-exists"},
+            "command": {"type": "string", "minLength": 1}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "runtime", "minimum"],
+          "properties": {
+            "kind": {"const": "runtime-version"},
+            "runtime": {"const": "node"},
+            "minimum": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "path"],
+          "properties": {
+            "kind": {"const": "workspace-path"},
+            "path": {"type": "string", "minLength": 1},
+            "executable": {"type": "boolean"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "name"],
+          "properties": {
+            "kind": {"const": "environment-variable"},
+            "name": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}
+          }
+        }
+      ]
     }
   }
 }

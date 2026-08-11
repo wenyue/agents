@@ -6,10 +6,11 @@ import json
 import re
 import sys
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 PLATFORMS = ('codex', 'cursor', 'copilot')
+OPERATING_SYSTEMS = ('windows', 'linux')
 OUTPUTS = {
     'codex': Path('.mcp.json'),
     'cursor': Path('mcp/cursor.json'),
@@ -18,6 +19,7 @@ OUTPUTS = {
 REGISTRY_PATH = Path('mcp/registry.json')
 SAFE_ID = re.compile(r'^[a-z0-9][a-z0-9-]*$')
 VERSION = re.compile(r'^(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*)){2}$')
+ENVIRONMENT_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 UNSAFE_PLAYWRIGHT_ARGS = frozenset({
     '--allow-unrestricted-file-access',
     '--no-sandbox',
@@ -52,34 +54,83 @@ def _strings(value: object, label: str, *, allow_empty: bool = True) -> list[str
     return list(value)
 
 
-def _readiness(value: object, label: str) -> dict[str, object]:
+def _readiness_check(value: object, label: str) -> dict[str, object]:
+    check = _object(value, label)
+    kind = check.get('kind')
+    if kind == 'command-exists':
+        _fields(check, {'kind', 'command'}, label)
+        command = check.get('command')
+        if not isinstance(command, str) or not command:
+            raise McpRegistryError(f'{label}.command must be a non-empty string')
+    elif kind == 'runtime-version':
+        _fields(check, {'kind', 'runtime', 'minimum'}, label)
+        if check.get('runtime') != 'node':
+            raise McpRegistryError(f'{label}.runtime is unsupported')
+        minimum = check.get('minimum')
+        if not isinstance(minimum, str) or VERSION.fullmatch(minimum) is None:
+            raise McpRegistryError(f'{label}.minimum must be a numeric version')
+    elif kind == 'workspace-path':
+        _fields(check, {'kind', 'path', 'executable'}, label)
+        raw_path = check.get('path')
+        executable = check.get('executable', False)
+        if (
+            not isinstance(raw_path, str)
+            or not raw_path
+            or '\\' in raw_path
+            or PurePosixPath(raw_path).is_absolute()
+            or '..' in PurePosixPath(raw_path).parts
+            or type(executable) is not bool
+        ):
+            raise McpRegistryError(f'{label} is invalid')
+    elif kind == 'environment-variable':
+        _fields(check, {'kind', 'name'}, label)
+        name = check.get('name')
+        if not isinstance(name, str) or ENVIRONMENT_NAME.fullmatch(name) is None:
+            raise McpRegistryError(f'{label}.name is invalid')
+    else:
+        raise McpRegistryError(f'{label}.kind is unsupported')
+    return dict(check)
+
+
+def _readiness(
+    value: object,
+    label: str,
+    enabled_platforms: list[str],
+) -> dict[str, object]:
     readiness = _object(value, label)
-    _fields(readiness, {'checks'}, label)
-    checks = readiness.get('checks')
-    if not isinstance(checks, list):
-        raise McpRegistryError(f'{label}.checks must be an array')
-    rendered: list[dict[str, object]] = []
-    for index, raw_check in enumerate(checks):
-        check_label = f'{label}.checks[{index}]'
-        check = _object(raw_check, check_label)
-        kind = check.get('kind')
-        if kind == 'command-exists':
-            _fields(check, {'kind', 'command'}, check_label)
-            command = check.get('command')
-            if not isinstance(command, str) or not command:
-                raise McpRegistryError(f'{check_label}.command must be a non-empty string')
-        elif kind == 'runtime-version':
-            _fields(check, {'kind', 'runtime', 'minimum'}, check_label)
-            runtime = check.get('runtime')
-            minimum = check.get('minimum')
-            if runtime != 'node':
-                raise McpRegistryError(f'{check_label}.runtime is unsupported')
-            if not isinstance(minimum, str) or VERSION.fullmatch(minimum) is None:
-                raise McpRegistryError(f'{check_label}.minimum must be a numeric version')
-        else:
-            raise McpRegistryError(f'{check_label}.kind is unsupported')
-        rendered.append(dict(check))
-    return {'checks': rendered}
+    _fields(readiness, {'platforms', 'operatingSystems', 'checks'}, label)
+    rendered: dict[str, object] = {}
+    if 'platforms' in readiness:
+        platforms = _strings(
+            readiness['platforms'], f'{label}.platforms', allow_empty=False
+        )
+        if (
+            len(platforms) != len(set(platforms))
+            or set(platforms) - set(enabled_platforms)
+        ):
+            raise McpRegistryError(f'{label}.platforms is invalid')
+        rendered['platforms'] = platforms
+    if 'operatingSystems' in readiness:
+        operating_systems = _strings(
+            readiness['operatingSystems'],
+            f'{label}.operatingSystems',
+            allow_empty=False,
+        )
+        if (
+            len(operating_systems) != len(set(operating_systems))
+            or set(operating_systems) - set(OPERATING_SYSTEMS)
+        ):
+            raise McpRegistryError(f'{label}.operatingSystems is invalid')
+        rendered['operatingSystems'] = operating_systems
+    if 'checks' in readiness:
+        checks = readiness['checks']
+        if not isinstance(checks, list):
+            raise McpRegistryError(f'{label}.checks must be an array')
+        rendered['checks'] = [
+            _readiness_check(check, f'{label}.checks[{index}]')
+            for index, check in enumerate(checks)
+        ]
+    return rendered
 
 
 def load_registry(path: Path) -> tuple[dict[str, object], ...]:
@@ -148,7 +199,8 @@ def load_registry(path: Path) -> tuple[dict[str, object], ...]:
         tools = _strings(server.get('tools', ['*']), f'{label}.tools', allow_empty=False)
         if server_id == 'playwright' and tools != ['*']:
             raise McpRegistryError('playwright must expose all tools through host approval')
-        _readiness(server.get('readiness', {'checks': []}), f'{label}.readiness')
+        if 'readiness' in server:
+            _readiness(server['readiness'], f'{label}.readiness', platforms)
         servers.append(dict(server))
     return tuple(servers)
 

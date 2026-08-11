@@ -107,6 +107,24 @@ and a later rule wins only for fields it declares:
 }
 ```
 
+### Project MCP readiness
+
+Project MCP prerequisite checks are automatic. Use `readiness.platforms` or
+`readiness.operatingSystems` when a check applies only to selected hosts or operating systems:
+
+```json
+{
+  "id": "inspector",
+  "command": "cache/inspector.exe",
+  "readiness": {
+    "operatingSystems": ["windows"]
+  }
+}
+```
+
+Add `readiness.checks` to replace the automatic checks, or set it to `[]` to disable them. Supported
+check kinds are `command-exists`, `runtime-version`, `workspace-path`, and `environment-variable`.
+
 SmartKit manages only the content it generates and preserves the project's existing files and user
 configuration whenever possible. Commit `AGENTS.md`, `.agents/`, managed host wrappers and config,
 and `docs/agents/`; do not add them to `.gitignore`. Session data, caches, logs, and credentials stay
@@ -120,9 +138,7 @@ calendar day. Its first step is the daily gate; policy changes do not bypass it,
 
 - recommended-tool installation and version, including CodeGraph and Tokscale;
 - required effective values, including Codex multi-agent support;
-- Plugin MCP static prerequisites, currently Node 18 or newer and `npx` for Playwright;
-- Project MCP inferred prerequisites: bare-command availability, an executable workspace-relative
-  command path, and declared environment-variable names.
+- MCP prerequisites that apply to the current host platform and operating system.
 
 These checks never install tools, mutate MCP configuration, start an MCP server, probe a network or
 application port, trigger OAuth, or require a live debug session. Project HTTP MCP declarations

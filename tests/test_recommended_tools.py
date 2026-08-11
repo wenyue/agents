@@ -638,6 +638,101 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                     mock.patch.object(checker, '_current_operating_system', return_value='linux'):
                 self.assertEqual(checker.check_mcp_readiness('cursor', root, registry), [])
 
+    def test_plugin_and_project_mcp_share_readiness_selection_and_inference(self):
+        checker = self.checker
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry = root / 'registry.json'
+            registry.write_text(json.dumps({
+                'version': 1,
+                'servers': [{
+                    'id': 'plugin-auto',
+                    'platforms': ['codex', 'cursor'],
+                    'command': 'plugin-mcp',
+                }, {
+                    'id': 'plugin-custom',
+                    'platforms': ['codex'],
+                    'command': 'ignored-plugin-command',
+                    'readiness': {
+                        'platforms': ['codex'],
+                        'operatingSystems': ['windows'],
+                        'checks': [
+                            {'kind': 'environment-variable', 'name': 'PLUGIN_TOKEN'},
+                        ],
+                    },
+                }],
+            }), encoding='utf-8')
+            config = root / '.agents/config.json'
+            config.parent.mkdir()
+            config.write_text(json.dumps({
+                'version': 1,
+                'mcp': [{
+                    'id': 'project-auto',
+                    'platforms': ['codex', 'cursor'],
+                    'command': 'project-mcp',
+                    'env': ['PROJECT_TOKEN'],
+                }, {
+                    'id': 'project-custom',
+                    'platforms': ['codex'],
+                    'command': 'ignored-project-command',
+                    'readiness': {
+                        'platforms': ['codex'],
+                        'operatingSystems': ['windows'],
+                        'checks': [
+                            {'kind': 'command-exists', 'command': 'custom-check'},
+                        ],
+                    },
+                }],
+            }), encoding='utf-8')
+
+            with mock.patch.object(
+                checker, '_current_operating_system', return_value='windows'
+            ):
+                plugin = checker._mcp_servers_from_registry(registry, 'codex')
+                project = checker._mcp_servers_from_project(root, 'codex')
+
+            self.assertEqual(plugin, [{
+                'id': 'plugin-auto',
+                'readiness': {
+                    'checks': [{'kind': 'command-exists', 'command': 'plugin-mcp'}]
+                },
+            }, {
+                'id': 'plugin-custom',
+                'readiness': {
+                    'checks': [
+                        {'kind': 'environment-variable', 'name': 'PLUGIN_TOKEN'}
+                    ]
+                },
+            }])
+            self.assertEqual(project, [{
+                'id': 'project-auto',
+                'readiness': {'checks': [
+                    {'kind': 'command-exists', 'command': 'project-mcp'},
+                    {'kind': 'environment-variable', 'name': 'PROJECT_TOKEN'},
+                ]},
+            }, {
+                'id': 'project-custom',
+                'readiness': {
+                    'checks': [{'kind': 'command-exists', 'command': 'custom-check'}]
+                },
+            }])
+
+            with mock.patch.object(
+                checker, '_current_operating_system', return_value='linux'
+            ):
+                self.assertEqual(
+                    [server['id'] for server in checker._mcp_servers_from_registry(
+                        registry, 'codex'
+                    )],
+                    ['plugin-auto'],
+                )
+                self.assertEqual(
+                    [server['id'] for server in checker._mcp_servers_from_project(
+                        root, 'codex'
+                    )],
+                    ['project-auto'],
+                )
+
     def test_default_daily_runner_combines_tool_and_mcp_findings_once(self):
         checker = self.checker
         with tempfile.TemporaryDirectory() as temp_dir:

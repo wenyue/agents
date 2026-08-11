@@ -81,12 +81,67 @@ class SyncMcpAdaptersTest(unittest.TestCase):
                 {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'script': 'run'}]},
                 {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'checks': [{'kind': 'shell', 'command': 'x'}]}}]},
                 {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'checks': [{'kind': 'runtime-version', 'runtime': 'python', 'minimum': '3.10.0'}]}}]},
+                {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'platforms': ['cursor']}}]},
+                {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'operatingSystems': ['macos']}}]},
+                {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'checks': [{'kind': 'workspace-path', 'path': '../x'}]}}]},
+                {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'checks': [{'kind': 'environment-variable', 'name': 'BAD-NAME'}]}}]},
             )
             for document in invalid:
                 with self.subTest(document=document):
                     path.write_text(json.dumps(document), encoding='utf-8')
                     with self.assertRaises(self.module.McpRegistryError):
                         self.module.load_registry(path)
+
+    def test_registry_accepts_aligned_readiness_selectors_and_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'registry.json'
+            path.write_text(json.dumps({
+                'version': 1,
+                'servers': [{
+                    'id': 'x',
+                    'transport': 'stdio',
+                    'command': 'x',
+                    'platforms': ['codex', 'cursor'],
+                    'readiness': {
+                        'platforms': ['codex'],
+                        'operatingSystems': ['windows'],
+                        'checks': [
+                            {'kind': 'command-exists', 'command': 'x'},
+                            {
+                                'kind': 'runtime-version',
+                                'runtime': 'node',
+                                'minimum': '18.0.0',
+                            },
+                            {
+                                'kind': 'workspace-path',
+                                'path': 'cache/x.exe',
+                                'executable': True,
+                            },
+                            {'kind': 'environment-variable', 'name': 'X_TOKEN'},
+                        ],
+                    },
+                }, {
+                    'id': 'auto',
+                    'transport': 'stdio',
+                    'command': 'auto-mcp',
+                    'platforms': ['codex'],
+                }],
+            }), encoding='utf-8')
+
+            servers = self.module.load_registry(path)
+
+            self.assertEqual(servers[0]['readiness']['platforms'], ['codex'])
+            self.assertEqual(servers[0]['readiness']['operatingSystems'], ['windows'])
+            self.assertEqual(
+                [check['kind'] for check in servers[0]['readiness']['checks']],
+                [
+                    'command-exists',
+                    'runtime-version',
+                    'workspace-path',
+                    'environment-variable',
+                ],
+            )
+            self.assertNotIn('readiness', servers[1])
 
     def test_playwright_registry_rejects_unapproved_launcher_flags(self):
         with tempfile.TemporaryDirectory() as directory:
