@@ -219,6 +219,9 @@ def delivery(
     *,
     state_root: Path | None = None,
 ) -> dict[str, object]:
+    if event == 'tool' and not _paths(payload):
+        return {}
+
     selected = _selected_rules(root, payload, event)
     state_path = _state_path(root, payload, platform, state_root)
     loaded = _loaded_rules(state_path)

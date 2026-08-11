@@ -18,7 +18,7 @@ requests that change.
 | --- | --- | --- |
 | Rules | Project-owned sources under `.agents/rules/` and requested generated Rule targets | Preserve project Rules and deliver setup-managed Rules to each host. |
 | Skills | Project-owned directories under `.agents/skills/`, requested generated Skill targets, and `.agents/config.json` `skills` declarations | Preserve project Skills and install requested generated or external Skills. |
-| Agents | Project-owned sources under `.agents/agents/` and `.agents/config.json` `agents` declarations | Preserve Agent sources and render the declared host adapters. |
+| Agents | Project-owned sources under `.agents/agents/` and `.agents/config.json` `agents` declarations | Preserve Agent sources, render the declared host adapters, and install catalog-declared Codex Plugin Agent defaults. |
 | MCP | `.agents/config.json` `mcp` declarations | Render the declared host-native MCP entries without storing secret values. |
 
 Use the version 1 schema declared by `.agents/config.json`. A configured Agent source must be the
@@ -28,8 +28,10 @@ select the host platforms and operating systems where checks apply and may repla
 with an explicit safe check list.
 
 Project-owned canonical inputs remain editable project content. Files and structured fields
-produced by setup are setup-owned. Plugin Rules, Skills, Agents, and MCP are installed with
-SmartKit and are outside this project workflow.
+produced by setup are setup-owned. Plugin Rules, Skills, MCP, and native Cursor and Copilot Plugin
+Agents are installed with SmartKit and are outside this project workflow. Codex plugin packages do
+not load Plugin Agent adapters, so setup installs catalog-declared Codex adapters as managed default
+assets. These adapters remain Plugin Agents and never enter `.agents/config.json`.
 
 ## Workflow
 

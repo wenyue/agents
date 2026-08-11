@@ -219,7 +219,7 @@ class PluginManifestTest(unittest.TestCase):
         self.assertEqual(codex['mcpServers'], './.mcp.json')
         self.assertEqual(cursor['mcpServers'], './mcp/cursor.json')
         self.assertEqual(copilot['mcpServers'], './mcp/copilot.json')
-        self.assertEqual(codex['agents'], './agents/codex/')
+        self.assertNotIn('agents', codex)
         self.assertEqual(cursor['agents'], './agents/cursor/')
         self.assertEqual(copilot['agents'], './agents/copilot/')
         for manifest, expected in (
@@ -230,6 +230,7 @@ class PluginManifestTest(unittest.TestCase):
             self.assertTrue((REPO_ROOT / expected).is_file())
         for manifest in (codex, cursor, copilot):
             self.assertTrue((REPO_ROOT / manifest['skills']).is_dir())
+        for manifest in (cursor, copilot):
             self.assertTrue((REPO_ROOT / manifest['agents']).is_dir())
         self.assertNotIn('rules', codex)
         self.assertNotIn('rules', copilot)

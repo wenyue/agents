@@ -322,7 +322,7 @@ class SetupWorkflowTest(unittest.TestCase):
                 generated_resource.read_bytes(), generated_resource_content
             )
 
-    def test_start_does_not_read_or_manage_project_agent_files(self):
+    def test_start_preserves_agent_files_before_finish(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             origin = self.make_origin(root)
@@ -332,11 +332,8 @@ class SetupWorkflowTest(unittest.TestCase):
             copilot = target / '.github/agents/change-set-verifier.agent.md'
             for path in (codex, cursor, copilot):
                 path.parent.mkdir(parents=True, exist_ok=True)
-            codex.write_text(
-                'model = "gpt-5.6-terra"\n'
-                'model_reasoning_effort = "medium"\n'
-                'sandbox_mode = "workspace-write"\n',
-                encoding='utf-8',
+            codex.write_bytes(
+                (REPO_ROOT / 'agents/codex/change-set-verifier.toml').read_bytes()
             )
             cursor.write_text(
                 '---\nmodel: cursor-existing\nreadonly: true\n---\n',

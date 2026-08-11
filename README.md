@@ -42,12 +42,16 @@ To update the Copilot plugin, run `copilot plugin marketplace update wenyue`, fo
 | --- | --- |
 | Rules | Always-on and file-scoped instructions. Strength wins first (`Mandatory` > `Default` > `Advisory`), followed by project ownership and narrower file scope. |
 | Skills | SmartKit workflows plus reviewed, licensed, version-pinned third-party workflows. |
-| Agents | `change-set-verifier` on all three hosts. It uses the project's change-set-verification Skill, reports `inconclusive` when setup has not installed that Skill, and inherits the host-selected model. |
+| Agents | `change-set-verifier` on all three hosts. It uses the project's change-set-verification Skill, reports `inconclusive` when setup has not installed that Skill, and inherits the host-selected model. Cursor and Copilot receive it from the plugin; Codex receives it through setup-managed default delivery. |
 | MCP | Playwright in isolated headless mode on all three hosts, subject to normal host approval. |
 
 Codex and Copilot CLI receive Rules through Hooks; Cursor uses native plugin Rules. Inspect the
 host's Hook diagnostics when an expected Rule is absent. Copilot cloud agents are outside this
 plugin-Rule contract.
+
+Codex plugin packages do not load custom Agents. Run `setup-project-agents` in each maintained
+project snapshot to install SmartKit's Codex Agent adapter under `.codex/agents/`. The adapter
+remains plugin-owned and does not need an `.agents/config.json` Project Agent declaration.
 
 ## Platform support
 
@@ -55,7 +59,7 @@ All three hosts support Windows and Linux.
 
 | Host | Rules | Skills | Agents | MCP |
 | --- | --- | --- | --- | --- |
-| Codex | Session, prompt, and structured-tool Hooks | Plugin Skill catalog | `change-set-verifier` | Playwright |
+| Codex | Session, prompt, and structured-tool Hooks | Plugin Skill catalog | Setup-managed `change-set-verifier` | Playwright |
 | Cursor | Native plugin Rules | Plugin Skill catalog | `change-set-verifier` | Playwright |
 | GitHub Copilot CLI | Session, transformed-prompt, and structured-tool Hooks | Plugin Skill catalog | `change-set-verifier` | Playwright |
 

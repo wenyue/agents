@@ -600,7 +600,7 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(check_result['changed_paths'], [])
             self.assertIsNone(check_result['drift'])
 
-    def test_apply_does_not_generate_plugin_agent_wrappers(self):
+    def test_apply_installs_only_codex_plugin_agent_fallback(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -626,12 +626,24 @@ class SetupCliTest(unittest.TestCase):
                     ),
                     0,
                 )
+            codex = target / '.codex/agents/change-set-verifier.toml'
+            self.assertEqual(
+                codex.read_bytes(),
+                (REPO_ROOT / 'agents/codex/change-set-verifier.toml').read_bytes(),
+            )
             for relative in (
-                '.codex/agents/change-set-verifier.toml',
                 '.cursor/agents/change-set-verifier.md',
                 '.github/agents/change-set-verifier.agent.md',
             ):
                 self.assertFalse((target / relative).exists())
+            ownership = json.loads(
+                (target / '.agents/smartkit.lock.json').read_text(encoding='utf-8')
+            )
+            verifier = next(
+                item for item in ownership['assets']
+                if item['path'] == '.codex/agents/change-set-verifier.toml'
+            )
+            self.assertEqual(verifier['role'], 'agent')
 
     def test_project_agent_round_trips_through_prepare_apply_and_check(self):
         with tempfile.TemporaryDirectory() as temp_dir:

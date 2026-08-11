@@ -64,7 +64,7 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
     manifests = {
         '.codex-plugin/plugin.json': {
             'name': 'smartkit', 'version': version,
-            'agents': './agents/codex/', 'skills': './skills/',
+            'skills': './skills/',
         },
         '.cursor-plugin/plugin.json': {
             'name': 'smartkit', 'version': version,

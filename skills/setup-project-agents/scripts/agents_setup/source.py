@@ -45,7 +45,7 @@ _VENDORED_TOMLI_FILES = tuple(
 _MANIFESTS = (
     (
         PurePosixPath('.codex-plugin/plugin.json'),
-        {'agents': './agents/codex/', 'skills': './skills/'},
+        {'skills': './skills/'},
     ),
     (
         PurePosixPath('.cursor-plugin/plugin.json'),

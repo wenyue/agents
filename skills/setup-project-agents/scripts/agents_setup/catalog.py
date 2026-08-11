@@ -460,6 +460,22 @@ def parse_asset(value: Mapping[str, object]) -> AssetSpec:
         raise ContractError('asset control_plane must be a boolean')
     if control_plane and target is not None:
         raise ContractError('a control-plane asset cannot have a project target')
+    if kind == 'agent':
+        if (
+            target is None
+            or len(source.parts) != 3
+            or source.parts[:2] != ('agents', 'codex')
+            or len(target.parts) != 3
+            or target.parts[:2] != ('.codex', 'agents')
+            or source.name != target.name
+            or source.suffix != '.toml'
+            or platforms != (Platform.CODEX,)
+            or mode != 'copy'
+        ):
+            raise ContractError(
+                'a plugin Agent asset must copy one matching agents/codex/*.toml '
+                'source to .codex/agents/*.toml for the codex platform'
+            )
     return AssetSpec(
         asset_id, kind, source, target, platforms, mode, control_plane,
         _metadata(asset.get('metadata'), kind, target),
@@ -513,6 +529,8 @@ def load_catalog(source_root: Path) -> Catalog:
         if asset.control_plane:
             continue
         if asset.source.parts[:1] == ('setup-assets',):
+            continue
+        if asset.kind == 'agent':
             continue
         if (
             asset.kind == 'blueprint'

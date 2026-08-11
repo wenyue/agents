@@ -152,6 +152,24 @@ class PluginRuleContractTest(unittest.TestCase):
             )
             self.assertIn('smartkit/file-go', prompt['modifiedTransformedPrompt'])
 
+    def test_python_rule_activates_for_python_paths(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for extension in ('py', 'pyi'):
+                with self.subTest(extension=extension):
+                    prompt = self.run_dispatch(
+                        'codex',
+                        'prompt',
+                        {
+                            'session_id': f'python-{extension}',
+                            'prompt': f'Edit src/service.{extension}',
+                        },
+                        plugin_data=Path(temp_dir),
+                    )
+
+                    context = prompt['hookSpecificOutput']['additionalContext']
+                    self.assertIn('smartkit/file-python', context)
+                    self.assertNotIn('smartkit/file-go', context)
+
     def test_hook_delivery_emits_a_visible_host_boundary_diagnostic(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             environment = dict(os.environ)
@@ -197,6 +215,35 @@ class PluginRuleContractTest(unittest.TestCase):
                 'codex', 'tool', payload, plugin_data=plugin_data
             )
             self.assertEqual(second, {})
+
+    def test_tool_without_file_path_skips_rule_and_state_loading(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            environment = dict(os.environ)
+            environment['PLUGIN_ROOT'] = str(root)
+            environment['PLUGIN_DATA'] = str(root / 'data')
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / 'runtime/rules/dispatch.py'),
+                    '--platform',
+                    'codex',
+                    '--event',
+                    'tool',
+                ],
+                input=json.dumps({
+                    'session_id': 'no-path',
+                    'tool_name': 'list_agents',
+                    'tool_input': {},
+                }).encode(),
+                capture_output=True,
+                cwd=ROOT,
+                env=environment,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            self.assertEqual(json.loads(result.stdout), {})
+            self.assertFalse((root / 'data').exists())
 
     def test_prompt_activation_avoids_the_first_write_gate(self):
         with tempfile.TemporaryDirectory() as temp_dir:

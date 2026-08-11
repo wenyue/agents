@@ -1,7 +1,7 @@
 {
   "plugin": {
     "id": "smartkit",
-    "version": "1.0.3",
+    "version": "1.1.0",
     "repository": "https://github.com/wenyue/agents.git",
     "ref": "master"
   },
@@ -134,6 +134,16 @@
         "codex"
       ],
       "mode": "render"
+    },
+    {
+      "id": "plugin-agent-change-set-verifier-codex",
+      "kind": "agent",
+      "source": "agents/codex/change-set-verifier.toml",
+      "target": ".codex/agents/change-set-verifier.toml",
+      "platforms": [
+        "codex"
+      ],
+      "mode": "copy"
     },
     {
       "id": "config-cursor-cli",

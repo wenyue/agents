@@ -451,6 +451,11 @@ class SetupRendererTest(unittest.TestCase):
             self.materialize(target, first.files)
             source = root / 'source'
             shutil.copytree(REPO_ROOT / 'setup-assets', source / 'setup-assets')
+            plugin_agent = source / 'agents/codex/change-set-verifier.toml'
+            plugin_agent.parent.mkdir(parents=True)
+            shutil.copy2(
+                REPO_ROOT / 'agents/codex/change-set-verifier.toml', plugin_agent,
+            )
             template = source / 'setup-assets/templates/platform-config/agents.config.json'
             document = json.loads(template.read_text(encoding='utf-8'))
             document['$schema'] = 'https://example.invalid/project-config.schema.json'
@@ -1104,15 +1109,73 @@ class SetupRendererTest(unittest.TestCase):
                     sources=({'secret': 'must-not-be-written'},),
                 )
 
-    def test_project_setup_does_not_render_plugin_agents(self):
+    def test_project_setup_renders_only_codex_plugin_agent_fallback(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
             rendered = self.render(target, self.generated_tree(root))
-            self.assertFalse(any(
-                path.startswith(('.agents/agents/', '.codex/agents/', '.cursor/agents/', '.github/agents/'))
-                for path in rendered.files_by_path
-            ))
+            codex_path = '.codex/agents/change-set-verifier.toml'
+            self.assertEqual(
+                rendered.files_by_path[codex_path],
+                (REPO_ROOT / 'agents/codex/change-set-verifier.toml').read_bytes(),
+            )
+            self.assertNotIn(
+                '.cursor/agents/change-set-verifier.md', rendered.files_by_path,
+            )
+            self.assertNotIn(
+                '.github/agents/change-set-verifier.agent.md', rendered.files_by_path,
+            )
+            lock = json.loads(rendered.files_by_path['.agents/smartkit.lock.json'])
+            verifier = next(
+                item for item in lock['assets'] if item['path'] == codex_path
+            )
+            self.assertEqual(verifier['kind'], 'file')
+            self.assertEqual(verifier['role'], 'agent')
+
+    def test_codex_plugin_agent_fallback_obeys_file_ownership_lifecycle(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            generated = self.generated_tree(root)
+            expected = (
+                REPO_ROOT / 'agents/codex/change-set-verifier.toml'
+            ).read_bytes()
+            relative = PurePosixPath('.codex/agents/change-set-verifier.toml')
+
+            adopted_target = root / 'adopted'
+            adopted = adopted_target / relative
+            adopted.parent.mkdir(parents=True)
+            adopted.write_bytes(expected)
+            first = self.render(adopted_target, generated)
+            self.materialize(adopted_target, first.files)
+            adopted.write_bytes(b'user modification\n')
+            with self.assertRaisesRegex(RenderError, 'modified outside setup'):
+                self.render(adopted_target, generated)
+
+            conflicting_target = root / 'conflicting'
+            conflicting = conflicting_target / relative
+            conflicting.parent.mkdir(parents=True)
+            conflicting.write_bytes(b'unowned conflict\n')
+            with self.assertRaisesRegex(RenderError, 'cannot adopt conflicting'):
+                self.render(conflicting_target, generated)
+
+            removed_target = root / 'removed'
+            installed = self.render(removed_target, generated)
+            self.materialize(removed_target, installed.files)
+            without_fallback = replace(
+                self.catalog,
+                assets=tuple(
+                    asset for asset in self.catalog.assets
+                    if asset.id != 'plugin-agent-change-set-verifier-codex'
+                ),
+            )
+            removed = render_desired_state(
+                REPO_ROOT,
+                removed_target,
+                without_fallback,
+                self.config(),
+                generated,
+            )
+            self.assertIn(relative, removed.delete_paths)
 
     def test_project_agents_render_thin_host_adapters_and_preserve_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1142,10 +1205,17 @@ class SetupRendererTest(unittest.TestCase):
                 item['path'] for item in lock['assets'] if item['role'] == 'agent'
             }
             self.assertEqual(agent_assets, {
+                '.codex/agents/change-set-verifier.toml',
                 '.codex/agents/l10n.toml',
                 '.cursor/agents/l10n.md',
                 '.github/agents/l10n.agent.md',
             })
+            project_config = json.loads(
+                rendered.files_by_path['.agents/config.json']
+            )
+            self.assertEqual(
+                [agent['id'] for agent in project_config['agents']], ['l10n']
+            )
             validate_rendered_state(rendered)
 
     def test_project_agent_requires_existing_nonempty_source(self):

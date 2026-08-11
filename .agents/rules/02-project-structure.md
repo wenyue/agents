@@ -19,8 +19,8 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   `policies/recommended-tools/` contains the declarations shared by that runtime and setup output.
 - Target projects own Rules under `.agents/rules/`, Skills under `.agents/skills/`, and Agent sources
   under `.agents/agents/`; `.agents/config.json` declares external Skills, Agents, and MCP. Setup
-  preserves those canonical inputs and records only setup-managed outputs in
-  `.agents/smartkit.lock.json`.
+  preserves those canonical inputs and records setup-managed outputs, including Codex Plugin Agent
+  defaults, in `.agents/smartkit.lock.json`.
 - `setup-assets/blueprints/` and `setup-assets/templates/` contain generation and rendering inputs,
   while `setup-assets/catalog/` owns asset selection and project-configuration contracts.
 - `docs/` contains design material and `docs/zh-CN/` contains Simplified-Chinese documentation.
@@ -36,8 +36,9 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
 ## Distribution Flow
 
 - Setup reads `setup-assets/catalog/assets.json`, then force-converges catalog-selected public
-  Rules and Skills, external Skill snapshots, Agent adapters, and MCP entries while preserving
-  project-owned canonical inputs. Recommended-tool runtime and policy files remain plugin-private.
+  Rules and Skills, external Skill snapshots, Codex Plugin Agent defaults, project-declared Agent
+  adapters, and MCP entries while preserving project-owned canonical inputs. Recommended-tool
+  runtime and policy files remain plugin-private.
 - Blueprints guide creation of complete target-owned Rules and Skills; they are not installed as
   runtime content themselves.
 - The setup control plane remains in `skills/setup-project-agents/`; catalog-managed external Skills
@@ -57,9 +58,10 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   templates only to author the Matt repository-context outputs declared by setup. Plugin Hooks must
   not depend on vendored Skills, and all other vendored Skills remain independent read-only plugin
   capabilities.
-- Plugin manifests expose `skills/`, Plugin Agent adapters, Plugin MCP adapters, host Hook entry
-  points, and Cursor-native Rule adapters. They do not expose `setup-assets/`, private runtime
-  implementation, or policies directly.
+- Plugin manifests expose `skills/`, Cursor and Copilot Plugin Agent adapters, Plugin MCP adapters,
+  host Hook entry points, and Cursor-native Rule adapters. Codex Plugin Agent adapters enter target
+  repositories only through catalog-managed setup. Manifests do not expose `setup-assets/`, private
+  runtime implementation, or policies directly.
 
 ## Script and Test Ownership
 

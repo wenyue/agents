@@ -547,7 +547,7 @@ def render_desired_state(
                     else:
                         delete_paths.add(asset.target)
             continue
-        if asset.kind in {'rule', 'skill'}:
+        if asset.kind in {'rule', 'skill', 'agent'}:
             _copy_asset(files, source_root / asset.source, asset.target)
             continue
         if asset.kind == 'template' and asset.target and _format_for(asset.target):

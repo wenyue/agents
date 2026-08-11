@@ -1,0 +1,6 @@
+---
+globs: "**/*.py,**/*.pyi"
+alwaysApply: false
+---
+
+Apply @../source/file-python.md

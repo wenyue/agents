@@ -40,11 +40,15 @@ copilot plugin install smartkit@wenyue
 | --- | --- |
 | Rules | Always-on 和 file-scoped 指令。优先比较强度（`Mandatory` > `Default` > `Advisory`），再比较项目归属和更窄的文件范围。 |
 | Skills | SmartKit 工作流，以及经过审查、许可证校验和版本固定的第三方工作流。 |
-| Agents | 三个宿主上的 `change-set-verifier`。它使用项目的 change-set-verification Skill；setup 未安装该 Skill 时报告 `inconclusive`，并继承宿主选择的模型。 |
+| Agents | 三个宿主上的 `change-set-verifier`。它使用项目的 change-set-verification Skill；setup 未安装该 Skill 时报告 `inconclusive`，并继承宿主选择的模型。Cursor 和 Copilot 从插件获取它；Codex 通过 setup-managed 默认交付获取它。 |
 | MCP | 三个宿主上隔离、无界面模式的 Playwright，并继续遵守宿主正常的审批行为。 |
 
 Codex 和 Copilot CLI 通过 Hook 接收 Rules；Cursor 使用原生插件 Rules。预期 Rule 未生效时，请检查
 宿主 Hook 诊断。Copilot cloud agent 不在此插件 Rule 契约范围内。
+
+Codex 插件包不会加载自定义 Agents。请在每个受维护的项目快照中运行 `setup-project-agents`，将
+SmartKit 的 Codex Agent adapter 安装到 `.codex/agents/`。该 adapter 仍归插件所有，不需要在
+`.agents/config.json` 中添加 Project Agent 声明。
 
 ## 平台支持
 
@@ -52,7 +56,7 @@ Codex 和 Copilot CLI 通过 Hook 接收 Rules；Cursor 使用原生插件 Rules
 
 | 宿主 | Rules | Skills | Agents | MCP |
 | --- | --- | --- | --- | --- |
-| Codex | 会话、提示词和结构化工具 Hook | 插件 Skill catalog | `change-set-verifier` | Playwright |
+| Codex | 会话、提示词和结构化工具 Hook | 插件 Skill catalog | Setup-managed `change-set-verifier` | Playwright |
 | Cursor | 原生插件 Rules | 插件 Skill catalog | `change-set-verifier` | Playwright |
 | GitHub Copilot CLI | 会话、转换提示词和结构化工具 Hook | 插件 Skill catalog | `change-set-verifier` | Playwright |
 

@@ -13,7 +13,9 @@ evolution, and test contracts for this repository.
   read-only snapshots owned by `scripts/update_external_skills.py`.
 - Plugin Agents are owned by `agents/registry.json` and `agents/source/`; generated adapters under
   `agents/codex/`, `agents/cursor/`, and `agents/copilot/` are owned by
-  `scripts/sync_agent_adapters.py`.
+  `scripts/sync_agent_adapters.py`. Cursor and Copilot manifests expose their adapters directly;
+  the catalog delivers Codex adapters as setup-managed Plugin Agent defaults without adding a
+  Project Agent declaration.
 - Plugin MCP is owned by `mcp/registry.json`; `.mcp.json`, `mcp/cursor.json`, and
   `mcp/copilot.json` are generated adapters owned by `scripts/sync_mcp_adapters.py`, not vendored
   MCP implementations.
@@ -33,7 +35,8 @@ evolution, and test contracts for this repository.
   them into target repositories.
 - Keep shared blueprints and host templates under `setup-assets/`. Treat
   `setup-assets/catalog/assets.json` as the owner of target asset inclusion, Rule and Skill
-  blueprints, wrapper routing, renderer metadata, and managed root-configuration declarations.
+  blueprints, Codex Plugin Agent default delivery, wrapper routing, renderer metadata, and managed
+  root-configuration declarations.
 - Keep deterministic setup, source validation, rendering, planning, and transactional application
   in `skills/setup-project-agents/scripts/`. Target-specific policy belongs to the target
   repository's generated or user-owned content.

@@ -306,6 +306,20 @@ class SetupCatalogTest(unittest.TestCase):
                 elif asset.source.as_posix() in matt_blueprints:
                     self.assertEqual(asset.kind, 'blueprint')
                     self.assertTrue(asset.target.as_posix().startswith('docs/agents/'))
+                elif asset.kind == 'agent':
+                    self.assertEqual(
+                        asset.source.as_posix(),
+                        'agents/codex/change-set-verifier.toml',
+                    )
+                    self.assertEqual(
+                        asset.target.as_posix(),
+                        '.codex/agents/change-set-verifier.toml',
+                    )
+                    self.assertEqual(
+                        tuple(platform.value for platform in asset.platforms),
+                        ('codex',),
+                    )
+                    self.assertEqual(asset.mode, 'copy')
                 elif asset.kind in {'rule', 'skill', 'blueprint', 'template', 'wrapper'}:
                     self.assertTrue(asset.source.as_posix().startswith('setup-assets/'))
 
@@ -351,6 +365,31 @@ class SetupCatalogTest(unittest.TestCase):
                     'extra': True,
                 }
             )
+
+    def test_plugin_agent_asset_contract_is_codex_only(self):
+        valid = {
+            'id': 'plugin-agent-change-set-verifier-codex',
+            'kind': 'agent',
+            'source': 'agents/codex/change-set-verifier.toml',
+            'target': '.codex/agents/change-set-verifier.toml',
+            'platforms': ['codex'],
+            'mode': 'copy',
+        }
+        self.assertEqual(parse_asset(valid).target.as_posix(), valid['target'])
+
+        invalid = (
+            {'source': 'agents/cursor/change-set-verifier.toml'},
+            {'target': '.cursor/agents/change-set-verifier.toml'},
+            {'target': '.codex/agents/other.toml'},
+            {'platforms': ['cursor']},
+            {'platforms': ['codex', 'cursor']},
+            {'mode': 'render'},
+        )
+        for override in invalid:
+            with self.subTest(override=override):
+                candidate = {**valid, **override}
+                with self.assertRaisesRegex(ContractError, 'plugin Agent asset'):
+                    parse_asset(candidate)
 
     def test_asset_metadata_is_strictly_typed_and_available_to_renderers(self):
         parsed = parse_asset(
