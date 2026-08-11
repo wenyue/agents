@@ -1,7 +1,7 @@
 {
   "plugin": {
     "id": "smartkit",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "repository": "https://github.com/wenyue/agents.git",
     "ref": "master"
   },
