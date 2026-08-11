@@ -6,7 +6,6 @@ import json
 import os
 import re
 import stat
-import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
@@ -379,40 +378,6 @@ def _generated_root(session: Path) -> Path:
     return root
 
 
-def _reject_ignored_generated_targets(target: Path) -> None:
-    try:
-        repository = subprocess.run(
-            ('git', '-C', str(target), 'rev-parse', '--is-inside-work-tree'),
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except OSError as error:
-        raise SetupError('cannot inspect Git tracking for generated targets') from error
-    if repository.returncode != 0:
-        return
-    for relative in _BLUEPRINT_TARGETS:
-        path = relative.as_posix()
-        tracked = subprocess.run(
-            ('git', '-C', str(target), 'ls-files', '--error-unmatch', '--', path),
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        if tracked.returncode == 0:
-            continue
-        ignored = subprocess.run(
-            ('git', '-C', str(target), 'check-ignore', '--no-index', '--quiet', '--', path),
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        if ignored.returncode == 0:
-            raise SetupError(f'generated target is ignored by Git: {path}')
-        if ignored.returncode != 1:
-            raise SetupError(f'cannot inspect Git ignore state for generated target: {path}')
-
-
 def _emit_result(
     *,
     phase: str,
@@ -513,7 +478,6 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
         if actual_snapshot_digest != expected_snapshot_digest:
             raise SetupError('external Skill source metadata changed after prepare')
     generated = _generated_root(session)
-    _reject_ignored_generated_targets(project.root)
     rendered = render_desired_state(
         args.source_root,
         project.root,

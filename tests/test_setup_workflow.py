@@ -398,27 +398,42 @@ class SetupWorkflowTest(unittest.TestCase):
             self.assertFalse(session.exists())
             self.assertEqual(tuple(target.rglob('*')), before)
 
-    def test_finish_rejects_ignored_untracked_generated_targets(self):
+    def test_finish_installs_ignored_generated_targets(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             origin = self.make_origin(root)
             target = root / 'target'
             target.mkdir()
             run_git(target, 'init', '--quiet')
-            (target / '.gitignore').write_text('docs/agents/\n', encoding='utf-8')
+            (target / '.gitignore').write_text(
+                '.agents/\ndocs/agents/\n',
+                encoding='utf-8',
+            )
             session_output = StringIO()
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
                 with redirect_stdout(session_output):
                     self.assertEqual(workflow.main(['start', '--target', str(target)]), 0)
             session = Path(json.loads(session_output.getvalue())['session'])
             self.write_generated_outputs(session)
-            error = StringIO()
+            finish_output = StringIO()
 
-            with redirect_stderr(error):
-                self.assertEqual(workflow.main(['finish', '--session', str(session)]), 2)
+            with redirect_stdout(finish_output):
+                self.assertEqual(workflow.main(['finish', '--session', str(session)]), 0)
 
-            self.assertIn('generated target is ignored by Git', error.getvalue())
-            self.assertFalse((target / 'docs/agents').exists())
+            finish = json.loads(finish_output.getvalue())
+            self.assertEqual(finish['phase'], 'finish')
+            self.assertEqual(finish['check'], 'clean')
+            for relative in (
+                '.agents/rules/00-project-tools.md',
+                '.agents/skills/change-set-verification/SKILL.md',
+                'docs/agents/issue-tracker.md',
+            ):
+                self.assertTrue((target / relative).is_file())
+                ignored = subprocess.run(
+                    ('git', '-C', str(target), 'check-ignore', '--quiet', '--', relative),
+                    check=False,
+                )
+                self.assertEqual(ignored.returncode, 0)
             self.assertFalse(session.exists())
 
     def test_finish_reports_actionable_undeclared_generated_directory_error(
