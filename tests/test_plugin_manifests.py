@@ -120,7 +120,7 @@ class PluginManifestTest(unittest.TestCase):
 
     def test_chinese_documentation_has_one_to_one_english_mirrors(self):
         chinese_root = REPO_ROOT / 'docs' / 'zh-CN'
-        source_paths = {Path('README.md')}
+        source_paths = set()
         for root_name in (
             'agents/source',
             'rules/source',
@@ -146,10 +146,15 @@ class PluginManifestTest(unittest.TestCase):
         }
         self.assertEqual(translated_paths, source_paths)
 
-        for source_path in sorted(source_paths):
+        translation_pairs = [(Path('README.md'), REPO_ROOT / 'README.zh-CN.md')]
+        translation_pairs.extend(
+            (source_path, chinese_root / source_path)
+            for source_path in sorted(source_paths)
+        )
+        for source_path, translation_path in translation_pairs:
             with self.subTest(path=source_path.as_posix()):
                 source = (REPO_ROOT / source_path).read_text(encoding='utf-8')
-                translation = (chinese_root / source_path).read_text(encoding='utf-8')
+                translation = translation_path.read_text(encoding='utf-8')
                 self.assertEqual(
                     markdown_structure(translation),
                     markdown_structure(source),

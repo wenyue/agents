@@ -1,5 +1,7 @@
 # WenYue SmartKit
 
+[English](README.md) | 简体中文
+
 `WenYue SmartKit` 是同时适配 Codex、Cursor 和 GitHub Copilot 的跨平台插件。它将 Rules、Skills、
 Agents 和 MCP 作为平级能力提供，并在会话开始时检查推荐工具和已配置 MCP 的前置条件是否可用。
 

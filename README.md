@@ -1,5 +1,7 @@
 # WenYue SmartKit
 
+English | [简体中文](README.zh-CN.md)
+
 `WenYue SmartKit` is a cross-platform plugin for Codex, Cursor, and GitHub Copilot. It provides
 Rules, Skills, Agents, and MCP as peer capabilities, then checks whether recommended tools and
 configured MCP prerequisites are available when a session starts.
