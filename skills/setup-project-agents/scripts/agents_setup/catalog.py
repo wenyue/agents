@@ -9,7 +9,10 @@ from pathlib import Path, PurePosixPath
 from .models import (
     AssetSpec,
     Catalog,
+    CodexAgentConfig,
+    CopilotAgentConfig,
     ContractError,
+    CursorAgentConfig,
     ExternalSourceSpec,
     ExternalSkillSpec,
     McpOverride,
@@ -17,6 +20,7 @@ from .models import (
     McpTransport,
     OperatingSystem,
     Platform,
+    ProjectAgentSpec,
     ProjectConfig,
 )
 from .external_contract import (
@@ -43,7 +47,7 @@ _WINDOWS_RESERVED_NAMES = frozenset(
 _ASSET_FIELDS = frozenset({'id', 'kind', 'source', 'target', 'platforms', 'mode', 'control_plane', 'metadata'})
 _CATALOG_FIELDS = frozenset({'plugin', 'assets'})
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
-_PROJECT_CONFIG_FIELDS = frozenset({'$schema', 'version', 'skills', 'mcp'})
+_PROJECT_CONFIG_FIELDS = frozenset({'$schema', 'version', 'skills', 'mcp', 'agents'})
 _EXTERNAL_SOURCE_FIELDS = frozenset({'source', 'ref', 'include'})
 _MCP_SERVER_FIELDS = frozenset({
     'id', 'platforms', 'command', 'args', 'cwd', 'env', 'url', 'overrides',
@@ -51,6 +55,11 @@ _MCP_SERVER_FIELDS = frozenset({
 _MCP_OVERRIDE_FIELDS = frozenset({'when', 'set'})
 _MCP_OVERRIDE_SELECTOR_FIELDS = frozenset({'platforms', 'operatingSystems'})
 _MCP_OVERRIDE_VALUE_FIELDS = frozenset({'command', 'args', 'cwd', 'env', 'url'})
+_PROJECT_AGENT_FIELDS = frozenset({'id', 'source', 'description', 'platforms'})
+_PROJECT_AGENT_PLATFORM_FIELDS = frozenset({'codex', 'cursor', 'copilot'})
+_CODEX_AGENT_FIELDS = frozenset({'model', 'model_reasoning_effort', 'sandbox_mode'})
+_CURSOR_AGENT_FIELDS = frozenset({'model', 'readonly'})
+_COPILOT_AGENT_FIELDS = frozenset({'model', 'disable_model_invocation'})
 _ENVIRONMENT_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 _MATT_BLUEPRINTS = {
     PurePosixPath('docs/agents/issue-tracker.md'): PurePosixPath(
@@ -293,25 +302,9 @@ def _rule_metadata(value: object, *, project_blueprint: bool) -> Mapping[str, ob
     return dict(metadata)
 
 
-def _agent_metadata(value: object) -> Mapping[str, object]:
-    metadata = _object(value, 'asset metadata')
-    _fields(metadata, frozenset({'description', 'codex', 'cursor'}), 'agent metadata')
-    _nonempty_string(_required(metadata, 'description', 'agent metadata'), 'agent metadata description')
-    codex = _object(_required(metadata, 'codex', 'agent metadata'), 'agent metadata codex')
-    _fields(codex, frozenset({'sandbox_mode'}), 'agent metadata codex')
-    _nonempty_string(_required(codex, 'sandbox_mode', 'agent metadata codex'), 'agent metadata codex sandbox_mode')
-    cursor = _object(_required(metadata, 'cursor', 'agent metadata'), 'agent metadata cursor')
-    _fields(cursor, frozenset({'readonly'}), 'agent metadata cursor')
-    if type(_required(cursor, 'readonly', 'agent metadata cursor')) is not bool:
-        raise ContractError('agent metadata cursor readonly must be a boolean')
-    return dict(metadata)
-
-
 def _metadata(value: object, kind: str, target: PurePosixPath | None) -> Mapping[str, object]:
     if kind == 'rule':
         return _rule_metadata(value, project_blueprint=False)
-    if kind == 'agent':
-        return _agent_metadata(value)
     is_project_rule_blueprint = (
         kind == 'blueprint'
         and target is not None
@@ -523,6 +516,97 @@ def parse_external_skills(value: object, catalog: Catalog) -> tuple[ExternalSour
     return tuple(result)
 
 
+def _agent_text(value: object, label: str) -> str:
+    text = _nonempty_string(value, label)
+    if any(unicodedata.category(character) == 'Cc' for character in text):
+        raise ContractError(f'{label} contains control characters')
+    return text
+
+
+def _optional_agent_text(document: Mapping[str, object], key: str, label: str) -> str | None:
+    value = document.get(key)
+    return None if value is None else _agent_text(value, f'{label}.{key}')
+
+
+def parse_project_agents(value: object) -> tuple[ProjectAgentSpec, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ContractError('project config agents must be an array')
+    result: list[ProjectAgentSpec] = []
+    for index, item in enumerate(value):
+        label = f'project config agents[{index}]'
+        document = _object(item, label)
+        _fields(document, _PROJECT_AGENT_FIELDS, label)
+        agent_id = _name(_required(document, 'id', label), f'{label}.id')
+        source = safe_relative(
+            _required(document, 'source', label), f'{label}.source'
+        )
+        expected_source = PurePosixPath('.agents/agents') / f'{agent_id}.md'
+        if source != expected_source:
+            raise ContractError(
+                f'{label}.source must be .agents/agents/{agent_id}.md'
+            )
+        description = _agent_text(
+            _required(document, 'description', label), f'{label}.description'
+        )
+        platforms = _object(_required(document, 'platforms', label), f'{label}.platforms')
+        _fields(platforms, _PROJECT_AGENT_PLATFORM_FIELDS, f'{label}.platforms')
+        if not platforms:
+            raise ContractError(f'{label}.platforms must not be empty')
+
+        codex = None
+        if 'codex' in platforms:
+            config = _object(platforms['codex'], f'{label}.platforms.codex')
+            _fields(config, _CODEX_AGENT_FIELDS, f'{label}.platforms.codex')
+            codex = CodexAgentConfig(
+                sandbox_mode=_agent_text(
+                    _required(config, 'sandbox_mode', f'{label}.platforms.codex'),
+                    f'{label}.platforms.codex.sandbox_mode',
+                ),
+                model=_optional_agent_text(config, 'model', f'{label}.platforms.codex'),
+                model_reasoning_effort=_optional_agent_text(
+                    config, 'model_reasoning_effort', f'{label}.platforms.codex'
+                ),
+            )
+
+        cursor = None
+        if 'cursor' in platforms:
+            config = _object(platforms['cursor'], f'{label}.platforms.cursor')
+            _fields(config, _CURSOR_AGENT_FIELDS, f'{label}.platforms.cursor')
+            readonly = _required(config, 'readonly', f'{label}.platforms.cursor')
+            if type(readonly) is not bool:
+                raise ContractError(f'{label}.platforms.cursor.readonly must be a boolean')
+            cursor = CursorAgentConfig(
+                readonly=readonly,
+                model=_optional_agent_text(config, 'model', f'{label}.platforms.cursor'),
+            )
+
+        copilot = None
+        if 'copilot' in platforms:
+            config = _object(platforms['copilot'], f'{label}.platforms.copilot')
+            _fields(config, _COPILOT_AGENT_FIELDS, f'{label}.platforms.copilot')
+            disabled = _required(
+                config, 'disable_model_invocation', f'{label}.platforms.copilot'
+            )
+            if type(disabled) is not bool:
+                raise ContractError(
+                    f'{label}.platforms.copilot.disable_model_invocation must be a boolean'
+                )
+            copilot = CopilotAgentConfig(
+                disable_model_invocation=disabled,
+                model=_optional_agent_text(config, 'model', f'{label}.platforms.copilot'),
+            )
+
+        result.append(ProjectAgentSpec(
+            agent_id, source, description, codex, cursor, copilot,
+        ))
+    ids = [agent.id for agent in result]
+    if len(ids) != len(set(ids)):
+        raise ContractError('project config agents has duplicate ids')
+    return tuple(result)
+
+
 def load_project_config(
     path: Path | None,
     *,
@@ -539,11 +623,12 @@ def load_project_config(
         raise ContractError('project config version must be 1')
     project_external_skills = parse_external_skills(document.get('skills'), catalog)
     mcp_servers = parse_mcp_servers(document.get('mcp'))
+    agents = parse_project_agents(document.get('agents'))
     return ProjectConfig(
         version,
         _selected(None, 'selected_rules', catalog, 'rule'),
         _selected(None, 'selected_skills', catalog, 'skill'),
-        _selected(None, 'selected_agents', catalog, 'agent'),
         project_external_skills,
         mcp_servers,
+        agents,
     )

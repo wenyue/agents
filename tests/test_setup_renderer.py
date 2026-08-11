@@ -48,22 +48,12 @@ from agents_setup.validation import validate_rendered_state  # noqa: E402
 class SetupRendererTest(unittest.TestCase):
     def setUp(self) -> None:
         self.catalog = load_catalog(REPO_ROOT)
-        self.models = {
-            'agents': {
-                'change-set-verifier': {
-                    'codex': {'model': 'gpt-5', 'model_reasoning_effort': 'medium'},
-                    'cursor': {'model': 'cursor-default'},
-                    'github': {'model': 'copilot-default'},
-                }
-            }
-        }
 
     def config(self) -> ProjectConfig:
         return ProjectConfig(
             1,
             (),
             (),
-            ('change-set-verifier',),
         )
 
     def generated_tree(self, root: Path) -> Path:
@@ -83,7 +73,6 @@ class SetupRendererTest(unittest.TestCase):
             self.catalog,
             self.config(),
             generated,
-            self.models,
         )
 
     def mcp_config(self, target: Path, servers: list[dict]) -> ProjectConfig:
@@ -95,6 +84,33 @@ class SetupRendererTest(unittest.TestCase):
             json.dumps(document),
             encoding='utf-8',
         )
+        return load_project_config(path, catalog=self.catalog)
+
+    def project_agent_config(self, target: Path) -> ProjectConfig:
+        source = target / '.agents/agents/l10n.md'
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text('# L10n\n\nUse the project localization workflow.\n', encoding='utf-8')
+        path = target / '.agents/config.json'
+        path.write_text(json.dumps({
+            'version': 1,
+            'agents': [{
+                'id': 'l10n',
+                'source': '.agents/agents/l10n.md',
+                'description': 'Project-local agent: l10n',
+                'platforms': {
+                    'codex': {
+                        'model': 'gpt-5.6-terra',
+                        'model_reasoning_effort': 'medium',
+                        'sandbox_mode': 'workspace-write',
+                    },
+                    'cursor': {'model': 'gpt-5.6-terra', 'readonly': False},
+                    'copilot': {
+                        'model': 'gpt-5.6-terra',
+                        'disable_model_invocation': False,
+                    },
+                },
+            }],
+        }), encoding='utf-8')
         return load_project_config(path, catalog=self.catalog)
 
     def render_with_config(
@@ -110,7 +126,6 @@ class SetupRendererTest(unittest.TestCase):
             self.catalog,
             config,
             generated,
-            self.models,
             operating_system=operating_system,
         )
 
@@ -442,7 +457,6 @@ class SetupRendererTest(unittest.TestCase):
                 self.catalog,
                 self.config(),
                 generated,
-                self.models,
             )
 
             updated = json.loads(rendered.files_by_path['.agents/config.json'])
@@ -521,7 +535,6 @@ class SetupRendererTest(unittest.TestCase):
                 self.catalog,
                 project.config,
                 self.generated_tree(root),
-                self.models,
                 external_root,
             )
             rendered_config = json.loads(
@@ -589,7 +602,7 @@ class SetupRendererTest(unittest.TestCase):
             first_config = load_project_config(config_path, catalog=self.catalog)
             first = render_desired_state(
                 REPO_ROOT, target, self.catalog, first_config,
-                self.generated_tree(root), self.models, external_root,
+                self.generated_tree(root), external_root,
             )
             self.materialize(target, first.files)
 
@@ -649,7 +662,7 @@ class SetupRendererTest(unittest.TestCase):
             config = load_project_config(config_path, catalog=self.catalog)
             first = render_desired_state(
                 REPO_ROOT, target, self.catalog, config,
-                self.generated_tree(root), self.models, external_root,
+                self.generated_tree(root), external_root,
             )
             self.materialize(target, first.files)
             installed = target / '.agents/skills/local-check/SKILL.md'
@@ -658,7 +671,7 @@ class SetupRendererTest(unittest.TestCase):
             with self.assertRaisesRegex(RenderError, 'modified outside setup'):
                 render_desired_state(
                     REPO_ROOT, target, self.catalog, config,
-                    self.generated_tree(root), self.models, external_root,
+                    self.generated_tree(root), external_root,
                 )
 
     def test_managed_blueprint_rule_rename_is_delete_plus_create_not_project_discovery(self):
@@ -687,8 +700,7 @@ class SetupRendererTest(unittest.TestCase):
                     1,
                     tuple(asset.id for asset in assets if asset.kind == 'rule' and not asset.control_plane),
                     tuple(asset.id for asset in assets if asset.kind == 'skill' and not asset.control_plane),
-                    tuple(asset.id for asset in assets if asset.kind == 'agent' and not asset.control_plane),
-                ), generated, self.models,
+                ), generated,
             )
 
             self.assertIn(old, rendered.delete_paths)
@@ -904,7 +916,6 @@ class SetupRendererTest(unittest.TestCase):
                 1,
                 ('shared',),
                 (),
-                (),
             )
 
             rendered = render_desired_state(
@@ -913,7 +924,6 @@ class SetupRendererTest(unittest.TestCase):
                 catalog,
                 config,
                 root / 'generated',
-                {},
             )
 
             self.assertEqual(
@@ -936,7 +946,6 @@ class SetupRendererTest(unittest.TestCase):
                 load_catalog(source),
                 self.config(),
                 self.generated_tree(root),
-                self.models,
             )
 
             self.assertIn('AGENTS.md', rendered.files_by_path)
@@ -1048,7 +1057,7 @@ class SetupRendererTest(unittest.TestCase):
             config = load_project_config(config_path, catalog=self.catalog)
             first = render_desired_state(
                 REPO_ROOT, target, self.catalog, config,
-                self.generated_tree(root), self.models, external_root,
+                self.generated_tree(root), external_root,
             )
             self.materialize(target, first.files)
             manifest = target / '.agents/smartkit.lock.json'
@@ -1060,7 +1069,7 @@ class SetupRendererTest(unittest.TestCase):
             with self.assertRaisesRegex(RenderError, 'Skill provenance is invalid'):
                 render_desired_state(
                     REPO_ROOT, target, self.catalog, config,
-                    self.generated_tree(root), self.models, external_root,
+                    self.generated_tree(root), external_root,
                 )
 
     def test_managed_tree_rejects_junction_like_root(self):
@@ -1090,45 +1099,94 @@ class SetupRendererTest(unittest.TestCase):
                     sources=({'secret': 'must-not-be-written'},),
                 )
 
-    def test_deselected_assets_are_removed(self):
+    def test_project_setup_does_not_render_plugin_agents(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
-            stale_paths = (
-                '.agents/agents/change-set-verifier.md',
-                '.github/agents/change-set-verifier.agent.md',
+            rendered = self.render(target, self.generated_tree(root))
+            self.assertFalse(any(
+                path.startswith(('.agents/agents/', '.codex/agents/', '.cursor/agents/', '.github/agents/'))
+                for path in rendered.files_by_path
+            ))
+
+    def test_project_agents_render_thin_host_adapters_and_preserve_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            config = self.project_agent_config(target)
+
+            rendered = self.render_with_config(target, self.generated_tree(root), config)
+
+            self.assertNotIn('.agents/agents/l10n.md', rendered.files_by_path)
+            self.assertIn(
+                PurePosixPath('.agents/agents/l10n.md'), rendered.preserved_paths,
             )
-            first = self.render(target, self.generated_tree(root))
+            codex = rendered.files_by_path['.codex/agents/l10n.toml']
+            self.assertEqual(tomllib.loads(codex.decode())['model'], 'gpt-5.6-terra')
+            self.assertIn(b'Follow `.agents/agents/l10n.md`.', codex)
+            self.assertIn(
+                b'description: "Project-local agent: l10n"',
+                rendered.files_by_path['.cursor/agents/l10n.md'],
+            )
+            self.assertIn(
+                b'Apply @.agents/agents/l10n.md',
+                rendered.files_by_path['.github/agents/l10n.agent.md'],
+            )
+            lock = json.loads(rendered.files_by_path['.agents/smartkit.lock.json'])
+            agent_assets = {
+                item['path'] for item in lock['assets'] if item['role'] == 'agent'
+            }
+            self.assertEqual(agent_assets, {
+                '.codex/agents/l10n.toml',
+                '.cursor/agents/l10n.md',
+                '.github/agents/l10n.agent.md',
+            })
+            validate_rendered_state(rendered)
+
+    def test_project_agent_requires_existing_nonempty_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            config_path = target / '.agents/config.json'
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text(json.dumps({
+                'version': 1,
+                'agents': [{
+                    'id': 'l10n',
+                    'source': '.agents/agents/l10n.md',
+                    'description': 'L10n',
+                    'platforms': {'cursor': {'readonly': False}},
+                }],
+            }), encoding='utf-8')
+            config = load_project_config(config_path, catalog=self.catalog)
+
+            with self.assertRaisesRegex(RenderError, 'source is missing'):
+                self.render_with_config(target, self.generated_tree(root), config)
+
+    def test_removing_project_agent_deletes_only_managed_host_adapters(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            config = self.project_agent_config(target)
+            generated = self.generated_tree(root)
+            first = self.render_with_config(target, generated, config)
             self.materialize(target, first.files)
 
-            config = ProjectConfig(
-                1,
-                (),
-                (),
-                (),
-            )
-            rendered = render_desired_state(
-                REPO_ROOT,
-                target,
-                self.catalog,
-                config,
-                self.generated_tree(root),
-                {},
-            )
-            plan = build_plan(
-                target,
-                rendered.files,
-                rendered.fields,
-                delete_paths=rendered.delete_paths,
-                replace_roots=rendered.replace_roots,
-            )
-            deleted = {
-                item.path.as_posix()
-                for item in plan.changes
-                if item.kind is ChangeKind.DELETE
-            }
+            second = self.render(target, generated)
 
-            self.assertTrue(set(stale_paths).issubset(deleted))
+            self.assertEqual(
+                set(second.delete_paths).intersection({
+                    PurePosixPath('.codex/agents/l10n.toml'),
+                    PurePosixPath('.cursor/agents/l10n.md'),
+                    PurePosixPath('.github/agents/l10n.agent.md'),
+                }),
+                {
+                    PurePosixPath('.codex/agents/l10n.toml'),
+                    PurePosixPath('.cursor/agents/l10n.md'),
+                    PurePosixPath('.github/agents/l10n.agent.md'),
+                },
+            )
+            self.assertTrue((target / '.agents/agents/l10n.md').is_file())
 
     def test_project_rules_and_skills_are_discovered_without_becoming_managed_content(self):
         with tempfile.TemporaryDirectory() as temp_dir:

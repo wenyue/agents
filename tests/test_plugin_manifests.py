@@ -122,8 +122,8 @@ class PluginManifestTest(unittest.TestCase):
         chinese_root = REPO_ROOT / 'docs' / 'zh-CN'
         source_paths = {Path('README.md')}
         for root_name in (
+            'agents/source',
             'rules/source',
-            'setup-assets/agents',
             'setup-assets/blueprints',
             'skills/setup-project-agents',
         ):
@@ -207,7 +207,7 @@ class PluginManifestTest(unittest.TestCase):
         self.assertEqual(codex['plugins'][0]['name'], 'smartkit')
         self.assertEqual(codex['plugins'][0]['source']['path'], './')
 
-    def test_root_manifests_expose_plugin_owned_hooks(self):
+    def test_root_manifests_expose_plugin_owned_capabilities(self):
         codex = load_json('.codex-plugin/plugin.json')
         cursor = load_json('.cursor-plugin/plugin.json')
         copilot = load_json('plugin.json')
@@ -219,6 +219,9 @@ class PluginManifestTest(unittest.TestCase):
         self.assertEqual(codex['mcpServers'], './.mcp.json')
         self.assertEqual(cursor['mcpServers'], './mcp/cursor.json')
         self.assertEqual(copilot['mcpServers'], './mcp/copilot.json')
+        self.assertEqual(codex['agents'], './agents/codex/')
+        self.assertEqual(cursor['agents'], './agents/cursor/')
+        self.assertEqual(copilot['agents'], './agents/copilot/')
         for manifest, expected in (
             (codex, '.mcp.json'),
             (cursor, 'mcp/cursor.json'),
@@ -227,7 +230,7 @@ class PluginManifestTest(unittest.TestCase):
             self.assertTrue((REPO_ROOT / expected).is_file())
         for manifest in (codex, cursor, copilot):
             self.assertTrue((REPO_ROOT / manifest['skills']).is_dir())
-            self.assertNotIn('agents', manifest)
+            self.assertTrue((REPO_ROOT / manifest['agents']).is_dir())
         self.assertNotIn('rules', codex)
         self.assertNotIn('rules', copilot)
 
@@ -268,12 +271,22 @@ class PluginManifestTest(unittest.TestCase):
                 / 'skills/setup-project-agents/scripts/_vendor/tomli/__init__.py'
             ).is_file()
         )
-        self.assertFalse((REPO_ROOT / 'agents').exists())
+        self.assertTrue((REPO_ROOT / 'agents/registry.json').is_file())
+        self.assertTrue((REPO_ROOT / 'agents/source/change-set-verifier.md').is_file())
+        self.assertTrue((REPO_ROOT / 'scripts/sync_agent_adapters.py').is_file())
         self.assertTrue((REPO_ROOT / 'rules/registry.json').is_file())
         self.assertFalse(any((REPO_ROOT / 'runtime').rglob('SKILL.md')))
         self.assertEqual(
-            {path.name for path in (REPO_ROOT / 'setup-assets').iterdir() if path.is_dir()},
-            {'agents', 'blueprints', 'catalog', 'templates'},
+            {
+                path.name
+                for path in (REPO_ROOT / 'setup-assets').iterdir()
+                if path.is_dir()
+                and any(
+                    item.is_file() and '__pycache__' not in item.parts
+                    for item in path.rglob('*')
+                )
+            },
+            {'blueprints', 'catalog', 'templates'},
         )
         for retired_root in ('project', 'blueprints', 'catalog', 'config', 'templates'):
             self.assertFalse((REPO_ROOT / retired_root).exists())
@@ -373,10 +386,23 @@ class PluginManifestTest(unittest.TestCase):
                         self.assertIn('run_recommended_tools.cmd', entry['command'])
                     else:
                         self.assertIn(route, entry)
-                agent_template = (
-                    REPO_ROOT / spec['agentTemplate']
-                ).read_text(encoding='utf-8')
-                self.assertRegex(agent_template, r'(?m)^model\s*[:=]')
+
+    def test_agent_registry_has_generated_host_adapters_without_model_pins(self):
+        registry = load_json('agents/registry.json')
+        self.assertEqual(registry['version'], 1)
+        self.assertEqual([item['id'] for item in registry['agents']], ['change-set-verifier'])
+
+        paths = {
+            'codex': REPO_ROOT / 'agents/codex/change-set-verifier.toml',
+            'cursor': REPO_ROOT / 'agents/cursor/change-set-verifier.md',
+            'copilot': REPO_ROOT / 'agents/copilot/change-set-verifier.agent.md',
+        }
+        for platform, path in paths.items():
+            with self.subTest(platform=platform):
+                self.assertTrue(path.is_file())
+                content = path.read_text(encoding='utf-8')
+                self.assertIn('change-set-verification/SKILL.md', content)
+                self.assertNotRegex(content, r'(?m)^model\s*[:=]')
 
 
 if __name__ == '__main__':

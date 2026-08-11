@@ -1,7 +1,7 @@
 # WenYue SmartKit
 
-`WenYue SmartKit` 是同时适配 Codex、Cursor 和 GitHub Copilot 的跨平台插件。它帮助项目统一
-Agent 规则、常用技能和协作方式，并在会话开始时检查推荐工具和已配置 MCP 的前置条件是否可用。
+`WenYue SmartKit` 是同时适配 Codex、Cursor 和 GitHub Copilot 的跨平台插件。它将 Rules、Skills、
+Agents 和 MCP 作为平级能力提供，并在会话开始时检查推荐工具和已配置 MCP 的前置条件是否可用。
 
 ## 安装插件
 
@@ -34,37 +34,27 @@ copilot plugin install smartkit@wenyue
 需要更新 Copilot 插件时，先运行 `copilot plugin marketplace update wenyue`，再运行
 `copilot plugin update smartkit`。
 
-## 插件 Skills、MCP 与 Rules
+## 插件 Rules、Skills、Agents 与 MCP
 
-`skills/registry.json` 显式声明 SmartKit 自有 Skills 和 GitHub 外部 Skills。维护者使用
-`python scripts/update_external_skills.py --update` 更新所有外部源，或用 `--source owner/repository`
-更新单个源；`--check` 只读。省略 ref 时跟随仓库默认分支，也可显式选择分支、标签或 commit。
-更新使用环境中的 Git 凭据，校验许可证，并事务化替换聚合锁文件和快照。
+| 能力 | SmartKit 提供的内容 |
+| --- | --- |
+| Rules | Always-on 和 file-scoped 指令。优先比较强度（`Mandatory` > `Default` > `Advisory`），再比较项目归属和更窄的文件范围。 |
+| Skills | SmartKit 工作流，以及经过审查、许可证校验和版本固定的第三方工作流。 |
+| Agents | 三个宿主上的 `change-set-verifier`。它使用项目的 change-set-verification Skill；setup 未安装该 Skill 时报告 `inconclusive`，并继承宿主选择的模型。 |
+| MCP | 三个宿主上隔离、无界面模式的 Playwright，并继续遵守宿主正常的审批行为。 |
 
-第三方 Plugin Skills 会经过审查、许可证校验和锁定，并作为快照随 SmartKit 一起交付，因为受支持
-的宿主从插件本地路径加载它们。Plugin MCP 使用不同的生命周期：`mcp/registry.json` 声明配置，
-`python scripts/sync_mcp_adapters.py` 生成三端 adapter，再由各宿主启动或连接外部 server。
-SmartKit 不复制 server 实现。SmartKit 1.1 在三端通过隔离、无界面的
-`@playwright/mcp@latest` 配置 Playwright MCP；浏览器工具调用继续遵守宿主正常的审批行为。
-
-`rules/registry.json` 定义插件 Rules 的顺序。`always` Rule 对所有任务生效；`file` Rule 根据项目根
-相对的 Git 风格 glob 激活。优先比较强度（`Mandatory` > `Default` > `Advisory`），再比较项目归属，
-最后比较更窄的文件范围。Codex 和 Copilot CLI 使用 Hook；Cursor 使用原生插件 Rules。Hook 会在
-会话内记住已激活的文件 Rule，在 compact 后恢复，并在此前未发现 Rule 时阻止首次匹配的结构化
-写入。Hook dispatcher 会输出包含响应大小的尝试交付诊断；信任、接收、spill 和截断仍以宿主为准，
-预期 Rule 未生效时应检查宿主 Hook 诊断。Cursor adapter 无法表达某个文件范围时会拒绝生成，不会
-发布语义不同的配置。Copilot cloud agent 不在此插件 Rule 契约范围内。
+Codex 和 Copilot CLI 通过 Hook 接收 Rules；Cursor 使用原生插件 Rules。预期 Rule 未生效时，请检查
+宿主 Hook 诊断。Copilot cloud agent 不在此插件 Rule 契约范围内。
 
 ## 平台支持
 
-三个宿主都支持 Windows 和 Linux。初始化会为每个生成的 Agent 设置显式模型；宿主专属字段仍使用
-各自的原生形式。
+三个宿主都支持 Windows 和 Linux。
 
-| 宿主 | 插件 Rule 分发 | 每日 readiness Hook | Plugin MCP | 原生 Agent 字段 |
+| 宿主 | Rules | Skills | Agents | MCP |
 | --- | --- | --- | --- | --- |
-| Codex | 会话、提示词和结构化工具 Hook | PowerShell / POSIX sh | `.mcp.json` | `model_reasoning_effort`、`sandbox_mode` |
-| Cursor | 原生插件 Rules | 仅 session start 的 polyglot 分发器 | `mcp/cursor.json` | `readonly` |
-| GitHub Copilot CLI | 会话、转换提示词和结构化工具 Hook | `powershell` / `bash` | `mcp/copilot.json` | `disable-model-invocation` |
+| Codex | 会话、提示词和结构化工具 Hook | 插件 Skill catalog | `change-set-verifier` | Playwright |
+| Cursor | 原生插件 Rules | 插件 Skill catalog | `change-set-verifier` | Playwright |
+| GitHub Copilot CLI | 会话、转换提示词和结构化工具 Hook | 插件 Skill catalog | `change-set-verifier` | Playwright |
 
 ## 为每个项目执行设置
 
@@ -80,15 +70,16 @@ tracker。
 无需逐人运行 setup。只有项目需要采用新版 setup 受管快照契约时，才再次运行
 `setup-project-agents`。
 
-项目可在 `.agents/config.json` 的 `skills` 数组中声明 GitHub Skill 源。每项只需要 `source`、可选
-`ref` 和非空 `include`。Setup 会将选中的 Skills 安装到 `.agents/skills/`，并通过项目快照管理
-后续更新。
+| 能力 | 项目配置 |
+| --- | --- |
+| Rules | 将项目自有 source 保存在 `.agents/rules/`；setup 会保留这些 source，并安装请求生成的 Rules。 |
+| Skills | 将项目自有 Skills 保存在 `.agents/skills/`，或在 `.agents/config.json` 的 `skills` 中声明 GitHub `source`、可选 `ref` 和非空 `include`。 |
+| Agents | 将 canonical source 保存在 `.agents/agents/`，并在 `.agents/config.json` 的 `agents` 中声明匹配的 `id`、`source`、`description` 和宿主 `platforms`；应编辑这些输入，而不是生成的 adapter。 |
+| MCP | 在 `.agents/config.json` 的 `mcp` 中用稳定 ID 和 `url` 或 `command` 之一声明每个 server；环境变量仅按名称引用，不存储 secret 值。 |
 
-项目也可声明可选的 `mcp` 数组。每个 server 具有稳定 ID，并且只能声明 `url`（HTTP）或
-`command`（stdio）之一，可以限定宿主范围，并使用按顺序执行的类型化 override。Setup 会生成
-Codex `.codex/config.toml`、Cursor `.cursor/mcp.json` 和 Copilot `.vscode/mcp.json`，并保留不由
-SmartKit 管理的条目。受管条目发生冲突或被本地修改时，setup 会在写入前停止。环境变量仅按名称
-引用，不存储 secret 值。
+Setup 会保留不受其管理的宿主配置；受管条目发生冲突或被本地修改时，会在写入前停止。
+
+### MCP overrides
 
 每条 override 都包含 `when` selector 和 `set` 对象。省略 `when.platforms` 时匹配该 server 启用的
 全部宿主，省略 `when.operatingSystems` 时匹配全部受支持的操作系统（`windows` 和 `linux`）。两者

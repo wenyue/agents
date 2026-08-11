@@ -63,14 +63,17 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
     (root / 'VERSION').write_text(f'{version}\n', encoding='utf-8')
     manifests = {
         '.codex-plugin/plugin.json': {
-            'name': 'smartkit', 'version': version, 'skills': './skills/',
+            'name': 'smartkit', 'version': version,
+            'agents': './agents/codex/', 'skills': './skills/',
         },
         '.cursor-plugin/plugin.json': {
-            'name': 'smartkit', 'version': version, 'skills': './skills/',
+            'name': 'smartkit', 'version': version,
+            'agents': './agents/cursor/', 'skills': './skills/',
             'rules': './rules/cursor/',
         },
         'plugin.json': {
-            'name': 'smartkit', 'version': version, 'skills': './skills/',
+            'name': 'smartkit', 'version': version,
+            'agents': './agents/copilot/', 'skills': './skills/',
         },
     }
     for relative, document in manifests.items():

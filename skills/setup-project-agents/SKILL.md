@@ -1,58 +1,42 @@
 ---
 name: setup-project-agents
-description: Use when initializing or updating a repository with the Agents Rules, Skills, Agents, and Matt repository-context snapshot.
+description: Use when initializing or reconciling a repository's Rules, Skills, Agents, or MCP across Codex, Cursor, and Copilot.
 ---
 
 # Setup Project Agents
 
-Run the script-backed setup workflow for one target repository. The workflow always enables Codex,
-Cursor, and Copilot, authors the project-owned snapshot, configures the bundled Matt Skills, and
-applies everything in one reviewed transaction. Scripts own deterministic setup behavior; the Agent
-owns only the requested authoring decisions.
+Reconcile one repository's Rules, Skills, Agents, and MCP through the script-backed setup workflow.
+Treat the four capability families as peers: each has its own canonical project input and native
+delivery form; none is an appendix to another.
 
-## Ownership
+## Capability Inputs
 
-Do not reconstruct source selection, discovery, overwrite, deletion, validation, transaction,
-checking, summary, or cleanup behavior. Invoke the public workflow and treat its result as
-authoritative. Host trust, plugin caches, bundled Hooks, and external-tool installation are outside
-this workflow.
+Establish the requested project intent before `start`. Change a canonical input only when the user
+requests that change.
 
-## Managed Assets
+| Capability | Canonical project input | Setup responsibility |
+| --- | --- | --- |
+| Rules | Project-owned sources under `.agents/rules/` and requested generated Rule targets | Preserve project Rules and deliver setup-managed Rules to each host. |
+| Skills | Project-owned directories under `.agents/skills/`, requested generated Skill targets, and `.agents/config.json` `skills` declarations | Preserve project Skills and install requested generated or external Skills. |
+| Agents | Project-owned sources under `.agents/agents/` and `.agents/config.json` `agents` declarations | Preserve Agent sources and render the declared host adapters. |
+| MCP | `.agents/config.json` `mcp` declarations | Render the declared host-native MCP entries without storing secret values. |
 
-The Agent may edit only these workflow inputs:
+Use the version 1 schema declared by `.agents/config.json`. A configured Agent source must be the
+matching `.agents/agents/<id>.md` file. MCP entries declare exactly one of `url` or `command`; ordered
+`when`/`set` overrides may select host platforms and operating systems.
 
-- requested model values the user explicitly changes and empty values that remain in the reported
-  `models.json`;
-- the eight targets listed by `generation_requests`: three Rules, two Skills, and
-  `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and
-  `docs/agents/domain.md`.
+Project-owned canonical inputs remain editable project content. Files and structured fields
+produced by setup are setup-owned. Plugin Rules, Skills, Agents, and MCP are installed with
+SmartKit and are outside this project workflow.
 
-Write every repository-relative `target` unchanged under the reported `generated` directory. For
-example, `.agents/rules/00-project-tools.md` belongs at
-`GENERATED/.agents/rules/00-project-tools.md`, and `docs/agents/domain.md` belongs at
-`GENERATED/docs/agents/domain.md`. Do not edit `request.json` or create another models or generated
-root.
+## Workflow
 
-The three `docs/agents/` files and the `AGENTS.md` pointers are shared, human-editable repository
-configuration. Preserve complete existing documents unless the user explicitly confirms a
-reconfiguration; they are not disposable generated cache files.
+1. From the target repository root, inspect all four capability inputs. Apply any user-requested
+   canonical-input changes before starting. This step is complete when Rules, Skills, Agents, and
+   MCP each represent the accepted project intent.
 
-The target's `.agents/config.json` is the sole canonical input for external Skills and Project MCP.
-It must use the current version 1 schema before `start`: `skills` is an array of
-`source`/optional `ref`/`include` declarations, and `mcp` is an array whose entries declare exactly
-one of `url` or `command`. MCP overrides are ordered `when`/`set` rules selected by host platform
-and operating system. Do not edit captured choices in `request.json`. Setup records all managed
-files, trees, and structured fields in `.agents/smartkit.lock.json`; it never records secret values.
-
-## Preconditions
-
-- Start at the target repository root and identify the loaded Skill directory as
-  `SETUP_PROJECT_AGENTS_ROOT`.
-- Enable Codex, Cursor, and Copilot on every run.
-
-## Reconciliation Workflow
-
-1. Invoke the platform wrapper with `start` and the target:
+2. Identify the loaded Skill directory as `SETUP_PROJECT_AGENTS_ROOT`, then start the public
+   workflow:
 
    ```sh
    sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" start \
@@ -60,89 +44,67 @@ files, trees, and structured fields in `.agents/smartkit.lock.json`; it never re
    ```
 
    On Windows, invoke `setup_project_agents.ps1` with the same arguments. Stop on a nonzero result.
-   From the single JSON result, record `session` as `SESSION` and use its reported request, models,
-   generated, and source paths; record the reported generated path as `GENERATED`.
+   Record the returned `session` as `SESSION` and `generated` as `GENERATED`, plus the `request` and
+   `source_root` paths. This step is complete when one private session exists and the target
+   repository remains unchanged by start.
 
-2. Read `SESSION/request.json` and the reported `models.json`. Start preserves model settings from
-   existing platform Agent configurations. Keep every prefilled value unless the user explicitly
-   changes it, and fill each remaining empty required `model` at the requested Agent and
-   `model_key`. Codex optional `model_reasoning_effort` and `sandbox_mode` values are strings;
-   Cursor optional `readonly` is Boolean.
+3. Read the request and confirm it captured the accepted Rules, Skills, Agents, and MCP intent. If
+   any captured choice is wrong, cancel the session, correct the canonical project input, and start
+   again. Keep the request unchanged after start.
 
-3. Resolve the reported `source_root` as `SOURCE_ROOT`. Read the complete authoring contracts at
-   `SOURCE_ROOT/skills/write-agent-rule/SKILL.md`,
-   `SOURCE_ROOT/skills/write-agent-skill/SKILL.md`, and
-   `SOURCE_ROOT/skills/setup-matt-pocock-skills/SKILL.md`. Apply the Rule and Skill Blueprints, then
-   configure the three Matt documents inside this same setup workflow; do not invoke
-   `setup-matt-pocock-skills` as a second Skill. For issue-tracker selection, apply this workflow's
-   default below instead of the vendored Skill's upstream default.
+4. Fulfil every `generation_requests` entry under `GENERATED/<target>`, preserving the complete
+   target path. Resolve each request's blueprint from `source_root` and use the matching authoring
+   contract:
 
-4. Explore the target using the Matt setup contract. Preserve any complete existing
-   `docs/agents/*.md` document unless the user requests a change. Otherwise:
+   - apply `write-agent-rule` to Rule targets;
+   - apply `write-agent-skill` to Skill targets; and
+   - read `setup-matt-pocock-skills` from `source_root` and execute its contract within this workflow
+     for the requested `docs/agents/` targets; do not invoke it as a separate Skill.
 
-   Read any existing generated Rule or Skill target as project evidence before regenerating it.
-   Resolve disagreements in this order: current Blueprint contract, current repository evidence,
-   then prior generated content. Always regenerate the requested target; do not copy the prior
-   output unchanged merely because it exists.
+   Use the current repository as evidence and preserve complete project-owned content unless the
+   user requests reconfiguration. For Matt context, default an absent tracker to Local Markdown,
+   preserve an existing triage mapping, and use a single domain context unless repository evidence
+   establishes materially separate contexts. This step is complete when the generated directory
+   contains exactly the requested targets and no undeclared path.
 
-   - Default a missing or incomplete issue-tracker configuration to Local Markdown, regardless of
-     Git remotes. Use GitHub, GitLab, or another tracker only when the user explicitly requests it;
-     read the corresponding sibling seed or author the confirmed custom workflow. A Git remote is
-     repository evidence, not permission to use its issue tracker;
-   - use the existing triage-label mapping when present, or the bundled five-role default when it is
-     absent;
-   - use the single-context domain layout when no monorepo signal exists; when workspace files or
-     multiple source packages indicate materially separate contexts, present single- and
-     multi-context choices and wait for confirmation.
-
-   Write exactly all eight `generation_requests` targets to `GENERATED/<target>`, preserving every
-   target path segment. The issue-tracker request names the Local Markdown seed as its catalog
-   blueprint. When the user explicitly selects GitHub, GitLab, or another tracker, read the
-   corresponding sibling seed or confirmed custom workflow and write the same requested target.
-
-5. After the Review Gate passes, invoke the same wrapper with `finish` and only the session path:
+5. Pass the Review Gate, then finish the same session:
 
    ```sh
    sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" finish \
      --session "$SESSION"
    ```
 
-   Do not invoke the internal prepare/apply/check commands directly.
+   On Windows, invoke `setup_project_agents.ps1`. Invoke `finish` once. Completion requires a zero
+   exit and JSON containing `phase: finish` and `check: clean`.
 
-6. If the workflow must stop after a successful start but before invoking finish, invoke `cancel`
-   with only `--session "$SESSION"`. Do not invoke cancel after finish returns: finish owns session
-   cleanup on both success and failure.
+6. If work must stop after `start` and before `finish`, cancel the session:
 
-## Stop Conditions
+   ```sh
+   sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" cancel \
+     --session "$SESSION"
+   ```
 
-Stop on any start, finish, or cancel error and report it exactly. After a finish error, do not invoke
-cancel or reuse that session; resolve the reported cause and restart with start. Stop for unresolved
-explicit tracker choices or monorepo layout choices before finish. Do not repair script-owned
-state, choose per-file coverage, change the request, pass unrequested paths to finish, or manually
-remove the session.
+   Do not cancel after `finish`; finish owns cleanup on success and failure.
 
 ## Review Gate
 
-- [ ] Read each complete generated Rule and Skill; confirm it follows its authoring contract and
-      uses current target evidence.
-- [ ] Read all three Matt documents; confirm they match the selected tracker, label, and domain-layout
-      decisions and preserve existing user-owned content.
-- [ ] Confirm `AGENTS.md` will contain one `## Agent skills` block pointing to all three documents.
-- [ ] Read the completed models file; confirm every requested Agent/platform has a non-empty model.
-- [ ] Confirm the request is unchanged and `GENERATED` contains exactly the eight requested target
-      paths with no undeclared directories.
-- [ ] Confirm no requested target is ignored by Git and no generated project file contains a
-      credential or secret.
+- [ ] Rules, Skills, Agents, and MCP all match the accepted project intent.
+- [ ] Every configured Agent points to a complete matching project-owned source.
+- [ ] Every generated Rule and Skill follows its authoring contract and current repository evidence.
+- [ ] Matt context matches the accepted tracker, triage, and domain decisions.
+- [ ] The request is unchanged and every requested target exists under the generated root.
+- [ ] Generated project content contains no credential or secret.
 
-## Acceptance Gate
+## Stop Conditions
 
-- [ ] Run finish once; accept setup only when its JSON reports `phase: finish` and `check: clean`.
+Stop and report the exact error when `start`, `finish`, or `cancel` fails. After a `finish` failure,
+discard that session and restart after resolving the cause. Stop before `finish` when a tracker,
+domain-layout, capability declaration, ownership conflict, or generated output remains unresolved.
+Use only the public `start`, `finish`, and `cancel` commands; the workflow owns selection,
+rendering, deletion, validation, transaction, checking, and session cleanup.
 
-## Validation and Result
+## Result
 
-Report the fields returned by finish: pinned source commit, enabled platforms, changed paths,
-external Skills, preserved project-owned paths, and check status. Tell the repository maintainer to
-review and commit the reported changed paths; other developers obtain the shared snapshot by clone
-or pull and do not run setup individually. Session files, caches, logs, and credentials remain
-outside the repository. On failure, report the exact script error; do not infer a successful or
-partially successful setup without a clean finish result.
+Report the finish result: pinned source commit, enabled hosts, changed paths, external Skills,
+preserved project-owned paths, and clean check status. Ask the maintainer to review and commit the
+reported project snapshot; other developers receive it through clone or pull.

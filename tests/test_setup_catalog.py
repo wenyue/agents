@@ -18,6 +18,76 @@ from agents_setup.catalog import (  # noqa: E402
 
 
 class SetupCatalogTest(unittest.TestCase):
+    def test_project_config_parses_typed_project_agents(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'config.json'
+            path.write_text(json.dumps({
+                'version': 1,
+                'agents': [{
+                    'id': 'l10n',
+                    'source': '.agents/agents/l10n.md',
+                    'description': 'Project-local agent: l10n',
+                    'platforms': {
+                        'codex': {
+                            'model': 'gpt-5.6-terra',
+                            'model_reasoning_effort': 'medium',
+                            'sandbox_mode': 'workspace-write',
+                        },
+                        'cursor': {'readonly': False},
+                        'copilot': {'disable_model_invocation': False},
+                    },
+                }],
+            }), encoding='utf-8')
+
+            config = load_project_config(path, catalog=load_catalog(REPO_ROOT))
+
+            self.assertEqual(len(config.agents), 1)
+            agent = config.agents[0]
+            self.assertEqual(agent.id, 'l10n')
+            self.assertEqual(agent.source.as_posix(), '.agents/agents/l10n.md')
+            self.assertEqual(agent.codex.model, 'gpt-5.6-terra')
+            self.assertEqual(agent.codex.model_reasoning_effort, 'medium')
+            self.assertFalse(agent.cursor.readonly)
+            self.assertFalse(agent.copilot.disable_model_invocation)
+
+    def test_project_config_rejects_invalid_project_agents(self):
+        invalid_agents = (
+            {'id': 'l10n', 'source': '.agents/agents/other.md', 'description': 'x',
+             'platforms': {'cursor': {'readonly': False}}},
+            {'id': 'l10n', 'source': '../l10n.md', 'description': 'x',
+             'platforms': {'cursor': {'readonly': False}}},
+            {'id': 'l10n', 'source': '.agents/agents/l10n.md', 'description': 'x',
+             'platforms': {}},
+            {'id': 'l10n', 'source': '.agents/agents/l10n.md', 'description': 'x',
+             'platforms': {'cursor': {'readonly': 'false'}}},
+            {'id': 'l10n', 'source': '.agents/agents/l10n.md', 'description': 'x',
+             'platforms': {'codex': {}}},
+            {'id': 'l10n', 'source': '.agents/agents/l10n.md', 'description': 'x',
+             'platforms': {'copilot': {'disable_model_invocation': False, 'extra': True}}},
+        )
+        for agent in invalid_agents:
+            with self.subTest(agent=agent), tempfile.TemporaryDirectory() as temp_dir:
+                path = Path(temp_dir) / 'config.json'
+                path.write_text(json.dumps({
+                    'version': 1,
+                    'agents': [agent],
+                }), encoding='utf-8')
+                with self.assertRaises(ContractError):
+                    load_project_config(path, catalog=load_catalog(REPO_ROOT))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'config.json'
+            agent = {
+                'id': 'l10n', 'source': '.agents/agents/l10n.md', 'description': 'x',
+                'platforms': {'cursor': {'readonly': False}},
+            }
+            path.write_text(json.dumps({
+                'version': 1,
+                'agents': [agent, agent],
+            }), encoding='utf-8')
+            with self.assertRaisesRegex(ContractError, 'duplicate ids'):
+                load_project_config(path, catalog=load_catalog(REPO_ROOT))
+
     def test_project_config_parses_typed_mcp_servers_and_readiness(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / 'config.json'
@@ -175,7 +245,7 @@ class SetupCatalogTest(unittest.TestCase):
                 elif asset.source.as_posix() in matt_blueprints:
                     self.assertEqual(asset.kind, 'blueprint')
                     self.assertTrue(asset.target.as_posix().startswith('docs/agents/'))
-                elif asset.kind in {'rule', 'skill', 'agent', 'blueprint', 'template', 'wrapper'}:
+                elif asset.kind in {'rule', 'skill', 'blueprint', 'template', 'wrapper'}:
                     self.assertTrue(asset.source.as_posix().startswith('setup-assets/'))
 
         self.assertEqual(
@@ -193,8 +263,8 @@ class SetupCatalogTest(unittest.TestCase):
         self.assertEqual(config.selected_rules, ())
         self.assertEqual(config.selected_skills, ())
         self.assertNotIn('setup-project-agents', config.selected_skills)
-        self.assertEqual(config.selected_agents, ('change-set-verifier',))
         self.assertEqual(config.external_skills, ())
+        self.assertEqual(config.agents, ())
 
     def test_catalog_rejects_escape_and_absolute_targets(self):
         for target in ('../escape', '/tmp/escape', 'C:/escape'):
@@ -265,7 +335,7 @@ class SetupCatalogTest(unittest.TestCase):
                         }
                     )
 
-    def test_rule_agent_and_project_rule_blueprint_metadata_are_complete(self):
+    def test_rule_and_project_rule_blueprint_metadata_are_complete(self):
         rule_metadata = {
             'section': 'global',
             'read_when': 'Always',
@@ -298,30 +368,6 @@ class SetupCatalogTest(unittest.TestCase):
             with self.subTest(key=key):
                 candidate = dict(rule)
                 candidate['metadata'] = {**rule_metadata, key: value}
-                with self.assertRaises(ContractError):
-                    parse_asset(candidate)
-
-        agent_metadata = {
-            'description': 'An agent',
-            'codex': {'sandbox_mode': 'workspace-write'},
-            'cursor': {'readonly': False},
-        }
-        agent = {
-            'id': 'agent', 'kind': 'agent', 'source': 'agents/agent.md',
-            'target': '.agents/agents/agent.md', 'metadata': agent_metadata,
-        }
-        for field in ('description', 'codex', 'cursor'):
-            with self.subTest(agent_field=field):
-                candidate = dict(agent)
-                candidate['metadata'] = dict(agent_metadata)
-                del candidate['metadata'][field]
-                with self.assertRaises(ContractError):
-                    parse_asset(candidate)
-        for parent, field in (('codex', 'sandbox_mode'), ('cursor', 'readonly')):
-            with self.subTest(parent=parent, field=field):
-                candidate = dict(agent)
-                candidate['metadata'] = {**agent_metadata, parent: dict(agent_metadata[parent])}
-                del candidate['metadata'][parent][field]
                 with self.assertRaises(ContractError):
                     parse_asset(candidate)
 
@@ -483,10 +529,6 @@ class SetupCatalogTest(unittest.TestCase):
                 with self.assertRaises(ContractError):
                     safe_relative(value, 'path')
 
-        self.assertEqual(
-            safe_relative('.codex/agents/{agent-name}.toml', 'path').as_posix(),
-            '.codex/agents/{agent-name}.toml',
-        )
         self.assertEqual(
             safe_relative('.cursor/rules/{rule-name}.mdc', 'path').as_posix(),
             '.cursor/rules/{rule-name}.mdc',

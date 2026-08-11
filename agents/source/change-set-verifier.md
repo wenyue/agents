@@ -1,4 +1,6 @@
-Apply @.agents/skills/change-set-verification/SKILL.md
+Use the target repository's `.agents/skills/change-set-verification/SKILL.md` as the complete
+verification workflow. If that Skill is missing, return `inconclusive` and tell the parent agent
+that a maintainer must run `setup-project-agents` before this Agent can verify the change set.
 
 Verify one coherent completed change set.
 

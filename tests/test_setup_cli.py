@@ -75,25 +75,6 @@ class SetupCliTest(unittest.TestCase):
         }
 
     @staticmethod
-    def write_models(session: Path, *, model: str = 'cursor-default') -> Path:
-        path = session / 'models.json'
-        path.write_text(
-            json.dumps(
-                {
-                    'agents': {
-                        'change-set-verifier': {
-                            'codex': {'model': 'codex-default'},
-                            'cursor': {'model': model},
-                            'github': {'model': 'copilot-default'},
-                        }
-                    }
-                }
-            ) + '\n',
-            encoding='utf-8',
-        )
-        return path
-
-    @staticmethod
     def snapshot_external_skills(specs, *, session: Path, existing_manifest=None):
         if not specs:
             return None
@@ -191,33 +172,10 @@ class SetupCliTest(unittest.TestCase):
                 [],
             )
             self.assertEqual(request['mcp_servers'], [])
+            self.assertEqual(request['project_agents'], [])
             self.assertNotIn('hooks_enabled', request)
-            self.assertEqual(
-                request['model_requests'],
-                [
-                    {
-                        'agent': 'change-set-verifier',
-                        'platform': 'codex',
-                        'model_key': 'codex',
-                        'config_path': '.codex/agents/change-set-verifier.toml',
-                        'required_fields': ['model'],
-                    },
-                    {
-                        'agent': 'change-set-verifier',
-                        'platform': 'copilot',
-                        'model_key': 'github',
-                        'config_path': '.github/agents/change-set-verifier.agent.md',
-                        'required_fields': ['model'],
-                    },
-                    {
-                        'agent': 'change-set-verifier',
-                        'platform': 'cursor',
-                        'model_key': 'cursor',
-                        'config_path': '.cursor/agents/change-set-verifier.md',
-                        'required_fields': ['model'],
-                    }
-                ],
-            )
+            self.assertNotIn('selected_agents', request)
+            self.assertNotIn('model_requests', request)
             self.assertEqual(len(request['generation_requests']), 8)
             self.assertEqual(
                 {item['target'] for item in request['generation_requests']},
@@ -282,10 +240,9 @@ class SetupCliTest(unittest.TestCase):
                 }],
             }])
             self.write_generated_outputs(session)
-            models = self.write_models(session)
             invocation = [
                 '--target', str(target), '--session', str(session),
-                '--models', str(models), *self.source_args(),
+                *self.source_args(),
             ]
             self.assertEqual(setup_project_agents.main(['apply', *invocation]), 0)
             self.assertEqual(
@@ -317,7 +274,7 @@ class SetupCliTest(unittest.TestCase):
             self.assertTrue(any(key.startswith('servers.sentry.') for key in keys))
             self.assertEqual(setup_project_agents.main(['check', *invocation]), 0)
 
-    def test_apply_rejects_cross_target_replay_and_models_outside_its_session(self):
+    def test_apply_rejects_cross_target_replay(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -327,19 +284,10 @@ class SetupCliTest(unittest.TestCase):
             session = self.private_session(root)
             self.assertEqual(self.prepare(target, session), 0)
             self.write_generated_outputs(session)
-            models = self.write_models(session)
-            outside_models = root / 'models.json'
-            outside_models.write_text('{"agents": {}}\n', encoding='utf-8')
 
             self.assertEqual(
                 setup_project_agents.main(
-                    ['apply', '--target', str(other_target), '--session', str(session), '--models', str(models), *self.source_args()]
-                ),
-                2,
-            )
-            self.assertEqual(
-                setup_project_agents.main(
-                    ['apply', '--target', str(target), '--session', str(session), '--models', str(outside_models), *self.source_args()]
+                    ['apply', '--target', str(other_target), '--session', str(session), *self.source_args()]
                 ),
                 2,
             )
@@ -353,11 +301,10 @@ class SetupCliTest(unittest.TestCase):
             target.mkdir()
             session = self.private_session(root)
             self.assertEqual(self.prepare(target, session), 0)
-            models = self.write_models(session)
 
             self.assertEqual(
                 setup_project_agents.main(
-                    ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+                    ['apply', '--target', str(target), '--session', str(session), *self.source_args()]
                 ),
                 2,
             )
@@ -366,7 +313,7 @@ class SetupCliTest(unittest.TestCase):
             self.write_generated_outputs(session)
             self.assertEqual(
                 setup_project_agents.main(
-                    ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+                    ['apply', '--target', str(target), '--session', str(session), *self.source_args()]
                 ),
                 0,
             )
@@ -439,10 +386,9 @@ class SetupCliTest(unittest.TestCase):
                 ['example/repository'],
             )
             self.write_generated_outputs(session)
-            models = self.write_models(session)
             self.assertEqual(
                 setup_project_agents.main(
-                    ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+                    ['apply', '--target', str(target), '--session', str(session), *self.source_args()]
                 ),
                 0,
             )
@@ -465,7 +411,6 @@ class SetupCliTest(unittest.TestCase):
             session = self.private_session(root)
             self.assertEqual(self.prepare(target, session), 0)
             self.write_generated_outputs(session)
-            models = self.write_models(session)
             metadata = session / 'external-skills/sources.json'
             document = json.loads(metadata.read_text(encoding='utf-8'))
             document['sources'][0]['secret'] = 'must-not-enter-manifest'
@@ -474,7 +419,7 @@ class SetupCliTest(unittest.TestCase):
             with redirect_stderr(StringIO()):
                 result = setup_project_agents.main([
                     'apply', '--target', str(target), '--session', str(session),
-                    '--models', str(models), *self.source_args(),
+                    *self.source_args(),
                 ])
 
             self.assertEqual(result, 2)
@@ -519,9 +464,8 @@ class SetupCliTest(unittest.TestCase):
             session = self.private_session(root)
             self.assertEqual(self.prepare(target, session), 0)
             self.write_generated_outputs(session)
-            models = self.write_models(session)
-            apply_args = ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
-            check_args = ['check', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+            apply_args = ['apply', '--target', str(target), '--session', str(session), *self.source_args()]
+            check_args = ['check', '--target', str(target), '--session', str(session), *self.source_args()]
             self.assertEqual(setup_project_agents.main(apply_args), 0)
 
             self.assertEqual(setup_project_agents.main(check_args), 0)
@@ -539,8 +483,7 @@ class SetupCliTest(unittest.TestCase):
             session = self.private_session(root)
             self.assertEqual(self.prepare(target, session), 0)
             self.write_generated_outputs(session)
-            models = self.write_models(session)
-            apply_args = ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+            apply_args = ['apply', '--target', str(target), '--session', str(session), *self.source_args()]
             check_args = ['check', *apply_args[1:]]
             with redirect_stdout(StringIO()):
                 self.assertEqual(setup_project_agents.main(apply_args), 0)
@@ -562,7 +505,6 @@ class SetupCliTest(unittest.TestCase):
             session = self.private_session(root)
             self.assertEqual(self.prepare(target, session), 0)
             self.write_generated_outputs(session)
-            models = self.write_models(session)
             collision = target / '.agents/rules/00-project-tools.md'
             collision.parent.mkdir(parents=True)
             collision.write_text('user-owned\n', encoding='utf-8')
@@ -571,18 +513,16 @@ class SetupCliTest(unittest.TestCase):
             with redirect_stderr(StringIO()):
                 self.assertEqual(
                     setup_project_agents.main(
-                        ['check', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+                        ['check', '--target', str(target), '--session', str(session), *self.source_args()]
                     ),
                     2,
                 )
             self.assertEqual(self.snapshot_tree(target), before)
 
-    def test_apply_rejects_tampered_selections_or_model_requests_without_writing(self):
+    def test_apply_rejects_tampered_selections_without_writing(self):
         tamper = (
             ('selected_rules', ['unknown-rule']),
             ('selected_skills', ['refactor-code', 'refactor-code']),
-            ('selected_agents', ['unknown-agent']),
-            ('model_requests', []),
         )
         for key, value in tamper:
             with self.subTest(key=key), tempfile.TemporaryDirectory() as temp_dir:
@@ -592,7 +532,6 @@ class SetupCliTest(unittest.TestCase):
                 session = self.private_session(root)
                 self.assertEqual(self.prepare(target, session), 0)
                 self.write_generated_outputs(session)
-                models = self.write_models(session)
                 request_path = session / 'request.json'
                 request = json.loads(request_path.read_text(encoding='utf-8'))
                 request[key] = value
@@ -600,30 +539,7 @@ class SetupCliTest(unittest.TestCase):
 
                 self.assertEqual(
                     setup_project_agents.main(
-                        ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
-                    ),
-                    2,
-                )
-                self.assertEqual(self.snapshot_tree(target), {})
-
-    def test_apply_rejects_missing_or_empty_required_models_without_writing(self):
-        for document in (
-            {'agents': {}},
-            {'agents': {'change-set-verifier': {'cursor': {'model': ''}}}},
-        ):
-            with self.subTest(document=document), tempfile.TemporaryDirectory() as temp_dir:
-                root = Path(temp_dir)
-                target = root / 'target'
-                target.mkdir()
-                session = self.private_session(root)
-                self.assertEqual(self.prepare(target, session), 0)
-                self.write_generated_outputs(session)
-                models = session / 'models.json'
-                models.write_text(json.dumps(document), encoding='utf-8')
-
-                self.assertEqual(
-                    setup_project_agents.main(
-                        ['apply', '--target', str(target), '--session', str(session), '--models', str(models), *self.source_args()]
+                        ['apply', '--target', str(target), '--session', str(session), *self.source_args()]
                     ),
                     2,
                 )
@@ -637,10 +553,9 @@ class SetupCliTest(unittest.TestCase):
             session = self.private_session(root)
             self.assertEqual(self.prepare(target, session), 0)
             self.write_generated_outputs(session)
-            models = self.write_models(session)
             apply_args = [
                 'apply', '--target', str(target), '--session', str(session),
-                '--models', str(models), *self.source_args(),
+                *self.source_args(),
             ]
             check_args = ['check', *apply_args[1:]]
 
@@ -675,7 +590,7 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(check_result['changed_paths'], [])
             self.assertIsNone(check_result['drift'])
 
-    def test_copilot_model_key_is_validated_and_rendered_into_its_agent_wrapper(self):
+    def test_apply_does_not_generate_plugin_agent_wrappers(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -687,42 +602,72 @@ class SetupCliTest(unittest.TestCase):
             ]
             self.assertEqual(setup_project_agents.main(prepare_args), 0)
             request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
-            copilot_request = next(
-                item for item in request['model_requests'] if item['platform'] == 'copilot'
-            )
-            self.assertEqual(copilot_request['model_key'], 'github')
+            self.assertNotIn('model_requests', request)
+            self.assertNotIn('selected_agents', request)
             self.write_generated_outputs(session)
-            models = session / 'models.json'
-            models.write_text(
-                json.dumps(
-                    {
-                        'agents': {
-                            'change-set-verifier': {
-                                'codex': {'model': 'codex-model'},
-                                'cursor': {'model': 'cursor-model'},
-                                'github': {'model': 'copilot-model'},
-                            }
-                        }
-                    }
-                ),
-                encoding='utf-8',
-            )
 
             with redirect_stdout(StringIO()):
                 self.assertEqual(
                     setup_project_agents.main(
                         [
                             'apply', '--target', str(target), '--session', str(session),
-                            '--models', str(models), *self.source_args(),
+                            *self.source_args(),
                         ]
                     ),
                     0,
                 )
-            wrapper = (target / '.github/agents/change-set-verifier.agent.md').read_text(
-                encoding='utf-8'
-            )
-            self.assertIn('model: copilot-model\n', wrapper)
-            self.assertNotIn('model: \n', wrapper)
+            for relative in (
+                '.codex/agents/change-set-verifier.toml',
+                '.cursor/agents/change-set-verifier.md',
+                '.github/agents/change-set-verifier.agent.md',
+            ):
+                self.assertFalse((target / relative).exists())
+
+    def test_project_agent_round_trips_through_prepare_apply_and_check(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            source = target / '.agents/agents/l10n.md'
+            source.parent.mkdir(parents=True)
+            source.write_text('# L10n\n\nUse project localization policy.\n', encoding='utf-8')
+            config = target / '.agents/config.json'
+            config.write_text(json.dumps({
+                'version': 1,
+                'agents': [{
+                    'id': 'l10n',
+                    'source': '.agents/agents/l10n.md',
+                    'description': 'Project-local agent: l10n',
+                    'platforms': {
+                        'codex': {
+                            'model': 'gpt-5.6-terra',
+                            'model_reasoning_effort': 'medium',
+                            'sandbox_mode': 'workspace-write',
+                        },
+                        'cursor': {'model': 'gpt-5.6-terra', 'readonly': False},
+                        'copilot': {
+                            'model': 'gpt-5.6-terra',
+                            'disable_model_invocation': False,
+                        },
+                    },
+                }],
+            }), encoding='utf-8')
+            session = self.private_session(root)
+            invocation = [
+                '--target', str(target), '--session', str(session), *self.source_args(),
+            ]
+
+            self.assertEqual(setup_project_agents.main(['prepare', *invocation]), 0)
+            request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
+            self.assertEqual(request['project_agents'][0]['id'], 'l10n')
+            self.write_generated_outputs(session)
+            with redirect_stdout(StringIO()):
+                self.assertEqual(setup_project_agents.main(['apply', *invocation]), 0)
+                self.assertEqual(setup_project_agents.main(['check', *invocation]), 0)
+
+            self.assertTrue((target / '.codex/agents/l10n.toml').is_file())
+            self.assertTrue((target / '.cursor/agents/l10n.md').is_file())
+            self.assertTrue((target / '.github/agents/l10n.agent.md').is_file())
+            self.assertTrue(source.is_file())
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX session ownership checks')
     def test_rejects_nonprivate_session_before_target_mutation(self):
@@ -784,19 +729,6 @@ class SetupEndToEndTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f'# generated {path.name}\n', encoding='utf-8')
 
-    @staticmethod
-    def write_models(session: Path) -> Path:
-        path = session / 'models.json'
-        path.write_text(
-            json.dumps({'agents': {'change-set-verifier': {
-                'codex': {'model': 'codex-test'},
-                'cursor': {'model': 'cursor-test'},
-                'github': {'model': 'copilot-test'},
-            }}}),
-            encoding='utf-8',
-        )
-        return path
-
     def bootstrap_prepare(self, origin: Path, target: Path, session: Path) -> None:
         with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
             self.assertEqual(
@@ -808,14 +740,13 @@ class SetupEndToEndTest(unittest.TestCase):
 
     def apply_pinned(self, target: Path, session: Path) -> tuple[int, dict[str, object] | None]:
         request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
-        models = self.write_models(session)
         source_root = Path(request['source_root'])
         completed = subprocess.run(
             (
                 sys.executable,
                 str(source_root / 'skills/setup-project-agents/scripts/setup_project_agents.py'),
                 'apply', '--target', str(target), '--session', str(session),
-                '--models', str(models), '--source-root', str(source_root),
+                '--source-root', str(source_root),
                 '--source-commit', request['source_commit'] or 'offline', '--no-bootstrap',
             ),
             check=False,
@@ -828,10 +759,9 @@ class SetupEndToEndTest(unittest.TestCase):
     def apply_with_injected_transaction_failure(self, target: Path, session: Path) -> int:
         """Only the fault injection stays in-process; ordinary E2E applies use the pinned CLI."""
         request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
-        models = self.write_models(session)
         return setup_project_agents.main([
             'apply', '--target', str(target), '--session', str(session),
-            '--models', str(models), '--source-root', request['source_root'],
+            '--source-root', request['source_root'],
             '--source-commit', request['source_commit'] or 'offline', '--no-bootstrap',
         ])
 
@@ -859,9 +789,11 @@ class SetupEndToEndTest(unittest.TestCase):
             (target / 'unmanaged.txt').write_text('keep\n', encoding='utf-8')
             before_upgrade = self.snapshot_tree(target)
 
-            rule = work / 'setup-assets/agents/change-set-verifier.md'
-            rule.write_text(rule.read_text(encoding='utf-8') + '\nRemote master update.\n', encoding='utf-8')
-            run_git(work, 'add', 'setup-assets/agents/change-set-verifier.md')
+            rule = work / 'setup-assets/templates/platform-config/cursor.cli.json'
+            rule_document = json.loads(rule.read_text(encoding='utf-8'))
+            rule_document['permissions']['allow'].append('Shell(git status)')
+            rule.write_text(json.dumps(rule_document) + '\n', encoding='utf-8')
+            run_git(work, 'add', 'setup-assets/templates/platform-config/cursor.cli.json')
             run_git(work, 'commit', '--quiet', '-m', 'update managed rule')
             run_git(work, 'push', '--quiet', 'origin', 'master')
 
@@ -871,7 +803,7 @@ class SetupEndToEndTest(unittest.TestCase):
             second_result, second_output = self.apply_pinned(target, second_session)
             self.assertEqual(second_result, 0)
             assert second_output is not None
-            self.assertIn('.agents/agents/change-set-verifier.md', second_output['changed_paths'])
+            self.assertIn('.cursor/cli.json', second_output['changed_paths'])
             self.assertEqual((target / 'unmanaged.txt').read_bytes(), before_upgrade['unmanaged.txt'])
             after_upgrade = self.snapshot_tree(target)
             changed = {
@@ -881,7 +813,7 @@ class SetupEndToEndTest(unittest.TestCase):
             self.assertEqual(
                 changed,
                 {
-                    '.agents/agents/change-set-verifier.md',
+                    '.cursor/cli.json',
                     '.agents/smartkit.lock.json',
                 },
             )
@@ -946,6 +878,7 @@ class SetupEndToEndTest(unittest.TestCase):
             collision = collision_target / '.agents/rules/00-project-tools.md'
             collision.parent.mkdir(parents=True)
             collision.write_text('user collision\n', encoding='utf-8')
+            collision_content = collision.read_bytes()
             collision_session = self.private_session(root, 'collision-session')
             self.assertEqual(setup_project_agents.main([
                 'prepare', '--target', str(collision_target), '--session', str(collision_session),
@@ -956,14 +889,21 @@ class SetupEndToEndTest(unittest.TestCase):
             self.assertEqual(self.apply_pinned(collision_target, collision_session)[0], 2)
             self.assertEqual(
                 collision.read_bytes(),
-                b'user collision\n',
+                collision_content,
             )
 
-            source_rule = source / 'setup-assets/agents/change-set-verifier.md'
-            source_rule.write_text(source_rule.read_text(encoding='utf-8') + '\nchanged once\n', encoding='utf-8')
+            source_rule = source / 'setup-assets/templates/platform-config/codex.config.toml'
+            source_rule.write_text(
+                source_rule.read_text(encoding='utf-8') + '\n# changed once\n',
+                encoding='utf-8',
+            )
             second_source_rule = source / 'setup-assets/templates/platform-config/cursor.cli.json'
+            second_document = json.loads(
+                second_source_rule.read_text(encoding='utf-8')
+            )
+            second_document['permissions']['deny'].append('Shell(git clean)')
             second_source_rule.write_text(
-                second_source_rule.read_text(encoding='utf-8') + '\nchanged twice\n',
+                json.dumps(second_document) + '\n',
                 encoding='utf-8',
             )
             rollback_session = self.private_session(root, 'rollback-session')

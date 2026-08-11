@@ -39,6 +39,14 @@ tooling boundaries.
   MCP adapters are configuration artifacts; the synchronizer must not download or vendor an MCP
   server implementation.
 
+## Plugin Agent Adapters
+
+- Treat `agents/registry.json` and `agents/source/` as the manually maintained Plugin Agent
+  declaration and shared instructions. After changing either, run
+  `python scripts/sync_agent_adapters.py` and review all three host adapters.
+- Use `python scripts/sync_agent_adapters.py --check` for read-only adapter drift detection. Host
+  adapters inherit the host's selected model and retain only host-native metadata.
+
 ## Verification Commands
 
 Use these repository-supported checks:
@@ -46,10 +54,12 @@ Use these repository-supported checks:
 | Purpose | Command | Behavior |
 | --- | --- | --- |
 | Public catalog, synchronization, ownership, mirror, wrapper, and timing contracts | `python -m unittest discover -s tests -p 'test_*.py'` | Repository-wide, non-fixing test suite with no declared narrower selector |
+| Plugin Agent adapter drift | `python scripts/sync_agent_adapters.py --check` | Read-only comparison of the canonical registry and shared instructions with all host adapters |
 | Plugin MCP adapter drift | `python scripts/sync_mcp_adapters.py --check` | Read-only comparison of the canonical registry with all host adapters |
 | Diff whitespace and conflict-marker integrity | `git diff --check` | Non-mutating check of the current working-tree diff |
 
-Run both commands for every completed change set; together they form the required verification.
+Run the repository test suite, both adapter drift checks, and the diff-integrity check for every
+completed change set; together they form the required verification.
 
 ## Project Setup Tooling
 
@@ -57,14 +67,14 @@ Run both commands for every completed change set; together they form the require
   the public `start`/`finish`/`cancel` control plane. The pinned
   `setup_project_agents.py` prepare/apply/check phases are internal workflow operations.
 - Start creates and owns the private session, reads `setup-assets/catalog/assets.json`, fetches
-  canonical `master`, snapshots external Skills, and creates the request and models template. Finish
-  discovers project-owned Rules and Skills, reconciles setup-managed content through
-  `.agents/smartkit.lock.json`, checks convergence, summarizes, and cleans up. Cancel safely cleans
-  up an unfinished workflow-owned session.
-- Setup preserves structured fields outside catalog templates and project-owned Rule and Skill
-  content. The unified ownership manifest records managed files, trees, and structured fields with
-  deterministic digests. Setup updates or deletes only entries authorized by the previous manifest;
-  a modified owned asset or conflicting first-adoption target stops before writes.
+  canonical `master`, captures Rules, Skills, Agents, and MCP intent, snapshots external Skills,
+  and creates the request. Finish preserves project Rules, Skills, and Agent sources, renders
+  declared Agent and MCP adapters, reconciles setup-managed content, checks convergence,
+  summarizes, and cleans up. Cancel safely cleans up an unfinished workflow-owned session.
+- The unified ownership manifest records setup-managed Rule and Skill files, Agent adapters, MCP
+  fields, and configuration with deterministic digests. Setup updates or deletes only entries
+  authorized by the previous manifest; a modified owned asset or conflicting first-adoption target
+  stops before writes.
 - `check` reports desired-state drift without writes. Neither command is a formatter, fixer, or
   replacement for this repository's test command.
 - Keep this repository's local `.agents/` directory limited to its `plugins/` marketplace

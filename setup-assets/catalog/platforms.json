@@ -8,8 +8,7 @@
       "hookRoutes": {
         "windows": "commandWindows",
         "linux": "command"
-      },
-      "agentTemplate": "setup-assets/templates/wrappers/agent-wrappers/codex.toml"
+      }
     },
     "cursor": {
       "hookManifest": "hooks/cursor.json",
@@ -17,8 +16,7 @@
       "hookRoutes": {
         "windows": "dispatcher",
         "linux": "dispatcher"
-      },
-      "agentTemplate": "setup-assets/templates/wrappers/agent-wrappers/cursor.md"
+      }
     },
     "copilot": {
       "hookManifest": "hooks/copilot.json",
@@ -26,8 +24,7 @@
       "hookRoutes": {
         "windows": "powershell",
         "linux": "bash"
-      },
-      "agentTemplate": "setup-assets/templates/wrappers/agent-wrappers/github.agent.md"
+      }
     }
   }
 }

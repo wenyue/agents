@@ -23,6 +23,10 @@
         }
       }
     },
+    "agents": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/projectAgent"}
+    },
     "mcp": {
       "type": "array",
       "items": {
@@ -61,6 +65,57 @@
     }
   },
   "$defs": {
+    "projectAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "description", "platforms"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+        "source": {
+          "type": "string",
+          "pattern": "^\\.agents/agents/[a-z0-9][a-z0-9-]*\\.md$"
+        },
+        "description": {"type": "string", "minLength": 1},
+        "platforms": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "codex": {"$ref": "#/$defs/codexAgent"},
+            "cursor": {"$ref": "#/$defs/cursorAgent"},
+            "copilot": {"$ref": "#/$defs/copilotAgent"}
+          }
+        }
+      }
+    },
+    "codexAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sandbox_mode"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "model_reasoning_effort": {"type": "string", "minLength": 1},
+        "sandbox_mode": {"type": "string", "minLength": 1}
+      }
+    },
+    "cursorAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["readonly"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "readonly": {"type": "boolean"}
+      }
+    },
+    "copilotAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disable_model_invocation"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "disable_model_invocation": {"type": "boolean"}
+      }
+    },
     "stringArray": {
       "type": "array",
       "items": {"type": "string", "minLength": 1}

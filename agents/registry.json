@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "agents": [
+    {
+      "id": "change-set-verifier",
+      "source": "source/change-set-verifier.md",
+      "description": "Verifies a completed change set through the target repository's change-set-verification Skill and returns semantic diagnostics to the parent agent.",
+      "platforms": {
+        "codex": {
+          "sandbox_mode": "workspace-write"
+        },
+        "cursor": {
+          "readonly": false
+        },
+        "copilot": {
+          "disable_model_invocation": false
+        }
+      }
+    }
+  ]
+}

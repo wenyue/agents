@@ -16,6 +16,7 @@ from agents_setup.catalog import (
     load_catalog,
     parse_external_skills,
     parse_mcp_servers,
+    parse_project_agents,
 )
 from agents_setup.discovery import DiscoveryError
 from agents_setup.external import ExternalSkillError, snapshot_external_skills
@@ -41,16 +42,6 @@ _BLUEPRINT_TARGETS = (
     PurePosixPath('docs/agents/triage-labels.md'),
     PurePosixPath('docs/agents/domain.md'),
 )
-_MODEL_KEYS = {
-    Platform.CODEX: 'codex',
-    Platform.CURSOR: 'cursor',
-    Platform.COPILOT: 'github',
-}
-_MODEL_WRAPPER_IDS = {
-    Platform.CODEX: 'wrapper-agent-codex',
-    Platform.CURSOR: 'wrapper-agent-cursor',
-    Platform.COPILOT: 'wrapper-agent-copilot',
-}
 _PLATFORMS = tuple(Platform)
 
 
@@ -129,7 +120,6 @@ def _request(
     source_root: Path,
     external_snapshot_sha256: str | None,
 ) -> dict[str, object]:
-    model_requests = _model_requests(config, catalog)
     blueprint_assets = {
         asset.target: asset
         for asset in catalog.assets
@@ -154,7 +144,6 @@ def _request(
         'platforms': [item.value for item in _PLATFORMS],
         'selected_rules': list(config.selected_rules),
         'selected_skills': list(config.selected_skills),
-        'selected_agents': list(config.selected_agents),
         'external_sources': [
             {
                 'source': source.id,
@@ -207,36 +196,41 @@ def _request(
             }
             for server in config.mcp_servers
         ],
-        'model_requests': model_requests,
+        'project_agents': [
+            {
+                'id': agent.id,
+                'source': agent.source.as_posix(),
+                'description': agent.description,
+                'platforms': {
+                    **({
+                        'codex': {
+                            **({'model': agent.codex.model} if agent.codex.model else {}),
+                            **({
+                                'model_reasoning_effort':
+                                agent.codex.model_reasoning_effort
+                            } if agent.codex.model_reasoning_effort else {}),
+                            'sandbox_mode': agent.codex.sandbox_mode,
+                        }
+                    } if agent.codex is not None else {}),
+                    **({
+                        'cursor': {
+                            **({'model': agent.cursor.model} if agent.cursor.model else {}),
+                            'readonly': agent.cursor.readonly,
+                        }
+                    } if agent.cursor is not None else {}),
+                    **({
+                        'copilot': {
+                            **({'model': agent.copilot.model} if agent.copilot.model else {}),
+                            'disable_model_invocation':
+                            agent.copilot.disable_model_invocation,
+                        }
+                    } if agent.copilot is not None else {}),
+                },
+            }
+            for agent in config.agents
+        ],
         'generation_requests': generation_requests,
     }
-
-
-def _model_requests(
-    config: ProjectConfig,
-    catalog: Catalog,
-) -> list[dict[str, object]]:
-    assets = {asset.id: asset for asset in catalog.assets}
-    requests: list[dict[str, object]] = []
-    for agent in sorted(config.selected_agents):
-        for platform in sorted(_PLATFORMS, key=lambda item: item.value):
-            wrapper = assets.get(_MODEL_WRAPPER_IDS[platform])
-            if (
-                wrapper is None
-                or wrapper.target is None
-                or '{agent-name}' not in wrapper.target.as_posix()
-            ):
-                raise SetupError(
-                    f'catalog does not declare the {platform.value} agent wrapper target'
-                )
-            requests.append({
-                'agent': agent,
-                'platform': platform.value,
-                'model_key': _MODEL_KEYS[platform],
-                'config_path': wrapper.target.as_posix().replace('{agent-name}', agent),
-                'required_fields': ['model'],
-            })
-    return requests
 
 
 def _selected_request_ids(
@@ -269,8 +263,8 @@ def _request_config(
 ) -> ProjectConfig:
     required = {
         'version', 'target', 'source_root', 'source_commit', 'platforms', 'selected_rules',
-        'selected_skills', 'selected_agents', 'external_sources', 'model_requests',
-        'mcp_servers', 'generation_requests', 'external_snapshot_sha256',
+        'selected_skills', 'external_sources', 'mcp_servers', 'generation_requests',
+        'external_snapshot_sha256', 'project_agents',
     }
     if set(request) != required or request.get('version') != 1:
         raise SetupError('session request has an invalid shape')
@@ -294,7 +288,6 @@ def _request_config(
         selections = (
             _selected_request_ids(request['selected_rules'], catalog=catalog, kind='rule'),
             _selected_request_ids(request['selected_skills'], catalog=catalog, kind='skill'),
-            _selected_request_ids(request['selected_agents'], catalog=catalog, kind='agent'),
         )
         generation = request['generation_requests']
         expected_generation = {
@@ -321,9 +314,10 @@ def _request_config(
             raise ValueError
         external_sources = parse_external_skills(request['external_sources'], catalog)
         mcp_servers = parse_mcp_servers(request['mcp_servers'])
-        config = ProjectConfig(1, *selections, external_sources, mcp_servers)
-        if request['model_requests'] != _model_requests(config, catalog):
-            raise ValueError
+        project_agents = parse_project_agents(request['project_agents'])
+        config = ProjectConfig(
+            1, *selections, external_sources, mcp_servers, project_agents,
+        )
     except (KeyError, TypeError, ValueError, SetupError) as error:
         raise SetupError('session request has invalid setup choices') from error
     return config
@@ -402,39 +396,6 @@ def _reject_ignored_generated_targets(target: Path) -> None:
             raise SetupError(f'cannot inspect Git ignore state for generated target: {path}')
 
 
-def _models_for_rendering(
-    models: Mapping[str, object],
-    config: ProjectConfig,
-    *,
-    catalog: Catalog,
-) -> Mapping[str, object]:
-    agents = models.get('agents')
-    if not isinstance(agents, Mapping):
-        raise SetupError('models must contain an agents object')
-    for request in _model_requests(config, catalog):
-        agent_name = request['agent']
-        platform_name = request['platform']
-        model_key = request['model_key']
-        agent = agents.get(agent_name)
-        if not isinstance(agent, Mapping):
-            raise SetupError(f'models agent is missing: {agent_name}')
-        platform = agent.get(model_key)
-        if not isinstance(platform, Mapping):
-            raise SetupError(f'models platform is missing: {agent_name}:{model_key}')
-        model = platform.get('model')
-        if not isinstance(model, str) or not model.strip():
-            raise SetupError(f'models model is missing: {agent_name}:{model_key}')
-        if platform_name == Platform.CODEX.value:
-            for key in ('model_reasoning_effort', 'sandbox_mode'):
-                if key in platform and not isinstance(platform[key], str):
-                    raise SetupError(f'models {key} must be a string: {agent_name}:{model_key}')
-        if platform_name == Platform.CURSOR.value and (
-            'readonly' in platform and type(platform['readonly']) is not bool
-        ):
-            raise SetupError(f'models readonly must be a boolean: {agent_name}:{model_key}')
-    return dict(models)
-
-
 def _emit_result(
     *,
     phase: str,
@@ -467,8 +428,6 @@ def build_parser() -> argparse.ArgumentParser:
         command = phases.add_parser(phase, allow_abbrev=False)
         command.add_argument('--target', type=Path, required=True)
         command.add_argument('--session', type=Path, required=True)
-        if phase != 'prepare':
-            command.add_argument('--models', type=Path, required=True)
         command.add_argument('--source-root', type=Path, required=True)
         command.add_argument('--source-commit', required=True)
         command.add_argument('--no-bootstrap', action='store_true', required=True)
@@ -538,21 +497,12 @@ def _plan(args: argparse.Namespace, session: Path, source_commit: str | None):
             raise SetupError('external Skill source metadata changed after prepare')
     generated = _generated_root(session)
     _reject_ignored_generated_targets(project.root)
-    models_path = Path(args.models).absolute()
-    if models_path != session / 'models.json':
-        raise SetupError('models path must be SESSION/models.json')
-    models = _models_for_rendering(
-        _read_json(models_path, 'models'),
-        config,
-        catalog=catalog,
-    )
     rendered = render_desired_state(
         args.source_root,
         project.root,
         catalog,
         config,
         generated,
-        models,
         external_root if config.external_sources else None,
     )
     validate_rendered_state(rendered)

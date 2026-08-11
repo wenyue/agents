@@ -11,11 +11,9 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Mapping, Sequence
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import bootstrap
-from agents_setup.project import ProjectError, confined_target
-from agents_setup.structured import StructuredConfigError, parse_document
 
 
 _SESSION_PREFIX = 'setup-project-agents-'
@@ -127,112 +125,6 @@ def _read_json(path: Path, label: str) -> Mapping[str, object]:
     return document
 
 
-def _frontmatter(content: str) -> dict[str, object]:
-    lines = content.splitlines()
-    if not lines or lines[0].strip() != '---':
-        return {}
-    result: dict[str, object] = {}
-    for line in lines[1:]:
-        if line.strip() == '---':
-            return result
-        key, separator, raw_value = line.partition(':')
-        if not separator:
-            continue
-        key = key.strip()
-        value = raw_value.strip()
-        if key == 'readonly' and value.lower() in {'true', 'false'}:
-            result[key] = value.lower() == 'true'
-        elif key == 'model':
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-                value = value[1:-1]
-            result[key] = value
-    return {}
-
-
-def _existing_model_values(
-    target: Path,
-    item: Mapping[str, object],
-) -> dict[str, object]:
-    platform = item.get('platform')
-    config_path = item.get('config_path')
-    if (
-        platform not in {'codex', 'cursor', 'copilot'}
-        or not isinstance(config_path, str)
-        or not config_path
-    ):
-        raise WorkflowError('session request contains an invalid model config path')
-    try:
-        path = confined_target(target, PurePosixPath(config_path))
-    except ProjectError as error:
-        raise WorkflowError(str(error)) from error
-    if not path.exists():
-        return {}
-    if not path.is_file():
-        raise WorkflowError(f'existing model config is not a regular file: {config_path}')
-    try:
-        content = path.read_text(encoding='utf-8')
-    except (OSError, UnicodeDecodeError) as error:
-        raise WorkflowError(f'cannot read existing model config: {config_path}') from error
-    if platform == 'codex':
-        try:
-            document = parse_document(content, 'toml')
-        except StructuredConfigError:
-            return {}
-        values = {
-            key: document[key]
-            for key in ('model', 'model_reasoning_effort', 'sandbox_mode')
-            if isinstance(document.get(key), str)
-        }
-    else:
-        document = _frontmatter(content)
-        values = {
-            key: document[key]
-            for key in (('model', 'readonly') if platform == 'cursor' else ('model',))
-            if key in document
-        }
-    model = values.get('model')
-    if not isinstance(model, str) or not model.strip():
-        values.pop('model', None)
-    return values
-
-
-def _models_template(request: Mapping[str, object]) -> dict[str, object]:
-    requests = request.get('model_requests')
-    if not isinstance(requests, list):
-        raise WorkflowError('session request model_requests must be an array')
-    target_value = request.get('target')
-    if not isinstance(target_value, str) or not target_value:
-        raise WorkflowError('session request target is invalid')
-    target = Path(target_value).absolute()
-    agents: dict[str, dict[str, dict[str, object]]] = {}
-    seen: set[tuple[str, str]] = set()
-    for item in requests:
-        if not isinstance(item, Mapping):
-            raise WorkflowError('session request contains an invalid model request')
-        agent = item.get('agent')
-        model_key = item.get('model_key')
-        if not isinstance(agent, str) or not agent or not isinstance(model_key, str) or not model_key:
-            raise WorkflowError('session request contains an invalid model request')
-        identity = (agent, model_key)
-        if identity in seen:
-            raise WorkflowError('session request contains duplicate model requests')
-        seen.add(identity)
-        values = {'model': ''}
-        values.update(_existing_model_values(target, item))
-        agents.setdefault(agent, {})[model_key] = values
-    return {'agents': agents}
-
-
-def _write_models_template(session: Path, request: Mapping[str, object]) -> Path:
-    path = session / 'models.json'
-    content = (json.dumps(_models_template(request), sort_keys=True, indent=2) + '\n').encode()
-    try:
-        _write_exclusive(path, content)
-    except FileExistsError as error:
-        raise WorkflowError('models template already exists') from error
-    return path
-
-
 def _write_workflow_context(session: Path, request_path: Path, request: Mapping[str, object]) -> None:
     context = {
         'version': 1,
@@ -265,19 +157,16 @@ def _start(args: argparse.Namespace) -> int:
             return result
         request_path = session / 'request.json'
         request = _read_json(request_path, 'session request')
-        models = _write_models_template(session, request)
         _write_workflow_context(session, request_path, request)
         _emit({
             'version': 1,
             'phase': 'start',
             'session': str(session),
             'request': str(request_path),
-            'models': str(models),
             'generated': str(session / 'generated'),
             'source_root': request.get('source_root'),
             'source_commit': request.get('source_commit'),
             'platforms': request.get('platforms'),
-            'model_requests': request.get('model_requests'),
             'generation_requests': request.get('generation_requests'),
         })
         return 0
@@ -347,7 +236,6 @@ def _run_pinned(
         phase,
         '--target', str(target),
         '--session', str(session),
-        '--models', str(session / 'models.json'),
         '--source-root', str(source),
         '--source-commit', commit,
         '--no-bootstrap',

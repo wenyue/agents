@@ -105,7 +105,7 @@ class SetupTransactionTest(unittest.TestCase):
             real_replace = transaction._replace
 
             def fail_structured(source, destination, *args, **kwargs):
-                if destination == 'config.toml':
+                if Path(destination).name == 'config.toml':
                     raise OSError('injected field application failure')
                 return real_replace(source, destination, *args, **kwargs)
 
@@ -133,7 +133,7 @@ class SetupTransactionTest(unittest.TestCase):
             real_replace = transaction._replace
 
             def fail_manifest(source, destination, *args, **kwargs):
-                if destination == 'smartkit.lock.json':
+                if Path(destination).name == 'smartkit.lock.json':
                     raise OSError('injected manifest application failure')
                 return real_replace(source, destination, *args, **kwargs)
 

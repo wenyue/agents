@@ -363,7 +363,7 @@ def _role(path: PurePosixPath, key: str | None = None) -> str:
         return 'rule'
     if 'skills' in path.parts:
         return 'skill'
-    if 'agents' in path.parts and path.name != 'config.json':
+    if 'agents' in path.parts:
         return 'agent'
     return 'config'
 

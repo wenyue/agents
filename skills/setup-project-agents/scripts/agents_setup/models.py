@@ -51,6 +51,35 @@ class McpServerSpec:
 
 
 @dataclass(frozen=True)
+class CodexAgentConfig:
+    sandbox_mode: str
+    model: str | None = None
+    model_reasoning_effort: str | None = None
+
+
+@dataclass(frozen=True)
+class CursorAgentConfig:
+    readonly: bool
+    model: str | None = None
+
+
+@dataclass(frozen=True)
+class CopilotAgentConfig:
+    disable_model_invocation: bool
+    model: str | None = None
+
+
+@dataclass(frozen=True)
+class ProjectAgentSpec:
+    id: str
+    source: PurePosixPath
+    description: str
+    codex: CodexAgentConfig | None = None
+    cursor: CursorAgentConfig | None = None
+    copilot: CopilotAgentConfig | None = None
+
+
+@dataclass(frozen=True)
 class AssetSpec:
     id: str
     kind: str
@@ -67,9 +96,9 @@ class ProjectConfig:
     version: int
     selected_rules: tuple[str, ...]
     selected_skills: tuple[str, ...]
-    selected_agents: tuple[str, ...]
     external_sources: tuple[ExternalSourceSpec, ...] = ()
     mcp_servers: tuple[McpServerSpec, ...] = ()
+    agents: tuple[ProjectAgentSpec, ...] = ()
 
     @property
     def external_skills(self) -> tuple[ExternalSkillSpec, ...]:

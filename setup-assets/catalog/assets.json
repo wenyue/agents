@@ -1,26 +1,11 @@
 {
   "plugin": {
     "id": "smartkit",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "repository": "https://github.com/wenyue/agents.git",
     "ref": "master"
   },
   "assets": [
-    {
-      "id": "change-set-verifier",
-      "kind": "agent",
-      "source": "setup-assets/agents/change-set-verifier.md",
-      "target": ".agents/agents/change-set-verifier.md",
-      "metadata": {
-        "description": "Normalizes and verifies a coherent completed change set, then returns semantic diagnostics to the parent agent.",
-        "codex": {
-          "sandbox_mode": "workspace-write"
-        },
-        "cursor": {
-          "readonly": false
-        }
-      }
-    },
     {
       "id": "setup-project-agents",
       "kind": "skill",
@@ -157,36 +142,6 @@
       "target": ".cursor/cli.json",
       "platforms": [
         "cursor"
-      ],
-      "mode": "render"
-    },
-    {
-      "id": "wrapper-agent-codex",
-      "kind": "wrapper",
-      "source": "setup-assets/templates/wrappers/agent-wrappers/codex.toml",
-      "target": ".codex/agents/{agent-name}.toml",
-      "platforms": [
-        "codex"
-      ],
-      "mode": "render"
-    },
-    {
-      "id": "wrapper-agent-cursor",
-      "kind": "wrapper",
-      "source": "setup-assets/templates/wrappers/agent-wrappers/cursor.md",
-      "target": ".cursor/agents/{agent-name}.md",
-      "platforms": [
-        "cursor"
-      ],
-      "mode": "render"
-    },
-    {
-      "id": "wrapper-agent-copilot",
-      "kind": "wrapper",
-      "source": "setup-assets/templates/wrappers/agent-wrappers/github.agent.md",
-      "target": ".github/agents/{agent-name}.agent.md",
-      "platforms": [
-        "copilot"
       ],
       "mode": "render"
     },

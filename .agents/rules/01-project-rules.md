@@ -5,23 +5,27 @@ Strength: `Mandatory`
 Scope: Plugin asset ownership, documentation boundaries, target-installation contracts, contract
 evolution, and test contracts for this repository.
 
-## Plugin Ownership
+## Capability Ownership
 
-- Treat custom entries in `skills/registry.json` as SmartKit-owned plugin Skills and external
-  entries as read-only snapshots owned by `scripts/update_external_skills.py`.
-- Treat `mcp/registry.json` as the canonical Plugin MCP source and `.mcp.json`,
-  `mcp/cursor.json`, and `mcp/copilot.json` as generated host adapters owned by
-  `scripts/sync_mcp_adapters.py`. MCP configuration does not make an external MCP implementation
-  a vendored repository asset.
-- Treat `rules/registry.json` and `rules/source/` as plugin Rule ownership. Cursor wrappers under
-  `rules/cursor/` and command Hooks are delivery adapters, not policy owners.
-- Treat project `skills` as GitHub `source`/optional `ref`/`include` declarations fetched once per
-  source. Setup infers Skill names and source URLs and records resolved source and license metadata
-  in `.agents/smartkit.lock.json`.
-- Treat project `mcp` as typed configuration rendered into host-native entries. Infer HTTP versus
-  stdio from `url` versus `command`, and infer static project readiness from command paths and named
-  environment variables. The unified manifest owns only rendered leaf fields, never sibling user
-  MCP entries or secret values.
+- Plugin Rules are owned by `rules/registry.json` and `rules/source/`; Cursor wrappers and command
+  Hooks are delivery adapters, not policy owners.
+- Plugin Skills are owned by custom entries in `skills/registry.json`; external entries are
+  read-only snapshots owned by `scripts/update_external_skills.py`.
+- Plugin Agents are owned by `agents/registry.json` and `agents/source/`; generated adapters under
+  `agents/codex/`, `agents/cursor/`, and `agents/copilot/` are owned by
+  `scripts/sync_agent_adapters.py`.
+- Plugin MCP is owned by `mcp/registry.json`; `.mcp.json`, `mcp/cursor.json`, and
+  `mcp/copilot.json` are generated adapters owned by `scripts/sync_mcp_adapters.py`, not vendored
+  MCP implementations.
+- Project Rules are project-owned sources under `.agents/rules/`; setup discovers and preserves
+  them.
+- Project Skills are project-owned directories under `.agents/skills/` or external
+  `source`/optional `ref`/`include` declarations; setup preserves project sources and records
+  external provenance in `.agents/smartkit.lock.json`.
+- Project Agents are project-owned sources under `.agents/agents/` with typed `agents`
+  declarations; setup preserves sources and records only generated host adapters.
+- Project MCP is typed `mcp` configuration rendered into host-native entries; the ownership
+  manifest records only rendered leaf fields, never sibling entries or secret values.
 - Keep recommended-tool Hook executables in `runtime/recommended-tools/` without a `SKILL.md`, and
   keep their authoritative tool declarations in `policies/recommended-tools/`. MCP readiness stays
   beside its Plugin or Project MCP declaration and is interpreted by the same runtime only after
@@ -38,6 +42,9 @@ evolution, and test contracts for this repository.
 
 ## Documentation and Local Rules
 
+- Keep Rule and Skill documents limited to context and instructions that change Agent decisions or
+  actions. Leave directly discoverable implementation facts in their owning code, configuration,
+  schema, or tests.
 - Treat `README.md` and `docs/zh-CN/README.md` as public end-user documentation. Include only
   information users need to install, configure, use, or troubleshoot the plugin; keep contributor
   release, generation, repository-maintenance, and internal implementation instructions in their
@@ -57,11 +64,12 @@ evolution, and test contracts for this repository.
 - Preserve `.agents/` as the installation root in public setup prompts, templates, manifests,
   scripts, and documentation for target repositories.
 - Treat catalog-selected sources, generated outputs, platform wrappers, and configured external
-  Skill directories as setup-managed content. Treat automatically discovered project-owned Rules
-  and Skills as preserved target content, and keep non-template structured fields unchanged.
+  Skill directories as setup-managed content. Preserve discovered project Rules and Skills,
+  configured Agent sources, and non-template structured fields.
 - Use `.agents/smartkit.lock.json` as the sole project ownership authority for managed Rules, Skills,
-  Agents, MCP fields, wrappers, and configuration. Derive removal from the difference between the
-  previous manifest and current desired state; do not retain historical names in the catalog.
+  Agent wrappers, MCP fields, other wrappers, and configuration. Derive removal from the difference
+  between the previous manifest and current desired state; do not retain historical names in the
+  catalog.
 - On first adoption, own only missing or semantically equal assets. On later runs, verify every
   recorded digest before planning. Never overwrite an unowned conflict or a modified owned asset.
 - Unit tests may assert structured configuration, schemas, filesystem effects, state transitions,

@@ -226,16 +226,6 @@ class SetupWorkflowTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f'# generated {path.name}\n', encoding='utf-8')
 
-    @staticmethod
-    def fill_models(session: Path) -> None:
-        models = json.loads((session / 'models.json').read_text(encoding='utf-8'))
-        for platform in models['agents']['change-set-verifier'].values():
-            if not platform['model']:
-                platform['model'] = 'test-model'
-        (session / 'models.json').write_text(
-            json.dumps(models) + '\n', encoding='utf-8'
-        )
-
     def test_start_rejects_removed_platform_option(self):
         with redirect_stderr(StringIO()):
             result = workflow.main([
@@ -284,15 +274,11 @@ class SetupWorkflowTest(unittest.TestCase):
             start = json.loads(start_output.getvalue())
             session = Path(start['session'])
             self.assertEqual(start['phase'], 'start')
-            self.assertEqual(start['models'], str(session / 'models.json'))
             self.assertEqual(start['generated'], str(session / 'generated'))
             self.assertTrue((session / workflow._SESSION_MARKER).is_file())
-            models = json.loads((session / 'models.json').read_text(encoding='utf-8'))
-            self.assertEqual(
-                models['agents']['change-set-verifier']['cursor']['model'], ''
-            )
+            self.assertNotIn('models', start)
+            self.assertFalse((session / 'models.json').exists())
 
-            self.fill_models(session)
             self.write_generated_outputs(session)
             finish_output = StringIO()
             with redirect_stdout(finish_output):
@@ -336,7 +322,7 @@ class SetupWorkflowTest(unittest.TestCase):
                 generated_resource.read_bytes(), generated_resource_content
             )
 
-    def test_start_prefills_existing_platform_models_and_optional_values(self):
+    def test_start_does_not_read_or_manage_project_agent_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             origin = self.make_origin(root)
@@ -360,6 +346,9 @@ class SetupWorkflowTest(unittest.TestCase):
                 '---\nmodel: copilot-existing\n---\n',
                 encoding='utf-8',
             )
+            original = {
+                path: path.read_bytes() for path in (codex, cursor, copilot)
+            }
             output = StringIO()
 
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
@@ -370,22 +359,18 @@ class SetupWorkflowTest(unittest.TestCase):
                     )
 
             session = Path(json.loads(output.getvalue())['session'])
-            models = json.loads((session / 'models.json').read_text(encoding='utf-8'))
-            self.assertEqual(models, {'agents': {'change-set-verifier': {
-                'codex': {
-                    'model': 'gpt-5.6-terra',
-                    'model_reasoning_effort': 'medium',
-                    'sandbox_mode': 'workspace-write',
-                },
-                'cursor': {'model': 'cursor-existing', 'readonly': True},
-                'github': {'model': 'copilot-existing'},
-            }}})
+            self.assertFalse((session / 'models.json').exists())
+            request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
+            self.assertNotIn('selected_agents', request)
+            self.assertNotIn('model_requests', request)
             with redirect_stdout(StringIO()):
                 self.assertEqual(
                     workflow.main(['cancel', '--session', str(session)]),
                     0,
                 )
             self.assertFalse(session.exists())
+            for path, content in original.items():
+                self.assertEqual(path.read_bytes(), content)
 
     def test_finish_failure_reports_error_cleans_session_and_does_not_write_target(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -401,7 +386,6 @@ class SetupWorkflowTest(unittest.TestCase):
                         0,
                     )
             session = Path(json.loads(output.getvalue())['session'])
-            self.fill_models(session)
             before = tuple(target.rglob('*'))
             error = StringIO()
 
@@ -427,7 +411,6 @@ class SetupWorkflowTest(unittest.TestCase):
                 with redirect_stdout(session_output):
                     self.assertEqual(workflow.main(['start', '--target', str(target)]), 0)
             session = Path(json.loads(session_output.getvalue())['session'])
-            self.fill_models(session)
             self.write_generated_outputs(session)
             error = StringIO()
 
@@ -575,7 +558,6 @@ class SetupWorkflowTest(unittest.TestCase):
             self.assertIsNone(start['source_commit'])
             self.assertEqual(Path(start['source_root']), REPO_ROOT)
             self.assertIn('using installed plugin source', warning.getvalue())
-            self.fill_models(session)
             self.write_generated_outputs(session)
 
             with redirect_stdout(StringIO()):

@@ -502,7 +502,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             Path, 'is_file', return_value=False
         ):
             current = Path('/synthetic/project/subdirectory')
-            self.assertEqual(checker.resolve_project_root(current), current)
+            self.assertEqual(checker.resolve_project_root(current), current.resolve())
 
     def test_mcp_readiness_aggregates_typed_plugin_and_project_checks(self):
         checker = self.checker

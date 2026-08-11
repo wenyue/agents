@@ -43,9 +43,22 @@ _VENDORED_TOMLI_FILES = tuple(
     )
 )
 _MANIFESTS = (
-    (PurePosixPath('.codex-plugin/plugin.json'), {'skills': './skills/'}),
-    (PurePosixPath('.cursor-plugin/plugin.json'), {'skills': './skills/', 'rules': './rules/cursor/'}),
-    (PurePosixPath('plugin.json'), {'skills': './skills/'}),
+    (
+        PurePosixPath('.codex-plugin/plugin.json'),
+        {'agents': './agents/codex/', 'skills': './skills/'},
+    ),
+    (
+        PurePosixPath('.cursor-plugin/plugin.json'),
+        {
+            'agents': './agents/cursor/',
+            'skills': './skills/',
+            'rules': './rules/cursor/',
+        },
+    ),
+    (
+        PurePosixPath('plugin.json'),
+        {'agents': './agents/copilot/', 'skills': './skills/'},
+    ),
 )
 _ROOT_FIELDS = frozenset({'skills', 'rules', 'agents'})
 _INCOMPLETE_MARKER = '.agents-setup-incomplete-v1'

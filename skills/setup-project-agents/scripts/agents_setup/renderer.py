@@ -22,6 +22,7 @@ from .models import (
     McpTransport,
     OperatingSystem,
     Platform,
+    ProjectAgentSpec,
     ProjectConfig,
 )
 from .project import ProjectError, confined_target
@@ -174,31 +175,102 @@ def _render_text(template: str, values: Mapping[str, object]) -> bytes:
     return template.encode()
 
 
-def _agent_values(asset, models: Mapping[str, object]) -> dict[str, object]:
-    agent_id = asset.id
-    target = asset.target
-    assert target is not None
-    agent = asset.metadata
-    selected = models.get('agents', {})
-    model = selected.get(agent_id, {}) if isinstance(selected, Mapping) else {}
-    codex = model.get('codex', {}) if isinstance(model, Mapping) else {}
-    cursor = model.get('cursor', {}) if isinstance(model, Mapping) else {}
-    github = model.get('github', {}) if isinstance(model, Mapping) else {}
-    codex_defaults = agent['codex']
-    cursor_defaults = agent['cursor']
-    if not isinstance(codex_defaults, Mapping) or not isinstance(cursor_defaults, Mapping):
-        raise RenderError(f'agent metadata is invalid: {agent_id}')
-    return {
-        'agent.name': agent_id,
-        'agent.description': agent['description'],
-        'agent.apply_ref': target.as_posix(),
-        'agent.codex_model': codex.get('model', ''),
-        'agent.codex_model_reasoning_effort': codex.get('model_reasoning_effort', ''),
-        'agent.codex_sandbox_mode': codex.get('sandbox_mode', codex_defaults['sandbox_mode']),
-        'agent.cursor_model': cursor.get('model', ''),
-        'agent.cursor_readonly': cursor.get('readonly', cursor_defaults['readonly']),
-        'agent.github_model': github.get('model', ''),
-    }
+def _quoted(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _project_agent_source(target_root: Path, agent: ProjectAgentSpec) -> Path:
+    try:
+        source = confined_target(target_root, agent.source)
+    except ProjectError as error:
+        raise RenderError(str(error)) from error
+    if not source.exists() or not source.is_file():
+        raise RenderError(f'project Agent source is missing: {agent.source.as_posix()}')
+    try:
+        content = source.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError) as error:
+        raise RenderError(
+            f'project Agent source is not readable UTF-8: {agent.source.as_posix()}'
+        ) from error
+    if not content.strip():
+        raise RenderError(f'project Agent source is empty: {agent.source.as_posix()}')
+    return source
+
+
+def _render_project_agents(
+    files: dict[PurePosixPath, bytes],
+    target_root: Path,
+    config: ProjectConfig,
+) -> tuple[PurePosixPath, ...]:
+    preserved: list[PurePosixPath] = []
+    for agent in config.agents:
+        _project_agent_source(target_root, agent)
+        preserved.append(agent.source)
+        reference = agent.source.as_posix()
+        if agent.codex is not None:
+            lines = [
+                f'name = {_quoted(agent.id)}',
+                f'description = {_quoted(agent.description)}',
+            ]
+            if agent.codex.model is not None:
+                lines.append(f'model = {_quoted(agent.codex.model)}')
+            if agent.codex.model_reasoning_effort is not None:
+                lines.append(
+                    'model_reasoning_effort = '
+                    f'{_quoted(agent.codex.model_reasoning_effort)}'
+                )
+            lines.extend((
+                f'sandbox_mode = {_quoted(agent.codex.sandbox_mode)}',
+                'developer_instructions = """',
+                f'Follow `{reference}`.',
+                'Keep this file thin and use the shared agent prompt as the source of truth.',
+                '"""',
+            ))
+            _copy_file(
+                files,
+                PurePosixPath('.codex/agents') / f'{agent.id}.toml',
+                ('\n'.join(lines) + '\n').encode(),
+            )
+        if agent.cursor is not None:
+            lines = [
+                '---',
+                f'name: {_quoted(agent.id)}',
+                f'description: {_quoted(agent.description)}',
+            ]
+            if agent.cursor.model is not None:
+                lines.append(f'model: {_quoted(agent.cursor.model)}')
+            lines.extend((
+                f'readonly: {str(agent.cursor.readonly).lower()}',
+                '---',
+                '',
+                f'Apply @{reference}',
+            ))
+            _copy_file(
+                files,
+                PurePosixPath('.cursor/agents') / f'{agent.id}.md',
+                ('\n'.join(lines) + '\n').encode(),
+            )
+        if agent.copilot is not None:
+            lines = [
+                '---',
+                f'name: {_quoted(agent.id)}',
+                f'description: {_quoted(agent.description)}',
+            ]
+            if agent.copilot.model is not None:
+                lines.append(f'model: {_quoted(agent.copilot.model)}')
+            lines.extend((
+                'disable-model-invocation: '
+                f'{str(agent.copilot.disable_model_invocation).lower()}',
+                '---',
+                '',
+                f'Apply @{reference}',
+            ))
+            _copy_file(
+                files,
+                PurePosixPath('.github/agents') / f'{agent.id}.agent.md',
+                ('\n'.join(lines) + '\n').encode(),
+            )
+    return tuple(preserved)
 
 
 def _remove_dotted_field(document: dict[str, object], key: str) -> bool:
@@ -383,7 +455,6 @@ def render_desired_state(
     catalog: Catalog,
     config: ProjectConfig,
     generated_root: Path,
-    models: Mapping[str, object],
     external_root: Path | None = None,
     operating_system: OperatingSystem | None = None,
 ) -> RenderedState:
@@ -458,7 +529,6 @@ def render_desired_state(
         asset_selected = (
             (asset.kind != 'rule' or asset.id in config.selected_rules)
             and (asset.kind != 'skill' or asset.id in config.selected_skills)
-            and (asset.kind != 'agent' or asset.id in config.selected_agents)
         )
         if not asset.platforms or not asset_selected:
             if asset.kind == 'template' and _format_for(asset.target):
@@ -477,7 +547,7 @@ def render_desired_state(
                     else:
                         delete_paths.add(asset.target)
             continue
-        if asset.kind in {'rule', 'skill', 'agent'}:
+        if asset.kind in {'rule', 'skill'}:
             _copy_asset(files, source_root / asset.source, asset.target)
             continue
         if asset.kind == 'template' and asset.target and _format_for(asset.target):
@@ -505,30 +575,25 @@ def render_desired_state(
             continue
         if asset.kind == 'wrapper':
             template = (source_root / asset.source).read_text(encoding='utf-8')
-            if 'agent' in asset.id:
-                for agent_id in config.selected_agents:
-                    source = assets_by_id[agent_id]
-                    assert source.target is not None
-                    path = PurePosixPath(asset.target.as_posix().replace('{agent-name}', agent_id))
-                    _copy_file(files, path, _render_text(template, _agent_values(source, models)))
-            else:
-                for rule_id in config.selected_rules:
-                    source = assets_by_id[rule_id]
-                    assert source.target is not None
-                    item = source.metadata
-                    cursor = item['cursor']
-                    github = item['github']
-                    if not isinstance(cursor, Mapping) or not isinstance(github, Mapping):
-                        raise RenderError(f'rule metadata is invalid: {rule_id}')
-                    name = source.source.stem
-                    path = PurePosixPath(asset.target.as_posix().replace('{rule-name}', name))
-                    _copy_file(files, path, _render_text(template, {
-                        'rule.apply_ref': source.target.as_posix(),
-                        'rule.cursor_description': cursor['description'],
-                        'rule.cursor_globs': json.dumps(cursor.get('globs', '**')),
-                        'rule.cursor_always_apply': cursor['alwaysApply'],
-                        'rule.github_apply_to': github['applyTo'],
-                    }))
+            for rule_id in config.selected_rules:
+                source = assets_by_id[rule_id]
+                assert source.target is not None
+                item = source.metadata
+                cursor = item['cursor']
+                github = item['github']
+                if not isinstance(cursor, Mapping) or not isinstance(github, Mapping):
+                    raise RenderError(f'rule metadata is invalid: {rule_id}')
+                name = source.source.stem
+                path = PurePosixPath(asset.target.as_posix().replace('{rule-name}', name))
+                _copy_file(files, path, _render_text(template, {
+                    'rule.apply_ref': source.target.as_posix(),
+                    'rule.cursor_description': cursor['description'],
+                    'rule.cursor_globs': json.dumps(cursor.get('globs', '**')),
+                    'rule.cursor_always_apply': cursor['alwaysApply'],
+                    'rule.github_apply_to': github['applyTo'],
+                }))
+
+    project_agent_sources = _render_project_agents(files, target_root, config)
 
     generated_targets = {
         asset.target
@@ -638,6 +703,7 @@ def render_desired_state(
                 (
                     *(item.path for item in project_rules),
                     *(item.path / 'SKILL.md' for item in project_skills),
+                    *project_agent_sources,
                     *generated_skill_resources,
                 ),
                 key=lambda item: item.as_posix(),

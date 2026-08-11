@@ -6,20 +6,23 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
 
 ## Repository Areas
 
-- `skills/` contains registry-declared SmartKit custom Skills and read-only external Skill
-  snapshots. `hooks/` contains the host lifecycle entry points.
 - `rules/source/` owns plugin Rule policy, `rules/registry.json` owns order and activation, and
   `rules/cursor/` contains Cursor-native adapters.
+- `skills/` contains registry-declared SmartKit custom Skills and read-only external Skill
+  snapshots.
+- `agents/registry.json` and `agents/source/` own Plugin Agent intent and shared instructions;
+  `agents/codex/`, `agents/cursor/`, and `agents/copilot/` are generated host adapters.
 - `mcp/registry.json` owns Plugin MCP intent; the other files under `mcp/` and root `.mcp.json` are
   generated host adapters.
+- `hooks/` contains the host lifecycle entry points.
 - `runtime/recommended-tools/` contains private Hook executables and no discoverable Skill.
   `policies/recommended-tools/` contains the declarations shared by that runtime and setup output.
-- Project configuration declares external GitHub Skill sources and Project MCP intent. Setup
-  snapshots Skills into target `.agents/skills/`, renders MCP host adapters, and records every
-  managed file, tree, and structured field in one `.agents/smartkit.lock.json` manifest.
-- `setup-assets/agents/` contains content installed by setup. `setup-assets/blueprints/` and
-  `setup-assets/templates/` contain generation and rendering inputs, while `setup-assets/catalog/`
-  owns asset selection and project-configuration contracts.
+- Target projects own Rules under `.agents/rules/`, Skills under `.agents/skills/`, and Agent sources
+  under `.agents/agents/`; `.agents/config.json` declares external Skills, Agents, and MCP. Setup
+  preserves those canonical inputs and records only setup-managed outputs in
+  `.agents/smartkit.lock.json`.
+- `setup-assets/blueprints/` and `setup-assets/templates/` contain generation and rendering inputs,
+  while `setup-assets/catalog/` owns asset selection and project-configuration contracts.
 - `docs/` contains design material and `docs/zh-CN/` contains Simplified-Chinese documentation.
   Documentation is outside runtime loading and target installation.
 - `.agents/rules/` owns this repository's development instructions, `.agents/plugins/` owns its
@@ -33,8 +36,8 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
 ## Distribution Flow
 
 - Setup reads `setup-assets/catalog/assets.json`, then force-converges catalog-selected public
-  sources while preserving automatically discovered project-owned Rules and Skills. Recommended-tool
-  runtime and policy files remain plugin-private.
+  Rules and Skills, external Skill snapshots, Agent adapters, and MCP entries while preserving
+  project-owned canonical inputs. Recommended-tool runtime and policy files remain plugin-private.
 - Blueprints guide creation of complete target-owned Rules and Skills; they are not installed as
   runtime content themselves.
 - The setup control plane remains in `skills/setup-project-agents/`; catalog-managed external Skills
@@ -54,9 +57,9 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   templates only to author the Matt repository-context outputs declared by setup. Plugin Hooks must
   not depend on vendored Skills, and all other vendored Skills remain independent read-only plugin
   capabilities.
-- Plugin manifests expose `skills/`, Plugin MCP adapters, host Hook entry points, and Cursor-native
-  Rule adapters. They do not expose `setup-assets/`, private runtime implementation, or policies
-  directly.
+- Plugin manifests expose `skills/`, Plugin Agent adapters, Plugin MCP adapters, host Hook entry
+  points, and Cursor-native Rule adapters. They do not expose `setup-assets/`, private runtime
+  implementation, or policies directly.
 
 ## Script and Test Ownership
 
