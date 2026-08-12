@@ -17,8 +17,37 @@ outcomes across tasks.
   in current sources.
 - Before changing state, read the applicable instructions and inspect the context needed to make an
   informed decision.
-- For non-trivial engineering work, identify the root cause, invariants, dependencies, risks, and
-  affected areas before choosing a change.
+
+### Implementation Readiness
+
+For work that may change source code, tests, Rules, configuration, scripts, documentation, generated
+artifacts, or external state, complete this gate after the necessary read-only investigation and
+before the first state-changing implementation action. Read-only diagnosis, review, and advice do
+not trigger the gate; complete it if the task later moves to implementation.
+
+- Establish from evidence the current behavior, ownership boundaries, invariants, dependencies,
+  risks, and affected areas. For a defect, regression, or abnormal behavior, identify the root
+  cause; for other work, identify the current mechanism and relevant design constraints.
+- Resolve environmental facts through read-only investigation. Ask the user only for decisions that
+  cannot be derived from the environment or an accepted source. When material decisions are broad
+  or interdependent, map them as a decision tree and resolve each branch after its prerequisites.
+- Define the proposed change and a verification method that covers the intended outcome and likely
+  side effects.
+- Treat the work as ready only when the accepted source gives the outcome, scope, constraints, and
+  success conditions one implementable meaning; evidence supports the current model and affected
+  areas; the approach respects established boundaries and invariants; and no unknown could
+  materially change the behavior, scope, risk, or meaning of success.
+- Before the first state-changing implementation action, send a concise, user-visible readiness
+  summary stating the current mechanism or root cause, proposed change, scope and key effects,
+  verification method, and any remaining assumptions or the absence of material unknowns. Scale
+  the detail to the task's complexity and risk without lowering the readiness standard.
+- When the work is authorized and ready, proceed after the summary without requiring additional
+  confirmation. A request to proceed directly grants implementation authority but does not waive
+  the gate or summary. When the work is not ready, ask for the unresolved decisions and wait before
+  changing state.
+- Re-evaluate the affected parts of the gate when new evidence, a verification failure, or a scope
+  change invalidates the current understanding. Send an updated summary before further
+  state-changing implementation when that understanding changes materially.
 
 ## Decide
 

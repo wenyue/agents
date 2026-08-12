@@ -58,9 +58,7 @@ evolution, and test contracts for this repository.
   source order, Markdown structure, commands, identifiers, code blocks, and behavioral meaning;
   do not add translation-only explanations or omit source content.
 - Treat `.agents/rules/` as the source of truth for this repository's development rules. Keep
-  `.agents/skills/write-agent-rule/` and `.agents/skills/write-agent-skill/` as local discovery
-  wrappers that apply their corresponding English sources under `skills/`. Keep `.agents/` limited
-  to `plugins/`, `rules/`, and those Skill wrappers; it is not a generated project snapshot.
+  `.agents/` limited to `plugins/` and `rules/`; it is not a generated project snapshot.
 
 ## Installation and Tests
 

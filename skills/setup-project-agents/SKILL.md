@@ -60,8 +60,8 @@ assets. These adapters remain Plugin Agents and never enter `.agents/config.json
    target path. Resolve each request's blueprint from `source_root` and use the matching authoring
    contract:
 
-   - apply `write-agent-rule` to Rule targets;
-   - apply `write-agent-skill` to Skill targets; and
+   - apply the Rule branch of `write-rules-and-skills` to Rule targets;
+   - apply the Skill branch of `write-rules-and-skills` to Skill targets; and
    - read `setup-matt-pocock-skills` from `source_root` and execute its contract within this workflow
      for the requested `docs/agents/` targets; do not invoke it as a separate Skill.
 
