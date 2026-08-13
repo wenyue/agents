@@ -26,7 +26,7 @@ handoff; it does not own business implementation, completed-change integration, 
   Verify its branch and base before continuing.
 - Otherwise select `<base-root>/.worktrees/<task-slug>` and use the host's native worktree creation
   capability when available; record which lifecycle owner created it.
-- Ensure the root `.gitignore` contains the repository-relative entry `/.worktrees/`. When it is
+- Ensure the root `.gitignore` contains the repository-relative entry `.worktrees/`. When it is
   absent, append exactly that entry while preserving existing content and record the edit as an
   intentional project-owned change. Stop instead when `.gitignore` is generated, read-only, or has
   ambiguous ownership.
@@ -44,7 +44,7 @@ handoff; it does not own business implementation, completed-change integration, 
    with `git -C <base-root> worktree add -b <task-branch> <worktree-path> <base-commit>`.
 3. Verify through `git worktree list --porcelain` that the resulting path, branch, and `HEAD` match
    the selected values. Confirm the base checkout's `HEAD`, index tree, and pre-existing local state
-   still match the recorded snapshot; allow only the recorded `/.worktrees/` `.gitignore` addition.
+   still match the recorded snapshot; allow only the recorded `.worktrees/` `.gitignore` addition.
 4. If creation fails, inspect both Git worktree metadata and the selected path before retrying.
    Remove only incomplete artifacts proven to have been created by this attempt and containing no
    user work; otherwise retain them and report the exact recovery required.

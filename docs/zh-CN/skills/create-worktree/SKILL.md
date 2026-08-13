@@ -22,7 +22,7 @@ description: 当会改变仓库状态的工作因并行执行、宿主或工作�
 - 宿主已经为本任务创建具名关联 worktree 时，复用当前 worktree。继续前验证其分支和基准。
 - 否则选择 `<base-root>/.worktrees/<task-slug>`，并在宿主提供原生 worktree 创建能力时使用该能力；
   记录负责其生命周期的创建者。
-- 确保根 `.gitignore` 包含仓库相对条目 `/.worktrees/`。缺少该条目时，在保留现有内容的前提下只
+- 确保根 `.gitignore` 包含仓库相对条目 `.worktrees/`。缺少该条目时，在保留现有内容的前提下只
   追加这一条，并将该编辑记录为有意的项目自有变更。`.gitignore` 由工具生成、只读或归属不明时停止。
 - 在 `.worktrees` 下创建前，必须用 `git check-ignore` 证明所选路径已被忽略。全局 exclude 或
   `.git/info/exclude` 不能代替仓库 `.gitignore` 条目。
@@ -37,7 +37,7 @@ description: 当会改变仓库状态的工作因并行执行、宿主或工作�
    创建具名分支和关联 worktree。
 3. 通过 `git worktree list --porcelain` 验证结果中的路径、分支和 `HEAD` 与所选值一致。确认基准
    checkout 的 `HEAD`、index tree 和既有本地状态仍与已记录快照一致；只允许已经记录的
-   `/.worktrees/` `.gitignore` 新增项。
+   `.worktrees/` `.gitignore` 新增项。
 4. 创建失败时，重试前检查 Git worktree 元数据和所选路径。只删除已证明由本次尝试创建且不包含用户
    工作的不完整产物；否则保留产物并报告准确的恢复要求。
 
