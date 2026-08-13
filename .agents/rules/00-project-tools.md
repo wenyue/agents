@@ -78,7 +78,7 @@ completed change set; together they form the required verification.
 - `check` reports desired-state drift without writes. Neither command is a formatter, fixer, or
   replacement for this repository's test command.
 - Keep this repository's local `.agents/` directory limited to its `plugins/` marketplace
-  configuration, `rules/` development instructions, and thin Skill discovery wrappers.
+  configuration and `rules/` development instructions.
 
 ## Boundaries
 

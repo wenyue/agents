@@ -25,9 +25,8 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   while `setup-assets/catalog/` owns asset selection and project-configuration contracts.
 - `docs/` contains design material and `docs/zh-CN/` contains Simplified-Chinese documentation.
   Documentation is outside runtime loading and target installation.
-- `.agents/rules/` owns this repository's development instructions, `.agents/plugins/` owns its
-  local marketplace configuration, and `.agents/skills/` contains only thin discovery wrappers for
-  `write-agent-rule` and `write-agent-skill`. No other `.agents/` content belongs in this repository.
+- `.agents/rules/` owns this repository's development instructions, and `.agents/plugins/` owns its
+  local marketplace configuration. No other `.agents/` content belongs in this repository.
 - `AGENTS.md` is the entry point for discovering `.agents/rules/`; `README.md` is public plugin
   onboarding and describes the setup boundary.
 - `vendor/external-skills.lock.json` and `licenses/` record all external plugin Skill snapshots;
@@ -52,8 +51,6 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   the Python standard library.
 - The setup control plane may read `setup-assets/`; plugin Hooks alone read `runtime/` and
   `policies/`. None of those areas may depend on plugin-discovered Skills.
-- Repository-local Skill wrappers depend only on their corresponding custom sources under
-  `skills/` and add no workflow behavior.
 - `setup-project-agents` may read the vendored `setup-matt-pocock-skills` instructions and seed
   templates only to author the Matt repository-context outputs declared by setup. Plugin Hooks must
   not depend on vendored Skills, and all other vendored Skills remain independent read-only plugin

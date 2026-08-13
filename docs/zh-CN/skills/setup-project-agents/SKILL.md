@@ -51,8 +51,8 @@ adapters 安装为受管默认资产。这些 adapters 仍是 Plugin Agents，�
 4. 在 `GENERATED/<target>` 下完成每个 `generation_requests` 条目，并保留完整 target 路径。从
    `source_root` 解析每项 blueprint，并使用匹配的编写契约：
 
-   - 对 Rule target 应用 `write-agent-rule`；
-   - 对 Skill target 应用 `write-agent-skill`；
+   - 对 Rule target 应用 `write-rules-and-skills` 的 Rule 分支；
+   - 对 Skill target 应用 `write-rules-and-skills` 的 Skill 分支；
    - 从 `source_root` 读取 `setup-matt-pocock-skills`，并在本工作流内对请求的 `docs/agents/` target
      执行其契约；不要将它作为独立 Skill 调用。
 

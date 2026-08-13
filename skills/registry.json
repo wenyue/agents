@@ -8,8 +8,7 @@
     {"id": "smartkit/report-session-usage", "path": "report-session-usage"},
     {"id": "smartkit/finish-worktree", "path": "finish-worktree"},
     {"id": "smartkit/write-code-comment", "path": "write-code-comment"},
-    {"id": "smartkit/write-agent-rule", "path": "write-agent-rule"},
-    {"id": "smartkit/write-agent-skill", "path": "write-agent-skill"}
+    {"id": "smartkit/write-rules-and-skills", "path": "write-rules-and-skills"}
   ],
   "external_sources": [
     {
