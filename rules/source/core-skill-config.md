@@ -39,14 +39,6 @@ Git safety.
   or Tickets. It owns implementation, verification, and code review, then leaves the reviewed
   changes uncommitted unless the user separately authorizes a commit.
 
-### Scratch Markdown Language
-
-- Write all prose in `.scratch/**/*.md` in Simplified Chinese.
-- Keep tracker-defined keys, headings, enum values, code, commands, paths, URLs, identifiers, exact
-  quotations, logs, error messages, and official names unchanged.
-- Do not repeat the same prose in another language unless the user explicitly requests bilingual
-  content.
-
 ## Worktree Workflow
 
 - For state-changing implementation, apply `create-worktree` when the user requests isolation, the
