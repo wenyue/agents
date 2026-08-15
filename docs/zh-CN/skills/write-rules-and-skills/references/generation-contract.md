@@ -31,8 +31,8 @@ reference 定义未来目标必须包含什么。契约必须告诉 Agent 如何
 
 ## 静态验收契约
 
-不要为了 qualification 契约而生成虚假目标或虚构项目。Semantic Review 通过后，使用以下类别中
-风险最高且有证据支持的两到四个输入，走查完整指导：
+不要启动 Acceptance Runner、生成虚假目标或虚构项目来 qualification 契约。Semantic Review
+通过后，由 fresh reviewer 使用以下类别中风险最高且有证据支持的两到四个输入，走查完整指导：
 
 - 不清楚的 intent 或缺失的目标证据；
 - 未解决的 owner、packaging、schema、write location 或 authority；
@@ -46,4 +46,3 @@ reference 定义未来目标必须包含什么。契约必须告诉 Agent 如何
 当指导对每个选定案例都完整且可执行时，契约 Acceptance 才通过。它不声称尚未创建的未来目标已经
 通过。之后编写的目标是新的 Ordinary Artifact 候选，默认使用不同的 fresh reviewer，且不继承
 契约结论。
-

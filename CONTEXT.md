@@ -116,9 +116,23 @@ target created later default to different Fresh Reviewers, receive separate revi
 inherit verdicts.
 _Avoid_: Author self-review, inherited reviewer
 
+**Acceptance Runner**:
+An isolated fresh Agent that applies one Ordinary Artifact to one representative task using only
+the candidate's runtime-visible content, the task, and its required context or tools. The Runner
+does not receive the semantic ledger, expected result, diff, author reasoning, review findings, or
+prior case output; the Fresh Reviewer judges its observable result.
+_Avoid_: Acceptance reviewer, prepared-answer agent, paper walkthrough
+
+**Behavior Control**:
+One isolated run before authoring that uses the previously accepted artifact for a rewrite or no
+candidate for a new artifact. Use it only when a proposed instruction's sole supported purpose is
+to change default Agent behavior and no observed failure already establishes that need.
+_Avoid_: Mandatory baseline, repeated sampling, generation target
+
 **Candidate Review**:
-One bounded task in which a Fresh Reviewer performs Semantic Review first, then the candidate's
-Acceptance Portfolio, and returns a separate verdict for each gate.
+One bounded task in which a Fresh Reviewer performs Semantic Review first, then judges the
+candidate's Acceptance Portfolio from isolated Acceptance Runner results or the Generation
+Contract's static walkthrough, and returns a separate verdict for each gate.
 _Avoid_: Review Board, combined verdict
 
 **Closure Review**:

@@ -2,14 +2,20 @@
   "version": 1,
   "id": "shared-skill",
   "lifecycle": "ordinary-artifact",
+  "acceptance_mode": "isolated-runner",
   "semantic_type": "skill",
   "scope": "shared",
   "candidate_contract": {"format": "skill-package", "name": "verify-repository-change", "relative_path": "SKILL.md"},
   "request": "request.md",
-  "evidence_contexts": [
-    {"id": "alpha", "path": "contexts/alpha/.agents/verification.json"},
-    {"id": "beta", "path": "contexts/beta/project-verification.json"}
+  "representative_context": {"id": "alpha", "path": "contexts/alpha/.agents/verification.json"},
+  "portability_evidence": [
+    {"id": "beta-contract-shape", "path": "contexts/beta/project-verification.json"}
   ],
+  "second_context": {
+    "id": "beta",
+    "path": "contexts/beta/project-verification.json",
+    "reason": "The different contract location and field shape make portability material, and static inspection cannot prove that the same job executes both required entries and preserves their exits."
+  },
   "initial_state": {
     "candidate": "absent",
     "job": "run every repository-declared required verification without modifying the repository"

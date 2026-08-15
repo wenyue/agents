@@ -97,16 +97,16 @@ SmartKit Rule configuration owns precedence.
 - Judge first-party Rule and Skill prose by semantic fidelity, navigability, purposeful Markdown,
   and executable outcomes. Do not require similarity to an external exemplar or use an external
   artifact as the semantic oracle.
-- Treat committed `write-rules-and-skills` evaluation cases as test inputs, not plugin capabilities,
-  distribution assets, generated answers, or qualification run state. They require no Chinese
-  documentation mirror.
-- Keep each evaluation case self-contained with its request, evidence, initial state, structured
-  Acceptance cases, and only the small project inputs its class requires. Keep generated candidates,
-  mutable state, Git metadata, verdicts, reports, and Acceptance sandboxes out of the fixture source.
+- Mark each Ordinary Artifact case for isolated-runner Acceptance and each generation-contract case
+  for static walkthrough. Keep structured expected results reviewer-only: an Acceptance Runner may
+  receive the frozen candidate, request, selected case input, and required runtime context or tools,
+  but not the expected result, semantic ledger, diff, author reasoning, findings, or prior case
+  output.
 - Keep generation-contract evaluation cases static: provide guidance inputs and supported
-  walkthrough cases, not a generated target or fake project. Keep Shared Rule and Shared Skill cases
-  backed by at least two independent traceable contexts. A Project-local case may use a small
-  self-contained project when repository facts affect behavior.
+  walkthrough cases, not a generated target or fake project. Back a Shared Rule or Shared Skill
+  case with one representative traceable context plus direct evidence that its behavior is
+  independent of project-local facts; require a second context only when that portability claim is
+  material and direct evidence cannot resolve it.
 
 ## Contract Evolution
 

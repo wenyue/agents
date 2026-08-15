@@ -37,8 +37,8 @@ Semantic Review 根据候选工件和证据重建完整工作和分支到出口�
 - 候选工件影响的 non-completion 路径，例如 missing precondition、stop、failure、recovery、
   handoff 或 coincident condition。
 
-与 `ordinary-artifact.md` 一起使用时，在可用时使用真实 public entry，通过该入口运行自有脚本，
-并报告未运行的受支持平台。无法执行时，根据已验证证据走查同一入口，并将可执行行为标为未测试。
-与 `generation-contract.md` 一起使用时，静态验证指导能获取所需证据，并为相同输入类别选择一个动作
-或 stop。不要为契约 Acceptance 创建目标。
-
+与 `ordinary-artifact.md` 一起使用时，把触发式工作和任务交给一个隔离的 Acceptance Runner。
+在可用时使用真实 public entry，并通过该入口运行自有脚本，同时报告未运行的受支持平台。无法执行
+时，Runner 仍根据已验证证据应用 runtime 指令，并将可执行行为标为未测试；它不能声称机器 PASS。
+与 `generation-contract.md` 一起使用时，fresh reviewer 静态验证指导能获取所需证据，并为相同输入
+类别选择一个动作或 stop。不要为契约 Acceptance 启动 Runner 或创建目标。

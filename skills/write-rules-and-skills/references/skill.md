@@ -44,9 +44,10 @@ Select only the highest-risk relevant cases:
 - the non-completion paths affected by the candidate, such as a missing precondition, stop,
   failure, recovery, handoff, or coincident condition.
 
-With `ordinary-artifact.md`, use the real public entry when available, run owned scripts through
-that entry, and report supported platforms not run. When execution is unavailable, walk the same
-entry against verified evidence and mark executable behavior untested. With
-`generation-contract.md`, statically verify that the guidance obtains the required evidence and
-chooses one action or stop for the same input classes. Do not create a target for contract
-Acceptance.
+With `ordinary-artifact.md`, give the triggered job and task to an isolated Acceptance Runner. Use
+the real public entry when available, run owned scripts through that entry, and report supported
+platforms not run. When execution is unavailable, the Runner still applies the runtime instructions
+to verified evidence and marks executable behavior untested; it cannot claim machine PASS. With
+`generation-contract.md`, the fresh reviewer statically verifies that the guidance obtains the
+required evidence and chooses one action or stop for the same input classes. Do not start a Runner
+or create a target for contract Acceptance.

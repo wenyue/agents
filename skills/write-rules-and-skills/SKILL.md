@@ -42,6 +42,9 @@ Before the first candidate write, establish from accepted intent and current evi
 - the current behavior, applicable project Rules and host mechanics, validation seams, and any
   environmental fact that can change a policy, action, target, or exit.
 
+Before writing, apply any Behavior Control required by the selected lifecycle reference and retain
+its selected task and raw result for review.
+
 Ask only when supported evidence still permits materially different behavior, ownership, write
 targets, authority, side effects, or exits. Otherwise record the uniquely supported fact and
 continue. Keep project facts in their active owners; the reusable Skill discovers them rather than
@@ -97,6 +100,7 @@ than automatically restarting it.
 Give one fresh reviewer that did not author the candidate this bounded packet:
 
 - accepted outcome and semantic ledger;
+- the selected task and raw Behavior Control result when Readiness required one;
 - complete candidate, owned resources, and loading or distribution surfaces;
 - governing evidence and applicable references; and
 - exact machine-validation results and untested surfaces.
@@ -109,8 +113,10 @@ The reviewer performs two gates in order:
 
 1. **Semantic Review** reads the whole candidate and tries to falsify it with two to four of the
    highest-risk supported counterexamples. It returns `PASS` or `FAIL`.
-2. **Acceptance** starts only after Semantic Review passes. It applies the selected references'
-   portfolio and returns a separate `PASS` or `FAIL`.
+2. **Acceptance** starts only after Semantic Review passes. Apply the selected lifecycle and
+   semantic-type portfolio: Ordinary Artifact Acceptance uses an isolated fresh Runner;
+   Generation Contract Acceptance is a static reviewer walkthrough with no Runner or target
+   generation. It returns a separate `PASS` or `FAIL`.
 
 Every blocking finding names the gate, evidence, concrete counterexample, and one classification:
 
@@ -131,8 +137,10 @@ machine check, and freeze the new Candidate Revision.
 
 Give the corrected revision, first findings, governing evidence, and exact revalidation to a
 different fresh Closure Reviewer. It repeats whole-candidate Semantic Review and affected
-Acceptance. `PASS` closes the run; `FAIL` stops it. Do not start another automatic correction. A
-user decision may begin a later explicit authoring run on the resulting state.
+Acceptance, using a new isolated Runner for the affected Ordinary Artifact portfolio. `PASS` closes
+the run;
+`FAIL` stops it. Do not start another automatic correction. A user decision may begin a later
+explicit authoring run on the resulting state.
 
 Success requires machine validation, Semantic Review, and Acceptance to pass for the same Candidate
 Revision. Report the candidate's lifecycle, semantic type, owner, preserved and approved changes,

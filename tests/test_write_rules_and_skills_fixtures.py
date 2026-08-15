@@ -63,6 +63,12 @@ class WriteRulesAndSkillsFixtureTest(unittest.TestCase):
                     (case["lifecycle"], case["semantic_type"], case["scope"]),
                     expected_class,
                 )
+                expected_mode = (
+                    "isolated-runner"
+                    if case["lifecycle"] == "ordinary-artifact"
+                    else "static-walkthrough"
+                )
+                self.assertEqual(case["acceptance_mode"], expected_mode)
                 self.assertTrue((case_root / case["request"]).is_file())
                 self.assertEqual(case["initial_state"]["candidate"], "absent")
                 candidate_contract = case["candidate_contract"]
@@ -81,18 +87,26 @@ class WriteRulesAndSkillsFixtureTest(unittest.TestCase):
                 for item in acceptance_cases:
                     self.assertEqual(set(item), {"id", "risk", "input", "expected"})
 
-                evidence_paths = [
-                    item["path"] for item in case.get("evidence_contexts", [])
-                ]
-                evidence_paths.extend(case.get("evidence", []))
+                evidence_paths = list(case.get("evidence", []))
+                if case["scope"] == "shared":
+                    representative = case["representative_context"]
+                    portability = case["portability_evidence"]
+                    self.assertTrue(portability)
+                    evidence_items = [representative, *portability]
+                    second_context = case.get("second_context")
+                    if second_context is not None:
+                        self.assertTrue(second_context["reason"].strip())
+                        self.assertNotEqual(second_context["id"], representative["id"])
+                        evidence_items.append(second_context)
+                    evidence_ids = [item["id"] for item in evidence_items]
+                    self.assertEqual(len(evidence_ids), len(set(evidence_ids)))
+                    evidence_paths.extend(item["path"] for item in evidence_items)
                 self.assertTrue(evidence_paths)
                 for relative_path in evidence_paths:
                     evidence_path = (case_root / relative_path).resolve()
                     self.assertTrue(evidence_path.is_relative_to(case_root.resolve()))
                     self.assertTrue(evidence_path.is_file())
 
-                if case["scope"] == "shared":
-                    self.assertGreaterEqual(len(case["evidence_contexts"]), 2)
                 if case["scope"] == "project-local":
                     project_root = case_root / case["project_root"]
                     self.assertTrue(project_root.is_dir())

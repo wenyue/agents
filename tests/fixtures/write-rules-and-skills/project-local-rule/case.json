@@ -2,6 +2,7 @@
   "version": 1,
   "id": "project-local-rule",
   "lifecycle": "ordinary-artifact",
+  "acceptance_mode": "isolated-runner",
   "semantic_type": "rule",
   "scope": "project-local",
   "candidate_contract": {"format": "markdown", "relative_path": ".agents/rules/20-generated-api-assets.md"},

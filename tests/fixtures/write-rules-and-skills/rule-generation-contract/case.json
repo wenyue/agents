@@ -2,6 +2,7 @@
   "version": 1,
   "id": "rule-generation-contract",
   "lifecycle": "generation-contract",
+  "acceptance_mode": "static-walkthrough",
   "semantic_type": "rule",
   "scope": "cross-project",
   "candidate_contract": {"format": "skill-package", "name": "write-record-retention-rule", "relative_path": "SKILL.md"},

@@ -30,9 +30,23 @@ final exit, relevant output, unrun gates, and unverified surfaces.
 
 One fresh reviewer evaluates one frozen candidate in one bounded task. It performs Semantic Review
 first and, only after that passes, runs the candidate's Acceptance Portfolio. The two gates return
-separate verdicts. A corrected Candidate Revision goes to a different fresh Closure Reviewer. A
-generation contract and a real target created later are separate candidates; they default to
+separate verdicts. For an Ordinary Artifact, the reviewer judges observable work from an isolated
+Acceptance Runner that receives only runtime-visible candidate content, the representative tasks,
+and the context or tools needed for those tasks. Every case starts from its frozen input and does
+not inherit another case's output. The Runner receives no ledger, expected result,
+diff, author reasoning, review finding, or prior case output. A corrected Candidate Revision goes
+to a different fresh Closure Reviewer.
+
+When a proposed instruction exists only to change default Agent behavior and no observed failure
+establishes that need, authoring begins with one Behavior Control: the previously accepted artifact
+for a rewrite or no candidate for a new artifact. The same case is rerun with the candidate. One
+run per case is the default; one confirmation rerun is allowed only for an inconclusive or unstable
+result, and divergent results fail rather than permitting a favorable sample to be selected.
+
+A generation contract and a real target created later are separate candidates; they default to
 different fresh reviewers, receive separate reviews, and do not inherit one another's verdicts.
+Generation-contract Acceptance remains a static walkthrough and starts neither an Acceptance
+Runner nor target generation.
 
 Stop immediately when the first-round findings include `decision-required`; otherwise, one
 Correction Pass fixes all `uniquely-forced` findings. A different fresh Closure Reviewer gets one
@@ -63,20 +77,23 @@ selects the type of its future target. Authoring and Acceptance requirements for
 co-located in that concern's reference.
 
 A generation contract is qualified by statically walking its complete guidance against supported
-high-risk inputs. Qualification does not generate a fake target. A target created later in a real
-project enters the ordinary-artifact route as a new candidate and must independently pass the
-normal Acceptance Standard before adoption.
+high-risk inputs. Qualification does not start an Acceptance Runner or generate a fake target. A
+target created later in a real project enters the ordinary-artifact route as a new candidate and
+must independently pass the normal Acceptance Standard before adoption.
 
-A shared artifact needs cross-project evidence. Shared Rule and Shared Skill Acceptance each use at
-least two independent traceable contexts while keeping the policy or job stable. A Project-local
-artifact may use a small self-contained project when repository Rules, configuration, files, or
-commands affect its behavior.
+A shared artifact needs evidence that its policy or job is independent of project-local facts. One
+representative traceable context plus direct portability evidence is the default; a second context
+is required only when portability materially affects acceptance and direct evidence cannot resolve
+it. A Project-local artifact may use a small self-contained project when repository Rules,
+configuration, files, or commands affect its behavior.
 
 ## Consequences
 
 Ordinary authoring and workflow qualification share the same quality language and termination
-conditions. One bounded Candidate Review avoids duplicate context loading, while one Correction
-Pass and one Closure Review prevent a serial fix loop. The project task contract owns a Qualification
-Campaign's specific canaries, scheduling, budget, Defect Cards, and write scope; they do not enter
-the cross-project `write-rules-and-skills` runtime Skill. Project Rules and tests own the location,
-integrity, and runtime isolation of committed evaluation inputs.
+conditions. One bounded Candidate Review avoids duplicate reviewer context loading; isolated
+an Acceptance Runner demonstrates use without receiving the answer. Risk-matched cases, conditional
+Behavior Control, one Correction Pass, and one Closure Review bound the added cost and prevent a
+serial fix loop. The project task contract owns a Qualification Campaign's specific canaries,
+scheduling, budget, Defect Cards, and write scope; they do not enter the cross-project
+`write-rules-and-skills` runtime Skill. Project Rules and tests own the location, integrity, and
+runtime isolation of committed evaluation inputs.

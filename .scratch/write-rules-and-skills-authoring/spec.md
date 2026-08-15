@@ -58,9 +58,12 @@ parallel.
 Every authored candidate uses one Acceptance Standard: focused machine validation, a frozen
 Candidate Revision, one fresh reviewer who performs Semantic Review before the candidate's
 risk-matched Acceptance and returns separate verdicts, at most one evidence-forced Correction Pass,
-one different fresh Closure Reviewer, and an explicit handoff. Reviewer roles are scoped to one
-candidate: a generation contract and a real target created later are separate candidates, default
-to different fresh reviewers, receive separate verdicts, and do not inherit one another's evidence.
+one different fresh Closure Reviewer, and an explicit handoff. Ordinary Artifact Acceptance uses
+an isolated fresh Runner that receives runtime-visible inputs rather than the reviewer-only answer.
+Generation Contract Acceptance remains a static walkthrough and starts neither a Runner nor target
+generation. Reviewer roles are scoped to one candidate: a generation contract and a real target
+created later are separate candidates, default to different fresh reviewers, receive separate
+verdicts, and do not inherit one another's evidence.
 
 Qualification uses the same standard with a risk-matched Acceptance Portfolio. Candidate state
 lives in the active checkout or one necessary Task Worktree. It creates no persistent
@@ -160,8 +163,15 @@ project enters the ordinary-artifact route before adoption.
 86. As a qualification maintainer, I want six independent reusable cases versioned under `tests/fixtures/write-rules-and-skills/`, so that each artifact class is reproducible without preserving run state.
 87. As a generation-contract reviewer, I want static walkthrough cases for unclear intent, owner, target location, evidence conflict, and preservation risk, so that guidance completeness is tested without a fake target.
 88. As a Project-local artifact reviewer, I want a small self-contained project only when repository facts affect behavior, so that local semantics are real without turning every case into a microproject.
-89. As a Shared Rule reviewer, I want the same policy checked against at least two independent traceable contexts, so that a single-project policy cannot be mislabeled as shared.
-90. As a Shared Skill reviewer, I want the same job checked against at least two independent traceable contexts, so that one project's paths or commands cannot be hidden inside shared instructions.
+89. As a Shared Rule reviewer, I want one representative context plus direct portability evidence by default, so that a single-project policy is not mislabeled as shared without doubling every Acceptance run.
+90. As a Shared Skill reviewer, I want a second context only when portability is material and direct evidence cannot resolve it, so that hidden local assumptions are tested at the point of uncertainty.
+91. As an Ordinary Artifact user, I want an isolated fresh Agent to apply the candidate to a representative task, so that Acceptance proves use rather than a reviewer's prediction.
+92. As a reviewer, I want the Acceptance Runner to receive only runtime-visible candidate content, the task, and required context or tools, so that hidden answers cannot manufacture compliance.
+93. As a reviewer, I want expected results, ledgers, diffs, author reasoning, findings, and prior case output hidden from the Runner, so that its observable result remains independent evidence.
+94. As a maintainer, I want one Behavior Control only when a proposed instruction exists solely to change default Agent behavior and no observed failure establishes the need, so that no-op guidance is rejected without taxing factual artifacts.
+95. As a maintainer, I want a rewrite's control to use the previously accepted artifact and a new artifact's control to omit the candidate, so that the comparison isolates the proposed guidance.
+96. As a maintainer, I want one run per case by default and at most one confirmation rerun for an inconclusive or unstable result, so that variance is exposed without repeated sampling.
+97. As a generation-contract maintainer, I want static Acceptance to start neither an Acceptance Runner nor target generation, so that the resolved latency problem stays resolved.
 
 ## Implementation Decisions
 
@@ -195,6 +205,13 @@ project enters the ordinary-artifact route before adoption.
 - Implementation Readiness is required before the first candidate write and covers outcome,
   preserved semantics, non-goals, owner, authorized surfaces, dependencies, risks, validation
   seams, and material unknowns.
+- When a proposed instruction's sole supported purpose is to change default Agent behavior and no
+  observed failure already establishes that need, run one isolated Behavior Control before writing.
+  Use the previously accepted artifact for a rewrite or no candidate for a new artifact; keep the
+  raw result for review. Do not run a control for policy authority, project facts, reference
+  material, Generation Contracts, or behavior already supported by observed failure evidence.
+- Rerun the same case with the candidate. If the control already produces the required behavior,
+  omit the no-op instruction unless separate accepted evidence requires an explicit policy.
 - The Agent asks only when evidence still permits materially different policies, actions, owners,
   write targets, exits, authority, or side effects.
 - The semantic ledger uses one independently changeable obligation per row and resolves one owner
@@ -256,6 +273,19 @@ project enters the ordinary-artifact route before adoption.
   run without automatic restart.
 - One fresh reviewer receives one bounded Review Packet, performs Semantic Review first, then runs
   the artifact-specific Acceptance only after Semantic Review passes, and returns separate verdicts.
+- When Readiness required a Behavior Control, include its selected task and raw result in the Review
+  Packet without converting the result into an author-written semantic conclusion.
+- For an Ordinary Artifact, the reviewer sends the selected portfolio to one isolated Acceptance
+  Runner. Every case starts from its declared frozen input and does not inherit another case's
+  result. The Runner receives the candidate exactly as runtime would expose it, the tasks, and only
+  the required context or tools; it receives no ledger, expected result, diff, author reasoning,
+  finding, prior run output, or other reviewer-only material.
+- The Runner must make the decision, produce the output, or use the public entry required by the
+  task. Reciting the candidate or predicting what an Agent would do is not Acceptance evidence. The
+  reviewer, not the Runner, compares observable work and artifacts with accepted evidence.
+- Run each case once by default. A reviewer may rerun one case once only when its result is
+  inconclusive or unstable; use a new isolated Runner, report both results, and fail divergent
+  behavior instead of selecting the favorable sample.
 - Each candidate receives its own fresh reviewer. Independent Candidate Reviews may run in
   parallel, but their packets, revisions, counterexamples, findings, and verdicts remain separate.
 - Findings from both gates are aggregated before action. Any decision-required finding stops;
@@ -276,6 +306,8 @@ project enters the ordinary-artifact route before adoption.
 - Qualification reviews that guidance statically against two to four supported high-risk inputs.
   The walkthrough fails when another Agent would need to invent a target fact, condition, step,
   owner, path, recovery, or exit.
+- Static Generation Contract Acceptance is performed by the fresh reviewer and starts neither an
+  Acceptance Runner nor target generation.
 - Contract qualification does not create a target or require a fake project. Deterministic scripts
   or renderers owned by the contract still use their normal machine tests and real public entry
   points.
@@ -332,9 +364,11 @@ project enters the ordinary-artifact route before adoption.
   Reference mirrors are checked afterward for one-to-one order, Markdown structure, paths,
   commands, identifiers, code blocks, and behavior; they never repair the canonical source.
 - Rule Acceptance covers included and excluded applicability, affected boundaries, exceptions,
-  precedence, and conflicts.
+  precedence, and conflicts. An isolated Runner must apply the loaded Rule to the task and produce
+  an observable decision or action rather than explain the Rule academically.
 - Skill Acceptance covers normal completion and the highest-risk applicable stop, failure,
-  recovery, handoff, and coincident-exit paths.
+  recovery, handoff, and coincident-exit paths. An isolated Runner must perform the job from its
+  trigger using only runtime-visible inputs.
 - Scripted Skills are exercised through their real public entry. Supported platforms that cannot be
   run are reported as untested.
 - Generation-contract Acceptance statically walks the complete guidance against the highest-risk
@@ -342,18 +376,20 @@ project enters the ordinary-artifact route before adoption.
   generate or grade a fake target.
 - A real target created by a generation contract later enters the ordinary Rule or Skill portfolio
   and receives a fresh Candidate Review before adoption.
-- Shared Rule Acceptance uses at least two independent traceable evidence contexts. The same policy
-  must remain valid across both while the portfolio covers relevant applicability, exclusion,
-  boundary, exception, precedence, and local-conflict behavior.
-- Shared Skill Acceptance uses at least two independent traceable evidence contexts. The same job
-  must remain stable while project-local facts and applicable non-completion cases vary. Owned
-  executable resources still use their real public entry points.
+- Shared Rule Acceptance uses one representative traceable context plus direct evidence that the
+  policy does not depend on project-local facts. Add a second context only when portability is
+  material and direct evidence cannot establish it; the portfolio still covers the relevant
+  applicability, exclusion, boundary, exception, precedence, and local-conflict behavior.
+- Shared Skill Acceptance uses one representative traceable context plus direct portability
+  evidence. Add a second context only for a material unresolved portability claim. Owned executable
+  resources still use their real public entry points.
 - Project-local Rule and Skill cases may include a small self-contained project when local Rules,
   configuration, files, or commands affect the result.
 - `tests/fixtures/write-rules-and-skills/` stores six independent case definitions with requests,
   evidence, initial state, structured Acceptance cases, and only the small project inputs a case
-  needs. It stores no generated candidate, verdict, report, mutable run state, or exact expected
-  prose.
+  needs. Ordinary cases declare isolated-runner Acceptance; Generation Contract cases declare
+  static walkthrough. Structured expected results remain reviewer-only. The fixtures store no
+  generated candidate, verdict, report, mutable run state, or exact expected prose.
 - Every ordinary candidate uses two to four highest-risk supported cases. Exhaustive
   natural-language matrices are prohibited.
 - Each candidate compares line, word, and byte size to its baseline. Growth is acceptable only when
@@ -372,6 +408,9 @@ project enters the ordinary-artifact route before adoption.
   trigger, main path or outcome, owner boundaries, and relevant exits without author explanation.
   Required branch material may live behind a precise pointer; unexplained searching or invented
   navigation is a failure.
+- A Behavior Control is conditional evidence, not a universal RED phase. It is required only for a
+  behavior-shaping instruction whose need is otherwise unsupported; one accepted-version or
+  no-candidate run plus the matching candidate run is sufficient unless the result is inconclusive.
 - Style findings must name an observable reading or execution cost and a supported correction.
   Personal wording preference alone cannot fail a candidate.
 
@@ -389,6 +428,9 @@ project enters the ordinary-artifact route before adoption.
 - Requiring custom candidate digests when the active project has no such protocol.
 - Using dual authors, eight candidate bundles, 343-row natural-language matrices, evidence-closure
   archives, or routine mutation testing for ordinary authoring.
+- Requiring Behavior Control for policy authority, project facts, reference material, Generation
+  Contracts, or already observed failures; running five-sample wording campaigns or selecting a
+  favorable result from divergent Runner outputs.
 - Turning Defect Cards or semantic expectations into brittle sentence or heading assertions.
 - Treating a fake generated target, prepared answer, or invented project as proof that a generation
   contract is complete.

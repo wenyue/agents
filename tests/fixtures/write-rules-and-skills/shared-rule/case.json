@@ -2,12 +2,13 @@
   "version": 1,
   "id": "shared-rule",
   "lifecycle": "ordinary-artifact",
+  "acceptance_mode": "isolated-runner",
   "semantic_type": "rule",
   "scope": "shared",
   "candidate_contract": {"format": "markdown", "relative_path": "diagnostic-attribution.md"},
   "request": "request.md",
-  "evidence_contexts": [
-    {"id": "compiler", "path": "evidence/compiler.md"},
+  "representative_context": {"id": "compiler", "path": "evidence/compiler.md"},
+  "portability_evidence": [
     {"id": "configuration", "path": "evidence/configuration.md"}
   ],
   "initial_state": {

@@ -2,6 +2,7 @@
   "version": 1,
   "id": "skill-generation-contract",
   "lifecycle": "generation-contract",
+  "acceptance_mode": "static-walkthrough",
   "semantic_type": "skill",
   "scope": "cross-project",
   "candidate_contract": {"format": "skill-package", "name": "write-project-maintenance-skill", "relative_path": "SKILL.md"},

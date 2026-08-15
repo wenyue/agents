@@ -2,6 +2,7 @@
   "version": 1,
   "id": "project-local-skill",
   "lifecycle": "ordinary-artifact",
+  "acceptance_mode": "isolated-runner",
   "semantic_type": "skill",
   "scope": "project-local",
   "candidate_contract": {"format": "skill-package", "name": "refresh-generated-catalog", "relative_path": ".agents/skills/refresh-generated-catalog/SKILL.md"},

@@ -36,9 +36,9 @@ evidence and where to stop when evidence does not select one result.
 
 ## Accept the contract statically
 
-Do not generate a fake target or invent a project to qualify the contract. After Semantic Review
-passes, walk the complete guidance against two to four of the highest-risk supported inputs, chosen
-from:
+Do not start an Acceptance Runner, generate a fake target, or invent a project to qualify the
+contract. After Semantic Review passes, the fresh reviewer walks the complete guidance against two
+to four of the highest-risk supported inputs, chosen from:
 
 - unclear intent or missing target evidence;
 - unresolved owner, packaging, schema, write location, or authority;

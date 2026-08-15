@@ -40,6 +40,9 @@ description: 在创建、重写或实质更新 SmartKit Rule、Agent Skill 或 R
 - 当前行为、适用的项目 Rule 与宿主机制、验证接缝，以及任何可能改变政策、动作、目标或出口的
   环境事实。
 
+写入前，应用所选生命周期 reference 要求的任何 Behavior Control，并保留其选定任务和原始结果，
+供 review 使用。
+
 只有在现有证据仍允许实质不同的行为、所有权、写入目标、权限、副作用或出口时才提问。否则，
 记录唯一受支持的事实并继续。把项目事实保留在其当前 owner 中；可复用 Skill 应发现这些事实，
 而不是缓存它们。
@@ -87,6 +90,7 @@ Review 和 Acceptance 结果失效。停止当前 review，而不是自动重启
 把以下有界材料交给一个未参与候选编写的 fresh reviewer：
 
 - 已接受结果和语义账本；
+- Readiness 要求 Behavior Control 时所选的任务及其原始结果；
 - 完整候选工件、自有资源以及加载或分发表面；
 - 治理证据和适用 reference；以及
 - 精确的机器验证结果和未测试表面。
@@ -98,8 +102,9 @@ reviewer 按顺序执行两个关卡：
 
 1. **Semantic Review** 完整阅读候选工件，并用两到四个风险最高且有证据支持的反例尝试证伪它。
    返回 `PASS` 或 `FAIL`。
-2. **Acceptance** 仅在 Semantic Review 通过后开始。应用所选 reference 的 portfolio，并返回
-   单独的 `PASS` 或 `FAIL`。
+2. **Acceptance** 仅在 Semantic Review 通过后开始。应用所选生命周期和语义类型的 portfolio：
+   普通工件 Acceptance 使用一个隔离的 fresh Runner；生成契约 Acceptance 由 reviewer 静态走查，
+   不使用 Runner，也不生成目标。它返回单独的 `PASS` 或 `FAIL`。
 
 每个阻塞 finding 都要指出关卡、证据、具体反例，以及以下一种分类：
 
@@ -116,8 +121,9 @@ fresh reviewer 审查，并且彼此不继承证据或结论。
 Candidate Revision。
 
 把修正后的 revision、首轮 finding、治理证据和精确复验结果交给另一个 fresh Closure Reviewer。
-它重新执行完整候选的 Semantic Review 和受影响的 Acceptance。`PASS` 结束本轮；`FAIL` 则停止。
-不要自动开始下一轮修正。用户决定可以基于结果状态启动之后一次明确的 authoring run。
+它重新执行完整候选的 Semantic Review 和受影响的 Acceptance，并为受影响的普通工件 portfolio
+使用一个新的隔离 Runner。`PASS` 结束本轮；`FAIL` 则停止。不要自动开始下一轮修正。用户决定可以
+基于结果状态启动之后一次明确的 authoring run。
 
 成功要求机器验证、Semantic Review 和 Acceptance 对同一个 Candidate Revision 全部通过。报告
 候选工件的生命周期、语义类型、owner、保留内容与批准变更、受影响表面、大小比较、精确命令和退出
