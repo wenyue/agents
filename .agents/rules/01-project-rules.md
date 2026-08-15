@@ -74,7 +74,7 @@ SmartKit Rule configuration owns precedence.
 
 - Preserve `.agents/` as the installation root in public setup prompts, templates, manifests,
   scripts, and documentation for target repositories.
-- Treat catalog-selected sources, generated outputs, platform wrappers, and configured external
+- Treat catalog-selected sources, generated outputs, Harness wrappers, and configured external
   Skill directories as setup-managed content. Preserve discovered project Rules and Skills,
   configured Agent sources, and non-template structured fields.
 - Use `.agents/smartkit.lock.json` as the sole project ownership authority for managed Rules, Skills,

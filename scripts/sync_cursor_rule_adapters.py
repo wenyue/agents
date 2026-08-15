@@ -24,6 +24,8 @@ def desired_adapters(root: Path) -> dict[str, str]:
         source = str(rule['source'])
         trigger = rule['trigger']
         assert isinstance(trigger, dict)
+        if trigger.get('type') == 'harness':
+            continue
         name = rule_id.split('/', 1)[1]
         if trigger.get('type') == 'always':
             frontmatter = 'alwaysApply: true'

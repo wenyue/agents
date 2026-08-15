@@ -88,7 +88,7 @@ class SetupCliTest(unittest.TestCase):
                     encoding='utf-8',
                 )
         (root / 'sources.json').write_text(
-            json.dumps({'version': 1, 'sources': [
+            json.dumps({'sources': [
                 {
                     'id': source.id, 'url': source.url,
                     'requested_ref': source.ref, 'resolved_ref': source.ref or 'main',
@@ -151,7 +151,7 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(result, 2)
             self.assertEqual(self.snapshot_tree(target), {})
 
-    def test_prepare_records_fixed_platforms_and_eight_generation_requests_without_target_writes(self):
+    def test_prepare_records_fixed_harnesses_and_eight_generation_requests_without_target_writes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -161,12 +161,11 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(self.prepare(target, session), 0)
 
             request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
-            self.assertEqual(request['version'], 1)
             self.assertIsNone(request['external_snapshot_sha256'])
             self.assertEqual(request['target'], str(target.absolute()))
             self.assertEqual(request['source_root'], str(REPO_ROOT.absolute()))
             self.assertEqual(request['source_commit'], self.source_commit)
-            self.assertEqual(request['platforms'], ['codex', 'cursor', 'copilot'])
+            self.assertEqual(request['harnesses'], ['codex', 'cursor', 'copilot'])
             self.assertEqual(
                 request['external_sources'],
                 [],
@@ -216,16 +215,15 @@ class SetupCliTest(unittest.TestCase):
             config = target / '.agents/config.json'
             config.parent.mkdir()
             config.write_text(json.dumps({
-                'version': 1,
                 'mcp': [{
                     'id': 'sentry',
                     'url': 'https://mcp.sentry.dev/mcp',
                     'overrides': [{
-                        'when': {'platforms': ['cursor']},
+                        'when': {'harnesses': ['cursor']},
                         'set': {'url': 'https://cursor.sentry.dev/mcp'},
                     }],
                     'readiness': {
-                        'platforms': ['codex'],
+                        'harnesses': ['codex'],
                         'operatingSystems': ['linux'],
                         'checks': [],
                     },
@@ -237,14 +235,14 @@ class SetupCliTest(unittest.TestCase):
             request = json.loads((session / 'request.json').read_text(encoding='utf-8'))
             self.assertEqual(request['mcp_servers'], [{
                 'id': 'sentry',
-                'platforms': ['codex', 'cursor', 'copilot'],
+                'harnesses': ['codex', 'cursor', 'copilot'],
                 'url': 'https://mcp.sentry.dev/mcp',
                 'overrides': [{
-                    'when': {'platforms': ['cursor']},
+                    'when': {'harnesses': ['cursor']},
                     'set': {'url': 'https://cursor.sentry.dev/mcp'},
                 }],
                 'readiness': {
-                    'platforms': ['codex'],
+                    'harnesses': ['codex'],
                     'operatingSystems': ['linux'],
                     'checks': [],
                 },
@@ -342,7 +340,6 @@ class SetupCliTest(unittest.TestCase):
             config.write_text(
                 json.dumps(
                     {
-                        'version': 1,
                         'skills': [{
                             'source': 'example/repository',
                             'ref': 'main',
@@ -369,7 +366,7 @@ class SetupCliTest(unittest.TestCase):
                         encoding='utf-8',
                     )
                 (destination / 'sources.json').write_text(
-                    json.dumps({'version': 1, 'sources': [{
+                    json.dumps({'sources': [{
                         'id': 'example/repository',
                         'url': 'https://github.com/example/repository',
                         'requested_ref': 'main', 'resolved_ref': 'main',
@@ -412,7 +409,6 @@ class SetupCliTest(unittest.TestCase):
             config = target / '.agents/config.json'
             config.parent.mkdir(parents=True)
             config.write_text(json.dumps({
-                'version': 1,
                 'skills': [{
                     'source': 'example/repository',
                     'include': ['skills/external-check'],
@@ -445,7 +441,6 @@ class SetupCliTest(unittest.TestCase):
             config = target / '.agents/config.json'
             config.parent.mkdir(parents=True)
             config.write_text(json.dumps({
-                'version': 1,
                 'skills': [{
                     'source': 'example/repository',
                     'include': ['skills/external-check'],
@@ -573,21 +568,20 @@ class SetupCliTest(unittest.TestCase):
             with redirect_stdout(apply_output):
                 self.assertEqual(setup_project_agents.main(apply_args), 0)
             apply_result = json.loads(apply_output.getvalue())
-            self.assertEqual(apply_result['version'], 1)
             self.assertEqual(apply_result['phase'], 'apply')
             self.assertEqual(apply_result['source_commit'], self.source_commit)
             self.assertIsNone(apply_result['drift'])
             self.assertEqual(apply_result['changed_paths'], sorted(apply_result['changed_paths']))
             self.assertIn('.agents/rules/00-project-tools.md', apply_result['changed_paths'])
             self.assertEqual(
-                apply_result['platforms'], ['codex', 'cursor', 'copilot']
+                apply_result['harnesses'], ['codex', 'cursor', 'copilot']
             )
             self.assertEqual(apply_result['external_skills'], [])
             self.assertEqual(apply_result['preserved_paths'], [])
             self.assertEqual(
                 set(apply_result),
                 {
-                    'version', 'phase', 'source_commit', 'changed_paths', 'platforms',
+                    'phase', 'source_commit', 'changed_paths', 'harnesses',
                     'external_skills', 'preserved_paths', 'drift',
                 },
             )
@@ -654,12 +648,11 @@ class SetupCliTest(unittest.TestCase):
             source.write_text('# L10n\n\nUse project localization policy.\n', encoding='utf-8')
             config = target / '.agents/config.json'
             config.write_text(json.dumps({
-                'version': 1,
                 'agents': [{
                     'id': 'l10n',
                     'source': '.agents/agents/l10n.md',
                     'description': 'Project-local agent: l10n',
-                    'platforms': {
+                    'harnesses': {
                         'codex': {
                             'model': 'gpt-5.6-terra',
                             'model_reasoning_effort': 'medium',
@@ -811,11 +804,11 @@ class SetupEndToEndTest(unittest.TestCase):
             (target / 'unmanaged.txt').write_text('keep\n', encoding='utf-8')
             before_upgrade = self.snapshot_tree(target)
 
-            rule = work / 'setup-assets/templates/platform-config/cursor.cli.json'
+            rule = work / 'setup-assets/templates/harness-config/cursor.cli.json'
             rule_document = json.loads(rule.read_text(encoding='utf-8'))
             rule_document['permissions']['allow'].append('Shell(git status)')
             rule.write_text(json.dumps(rule_document) + '\n', encoding='utf-8')
-            run_git(work, 'add', 'setup-assets/templates/platform-config/cursor.cli.json')
+            run_git(work, 'add', 'setup-assets/templates/harness-config/cursor.cli.json')
             run_git(work, 'commit', '--quiet', '-m', 'update managed rule')
             run_git(work, 'push', '--quiet', 'origin', 'master')
 
@@ -914,12 +907,12 @@ class SetupEndToEndTest(unittest.TestCase):
                 collision_content,
             )
 
-            source_rule = source / 'setup-assets/templates/platform-config/codex.config.toml'
+            source_rule = source / 'setup-assets/templates/harness-config/codex.config.toml'
             source_rule.write_text(
                 source_rule.read_text(encoding='utf-8') + '\n# changed once\n',
                 encoding='utf-8',
             )
-            second_source_rule = source / 'setup-assets/templates/platform-config/cursor.cli.json'
+            second_source_rule = source / 'setup-assets/templates/harness-config/cursor.cli.json'
             second_document = json.loads(
                 second_source_rule.read_text(encoding='utf-8')
             )

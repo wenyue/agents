@@ -43,10 +43,10 @@ def validated_snapshot_metadata(
         document = json.loads(metadata_path.read_text(encoding='utf-8'))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ExternalSkillError('external Skill source metadata is invalid') from error
-    if not isinstance(document, Mapping) or set(document) != {'version', 'sources'}:
+    if not isinstance(document, Mapping) or set(document) != {'sources'}:
         raise ExternalSkillError('external Skill source metadata is invalid')
     raw_sources = document.get('sources')
-    if document.get('version') != 1 or not isinstance(raw_sources, list):
+    if not isinstance(raw_sources, list):
         raise ExternalSkillError('external Skill source metadata is invalid')
     if len(raw_sources) != len(specs):
         raise ExternalSkillError('external Skill source metadata does not match project config')
@@ -250,7 +250,7 @@ def snapshot_external_skills(
                 'skills': skill_locks,
             })
         (snapshots / 'sources.json').write_text(
-            json.dumps({'version': 1, 'sources': lock_sources}, indent=2) + '\n',
+            json.dumps({'sources': lock_sources}, indent=2) + '\n',
             encoding='utf-8',
         )
     finally:

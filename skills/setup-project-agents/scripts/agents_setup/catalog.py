@@ -20,7 +20,7 @@ from .models import (
     McpServerSpec,
     McpTransport,
     OperatingSystem,
-    Platform,
+    Harness,
     ProjectAgentSpec,
     ProjectConfig,
 )
@@ -47,23 +47,23 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     | {f'LPT{number}' for number in range(1, 10)}
 )
 _ASSET_FIELDS = frozenset({
-    'id', 'kind', 'source', 'skill', 'target', 'platforms', 'mode',
+    'id', 'kind', 'source', 'skill', 'target', 'harnesses', 'mode',
     'control_plane', 'metadata',
 })
 _CATALOG_FIELDS = frozenset({'plugin', 'assets'})
 _PLUGIN_FIELDS = frozenset({'id', 'version', 'repository', 'ref'})
-_PROJECT_CONFIG_FIELDS = frozenset({'$schema', 'version', 'skills', 'mcp', 'agents'})
+_PROJECT_CONFIG_FIELDS = frozenset({'$schema', 'skills', 'mcp', 'agents'})
 _EXTERNAL_SOURCE_FIELDS = frozenset({'source', 'ref', 'include'})
 _MCP_SERVER_FIELDS = frozenset({
-    'id', 'platforms', 'command', 'args', 'cwd', 'env', 'url', 'overrides',
+    'id', 'harnesses', 'command', 'args', 'cwd', 'env', 'url', 'overrides',
     'readiness',
 })
 _MCP_OVERRIDE_FIELDS = frozenset({'when', 'set'})
-_MCP_OVERRIDE_SELECTOR_FIELDS = frozenset({'platforms', 'operatingSystems'})
+_MCP_OVERRIDE_SELECTOR_FIELDS = frozenset({'harnesses', 'operatingSystems'})
 _MCP_OVERRIDE_VALUE_FIELDS = frozenset({'command', 'args', 'cwd', 'env', 'url'})
-_MCP_READINESS_FIELDS = frozenset({'platforms', 'operatingSystems', 'checks'})
-_PROJECT_AGENT_FIELDS = frozenset({'id', 'source', 'description', 'platforms'})
-_PROJECT_AGENT_PLATFORM_FIELDS = frozenset({'codex', 'cursor', 'copilot'})
+_MCP_READINESS_FIELDS = frozenset({'harnesses', 'operatingSystems', 'checks'})
+_PROJECT_AGENT_FIELDS = frozenset({'id', 'source', 'description', 'harnesses'})
+_PROJECT_AGENT_HARNESS_FIELDS = frozenset({'codex', 'cursor', 'copilot'})
 _CODEX_AGENT_FIELDS = frozenset({'model', 'model_reasoning_effort', 'sandbox_mode'})
 _CURSOR_AGENT_FIELDS = frozenset({'model', 'readonly'})
 _COPILOT_AGENT_FIELDS = frozenset({'model', 'disable_model_invocation'})
@@ -175,22 +175,22 @@ def _mcp_override(
     *,
     label: str,
     transport: McpTransport,
-    enabled_platforms: tuple[Platform, ...],
+    enabled_harnesses: tuple[Harness, ...],
 ) -> McpOverride:
     document = _object(value, label)
     _fields(document, _MCP_OVERRIDE_FIELDS, label)
     selector = _object(_required(document, 'when', label), f'{label}.when')
     _fields(selector, _MCP_OVERRIDE_SELECTOR_FIELDS, f'{label}.when')
     if not selector:
-        raise ContractError(f'{label}.when must select platforms or operatingSystems')
-    platforms = None
-    if 'platforms' in selector:
-        platforms = _platforms(selector['platforms'], f'{label}.when.platforms', ())
-        if not platforms:
-            raise ContractError(f'{label}.when.platforms must not be empty')
-        if set(platforms) - set(enabled_platforms):
+        raise ContractError(f'{label}.when must select harnesses or operatingSystems')
+    harnesses = None
+    if 'harnesses' in selector:
+        harnesses = _harnesses(selector['harnesses'], f'{label}.when.harnesses', ())
+        if not harnesses:
+            raise ContractError(f'{label}.when.harnesses must not be empty')
+        if set(harnesses) - set(enabled_harnesses):
             raise ContractError(
-                f'{label}.when.platforms includes a platform not enabled by the server'
+                f'{label}.when.harnesses includes a harness not enabled by the server'
             )
     operating_systems = None
     if 'operatingSystems' in selector:
@@ -214,7 +214,7 @@ def _mcp_override(
     url = _mcp_text(values['url'], f'{label}.set.url') if 'url' in values else None
     if url is not None and not url.startswith(('https://', 'http://')):
         raise ContractError(f'{label}.set.url must be an HTTP URL')
-    return McpOverride(platforms, operating_systems, command, args, cwd, env, url)
+    return McpOverride(harnesses, operating_systems, command, args, cwd, env, url)
 
 
 def _mcp_readiness_check(value: object, label: str) -> Mapping[str, object]:
@@ -261,18 +261,18 @@ def _mcp_readiness(
     value: object,
     *,
     label: str,
-    enabled_platforms: tuple[Platform, ...],
+    enabled_harnesses: tuple[Harness, ...],
 ) -> McpReadiness:
     document = _object(value, label)
     _fields(document, _MCP_READINESS_FIELDS, label)
-    platforms = None
-    if 'platforms' in document:
-        platforms = _platforms(document['platforms'], f'{label}.platforms', ())
-        if not platforms:
-            raise ContractError(f'{label}.platforms must not be empty')
-        if set(platforms) - set(enabled_platforms):
+    harnesses = None
+    if 'harnesses' in document:
+        harnesses = _harnesses(document['harnesses'], f'{label}.harnesses', ())
+        if not harnesses:
+            raise ContractError(f'{label}.harnesses must not be empty')
+        if set(harnesses) - set(enabled_harnesses):
             raise ContractError(
-                f'{label}.platforms includes a platform not enabled by the server'
+                f'{label}.harnesses includes a harness not enabled by the server'
             )
     operating_systems = (
         _operating_systems(document['operatingSystems'], f'{label}.operatingSystems')
@@ -288,7 +288,7 @@ def _mcp_readiness(
         )
         if raw_checks is not None else None
     )
-    return McpReadiness(platforms, operating_systems, checks)
+    return McpReadiness(harnesses, operating_systems, checks)
 
 
 def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
@@ -303,9 +303,9 @@ def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
         document = _object(raw_server, label)
         _fields(document, _MCP_SERVER_FIELDS, label)
         server_id = _name(_required(document, 'id', label), f'{label}.id')
-        platforms = _platforms(document.get('platforms'), f'{label}.platforms', tuple(Platform))
-        if not platforms:
-            raise ContractError(f'{label}.platforms must not be empty')
+        harnesses = _harnesses(document.get('harnesses'), f'{label}.harnesses', tuple(Harness))
+        if not harnesses:
+            raise ContractError(f'{label}.harnesses must not be empty')
         has_command = 'command' in document
         has_url = 'url' in document
         if has_command == has_url:
@@ -333,7 +333,7 @@ def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
                 raw_override,
                 label=f'{label}.overrides[{override_index}]',
                 transport=transport,
-                enabled_platforms=platforms,
+                enabled_harnesses=harnesses,
             )
             for override_index, raw_override in enumerate(raw_overrides)
         )
@@ -341,14 +341,14 @@ def parse_mcp_servers(value: object) -> tuple[McpServerSpec, ...]:
             _mcp_readiness(
                 document['readiness'],
                 label=f'{label}.readiness',
-                enabled_platforms=platforms,
+                enabled_harnesses=harnesses,
             )
             if 'readiness' in document else None
         )
         result.append(McpServerSpec(
             server_id,
             transport,
-            platforms,
+            harnesses,
             command=command,
             args=args or (),
             cwd=cwd,
@@ -410,20 +410,20 @@ def _metadata(value: object, kind: str, target: PurePosixPath | None) -> Mapping
     return {}
 
 
-def _platforms(value: object, label: str, default: tuple[Platform, ...]) -> tuple[Platform, ...]:
+def _harnesses(value: object, label: str, default: tuple[Harness, ...]) -> tuple[Harness, ...]:
     if value is None:
         return default
     if not isinstance(value, list):
         raise ContractError(f'{label} must be an array')
-    result: list[Platform] = []
+    result: list[Harness] = []
     for item in value:
         try:
-            platform = Platform(item)
+            harness = Harness(item)
         except (TypeError, ValueError) as error:
-            raise ContractError(f'{label} has an unsupported platform') from error
-        if platform in result:
-            raise ContractError(f'{label} has duplicate platforms')
-        result.append(platform)
+            raise ContractError(f'{label} has an unsupported harness') from error
+        if harness in result:
+            raise ContractError(f'{label} has duplicate harnesses')
+        result.append(harness)
     return tuple(result)
 
 
@@ -472,7 +472,7 @@ def parse_asset(
     if target_value is not None and not isinstance(target_value, str):
         raise ContractError('asset target must be a relative path')
     target = safe_relative(target_value, 'asset target') if target_value is not None else None
-    platforms = _platforms(asset.get('platforms'), 'asset platforms', tuple(Platform))
+    harnesses = _harnesses(asset.get('harnesses'), 'asset harnesses', tuple(Harness))
     mode = _name(asset.get('mode', 'copy'), 'asset mode')
     control_plane = asset.get('control_plane', False)
     if type(control_plane) is not bool:
@@ -488,15 +488,15 @@ def parse_asset(
             target is None
             or source != PurePosixPath('agents/codex')
             or target != PurePosixPath('.codex/agents')
-            or platforms != (Platform.CODEX,)
+            or harnesses != (Harness.CODEX,)
             or mode != 'copy'
         ):
             raise ContractError(
                 'a plugin Agent asset must copy agents/codex to .codex/agents '
-                'for the codex platform'
+                'for the codex harness'
             )
     return AssetSpec(
-        asset_id, kind, source, target, platforms, mode, control_plane,
+        asset_id, kind, source, target, harnesses, mode, control_plane,
         _metadata(asset.get('metadata'), kind, target), skill_id,
     )
 
@@ -688,52 +688,52 @@ def parse_project_agents(value: object) -> tuple[ProjectAgentSpec, ...]:
         description = _agent_text(
             _required(document, 'description', label), f'{label}.description'
         )
-        platforms = _object(_required(document, 'platforms', label), f'{label}.platforms')
-        _fields(platforms, _PROJECT_AGENT_PLATFORM_FIELDS, f'{label}.platforms')
-        if not platforms:
-            raise ContractError(f'{label}.platforms must not be empty')
+        harnesses = _object(_required(document, 'harnesses', label), f'{label}.harnesses')
+        _fields(harnesses, _PROJECT_AGENT_HARNESS_FIELDS, f'{label}.harnesses')
+        if not harnesses:
+            raise ContractError(f'{label}.harnesses must not be empty')
 
         codex = None
-        if 'codex' in platforms:
-            config = _object(platforms['codex'], f'{label}.platforms.codex')
-            _fields(config, _CODEX_AGENT_FIELDS, f'{label}.platforms.codex')
+        if 'codex' in harnesses:
+            config = _object(harnesses['codex'], f'{label}.harnesses.codex')
+            _fields(config, _CODEX_AGENT_FIELDS, f'{label}.harnesses.codex')
             codex = CodexAgentConfig(
                 sandbox_mode=_agent_text(
-                    _required(config, 'sandbox_mode', f'{label}.platforms.codex'),
-                    f'{label}.platforms.codex.sandbox_mode',
+                    _required(config, 'sandbox_mode', f'{label}.harnesses.codex'),
+                    f'{label}.harnesses.codex.sandbox_mode',
                 ),
-                model=_optional_agent_text(config, 'model', f'{label}.platforms.codex'),
+                model=_optional_agent_text(config, 'model', f'{label}.harnesses.codex'),
                 model_reasoning_effort=_optional_agent_text(
-                    config, 'model_reasoning_effort', f'{label}.platforms.codex'
+                    config, 'model_reasoning_effort', f'{label}.harnesses.codex'
                 ),
             )
 
         cursor = None
-        if 'cursor' in platforms:
-            config = _object(platforms['cursor'], f'{label}.platforms.cursor')
-            _fields(config, _CURSOR_AGENT_FIELDS, f'{label}.platforms.cursor')
-            readonly = _required(config, 'readonly', f'{label}.platforms.cursor')
+        if 'cursor' in harnesses:
+            config = _object(harnesses['cursor'], f'{label}.harnesses.cursor')
+            _fields(config, _CURSOR_AGENT_FIELDS, f'{label}.harnesses.cursor')
+            readonly = _required(config, 'readonly', f'{label}.harnesses.cursor')
             if type(readonly) is not bool:
-                raise ContractError(f'{label}.platforms.cursor.readonly must be a boolean')
+                raise ContractError(f'{label}.harnesses.cursor.readonly must be a boolean')
             cursor = CursorAgentConfig(
                 readonly=readonly,
-                model=_optional_agent_text(config, 'model', f'{label}.platforms.cursor'),
+                model=_optional_agent_text(config, 'model', f'{label}.harnesses.cursor'),
             )
 
         copilot = None
-        if 'copilot' in platforms:
-            config = _object(platforms['copilot'], f'{label}.platforms.copilot')
-            _fields(config, _COPILOT_AGENT_FIELDS, f'{label}.platforms.copilot')
+        if 'copilot' in harnesses:
+            config = _object(harnesses['copilot'], f'{label}.harnesses.copilot')
+            _fields(config, _COPILOT_AGENT_FIELDS, f'{label}.harnesses.copilot')
             disabled = _required(
-                config, 'disable_model_invocation', f'{label}.platforms.copilot'
+                config, 'disable_model_invocation', f'{label}.harnesses.copilot'
             )
             if type(disabled) is not bool:
                 raise ContractError(
-                    f'{label}.platforms.copilot.disable_model_invocation must be a boolean'
+                    f'{label}.harnesses.copilot.disable_model_invocation must be a boolean'
                 )
             copilot = CopilotAgentConfig(
                 disable_model_invocation=disabled,
-                model=_optional_agent_text(config, 'model', f'{label}.platforms.copilot'),
+                model=_optional_agent_text(config, 'model', f'{label}.harnesses.copilot'),
             )
 
         result.append(ProjectAgentSpec(
@@ -756,14 +756,10 @@ def load_project_config(
     else:
         document = _load_json(path, 'project config')
     _fields(document, _PROJECT_CONFIG_FIELDS, 'project config')
-    version = document.get('version', 1)
-    if type(version) is not int or version != 1:
-        raise ContractError('project config version must be 1')
     project_external_skills = parse_external_skills(document.get('skills'), catalog)
     mcp_servers = parse_mcp_servers(document.get('mcp'))
     agents = parse_project_agents(document.get('agents'))
     return ProjectConfig(
-        version,
         _selected(None, 'selected_rules', catalog, 'rule'),
         _selected(None, 'selected_skills', catalog, 'skill'),
         project_external_skills,

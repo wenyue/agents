@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-`WenYue SmartKit` is a cross-platform plugin for Codex, Cursor, and GitHub Copilot. It provides
+`WenYue SmartKit` is a cross-Harness plugin for Codex, Cursor, and GitHub Copilot. It provides
 Rules, Skills, Agents, and MCP as peer capabilities, then checks whether recommended tools and
 configured MCP prerequisites are available when a session starts.
 
@@ -42,7 +42,7 @@ To update the Copilot plugin, run `copilot plugin marketplace update wenyue`, fo
 
 | Capability | What SmartKit provides |
 | --- | --- |
-| Rules | Always-on and file-scoped instructions. Strength wins first (`Mandatory` > `Default` > `Advisory`), followed by project ownership and narrower file scope. |
+| Rules | Always-on, file-scoped, and Harness-scoped instructions. Strength wins first (`Mandatory` > `Default` > `Advisory`), followed by project ownership and narrower file scope. Harness scope controls activation and shares the always-on precedence tier. |
 | Skills | SmartKit workflows plus reviewed, licensed, version-pinned third-party workflows. |
 | Agents | `change-set-verifier` on all three hosts. It uses the project's change-set-verification Skill, reports `inconclusive` when setup has not installed that Skill, and inherits the host-selected model. Cursor and Copilot receive it from the plugin; Codex receives it through setup-managed default delivery. |
 | MCP | Playwright in isolated headless mode on all three hosts, subject to normal host approval. |
@@ -55,7 +55,7 @@ Codex plugin packages do not load custom Agents. Run `setup-project-agents` in e
 project snapshot to install SmartKit's Codex Agent adapter under `.codex/agents/`. The adapter
 remains plugin-owned and does not need an `.agents/config.json` Project Agent declaration.
 
-## Platform support
+## Harness and platform support
 
 All three hosts support Windows and Linux.
 
@@ -83,7 +83,7 @@ snapshot. Other developers receive it through clone or pull and do not run setup
 | --- | --- |
 | Rules | Keep project-owned sources under `.agents/rules/`; setup preserves them and installs requested generated Rules. |
 | Skills | Keep project-owned Skills under `.agents/skills/`, or declare GitHub `source`, optional `ref`, and non-empty `include` entries in `.agents/config.json` `skills`. |
-| Agents | Keep canonical sources under `.agents/agents/` and declare matching `id`, `source`, `description`, and host `platforms` in `.agents/config.json` `agents`; edit these inputs rather than generated adapters. |
+| Agents | Keep canonical sources under `.agents/agents/` and declare matching `id`, `source`, `description`, and `harnesses` in `.agents/config.json` `agents`; edit these inputs rather than generated adapters. |
 | MCP | Declare each server in `.agents/config.json` `mcp` with a stable ID and exactly one of `url` or `command`; environment variables are referenced by name, never stored as secret values. |
 
 Setup preserves unmanaged host configuration and stops before writes when a setup-managed entry
@@ -91,7 +91,7 @@ conflicts or was modified locally.
 
 ### MCP overrides
 
-Each override has a `when` selector and a `set` object. Omit `when.platforms` to match every host
+Each override has a `when` selector and a `set` object. Omit `when.harnesses` to match every Harness
 enabled for the server, or omit `when.operatingSystems` to match every supported operating system
 (`windows` and `linux`). When both are present, both must match. Matching rules apply in array order,
 and a later rule wins only for fields it declares:
@@ -106,7 +106,7 @@ and a later rule wins only for fields it declares:
       "set": {"command": "py"}
     },
     {
-      "when": {"platforms": ["cursor", "copilot"]},
+      "when": {"harnesses": ["cursor", "copilot"]},
       "set": {"cwd": "tools/inspector"}
     }
   ]
@@ -115,7 +115,7 @@ and a later rule wins only for fields it declares:
 
 ### Project MCP readiness
 
-Project MCP prerequisite checks are automatic. Use `readiness.platforms` or
+Project MCP prerequisite checks are automatic. Use `readiness.harnesses` or
 `readiness.operatingSystems` when a check applies only to selected hosts or operating systems:
 
 ```json
@@ -144,7 +144,7 @@ calendar day. Its first step is the daily gate; policy changes do not bypass it,
 
 - recommended-tool installation and version, including CodeGraph and Tokscale;
 - required effective values, including Codex multi-agent support;
-- MCP prerequisites that apply to the current host platform and operating system.
+- MCP prerequisites that apply to the current Harness and operating system.
 
 These checks never install tools, mutate MCP configuration, start an MCP server, probe a network or
 application port, trigger OAuth, or require a live debug session. Project HTTP MCP declarations

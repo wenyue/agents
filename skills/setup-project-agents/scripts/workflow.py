@@ -128,7 +128,6 @@ def _read_json(path: Path, label: str) -> Mapping[str, object]:
 
 def _write_workflow_context(session: Path, request_path: Path, request: Mapping[str, object]) -> None:
     context = {
-        'version': 1,
         'target': request.get('target'),
         'source_root': request.get('source_root'),
         'source_commit': request.get('source_commit'),
@@ -160,14 +159,13 @@ def _start(args: argparse.Namespace) -> int:
         request = _read_json(request_path, 'session request')
         _write_workflow_context(session, request_path, request)
         _emit({
-            'version': 1,
             'phase': 'start',
             'session': str(session),
             'request': str(request_path),
             'generated': str(session / 'generated'),
             'source_root': request.get('source_root'),
             'source_commit': request.get('source_commit'),
-            'platforms': request.get('platforms'),
+            'harnesses': request.get('harnesses'),
             'generation_requests': request.get('generation_requests'),
         })
         return 0
@@ -189,8 +187,8 @@ def _request_context(session: Path) -> tuple[Mapping[str, object], Path, Path, s
     request = _read_json(request_path, 'session request')
     context = _read_json(session / _WORKFLOW_CONTEXT, 'workflow context')
     if set(context) != {
-        'version', 'target', 'source_root', 'source_commit', 'request_sha256'
-    } or context.get('version') != 1:
+        'target', 'source_root', 'source_commit', 'request_sha256'
+    }:
         raise WorkflowError('workflow context has an invalid shape')
     try:
         request_digest = hashlib.sha256(request_path.read_bytes()).hexdigest()
@@ -285,10 +283,9 @@ def _finish(args: argparse.Namespace) -> int:
         if check_result.get('changed_paths') != [] or check_result.get('drift') is not None:
             raise WorkflowError('post-apply check did not converge')
         result = {
-            'version': 1,
             'phase': 'finish',
             'source_commit': request.get('source_commit'),
-            'platforms': request.get('platforms'),
+            'harnesses': request.get('harnesses'),
             'changed_paths': apply_result.get('changed_paths'),
             'external_skills': apply_result.get('external_skills'),
             'preserved_paths': apply_result.get('preserved_paths'),
@@ -314,7 +311,7 @@ def _cancel(args: argparse.Namespace) -> int:
     try:
         session = _owned_session(args.session)
         _remove_session(session)
-        _emit({'version': 1, 'phase': 'cancel', 'cancelled': True})
+        _emit({'phase': 'cancel', 'cancelled': True})
         return 0
     except (OSError, WorkflowError) as error:
         print(f'ERROR: {error}', file=sys.stderr)

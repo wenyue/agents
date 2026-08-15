@@ -42,9 +42,16 @@ def _paths(value: object) -> set[str]:
     return found
 
 
-def _matches(trigger: dict[str, object], paths: set[str]) -> bool:
+def _matches(
+    trigger: dict[str, object],
+    paths: set[str],
+    harness: str,
+    event: str,
+) -> bool:
     if trigger['type'] == 'always':
         return True
+    if trigger['type'] == 'harness':
+        return event == 'session' and harness in trigger['harnesses']
     includes = trigger['include_globs']
     def matches(path: str, pattern: str) -> bool:
         return fnmatch.fnmatchcase(path, pattern) or (
@@ -57,17 +64,40 @@ def _matches(trigger: dict[str, object], paths: set[str]) -> bool:
     )
 
 
-def _selected_rules(root: Path, payload: object, event: str) -> list[dict[str, object]]:
+def _selected_rules(
+    root: Path,
+    payload: object,
+    event: str,
+    harness: str,
+) -> list[dict[str, object]]:
     paths = _paths(payload) if event in {'prompt', 'tool'} else set()
     return [
         rule for rule in load_registry(root)
-        if isinstance(rule['trigger'], dict) and _matches(rule['trigger'], paths)
+        if isinstance(rule['trigger'], dict)
+        and _matches(rule['trigger'], paths, harness, event)
     ]
 
 
 def _is_file_rule(rule: dict[str, object]) -> bool:
     trigger = rule['trigger']
     return isinstance(trigger, dict) and trigger.get('type') == 'file'
+
+
+def _restored_rules(
+    root: Path,
+    activated: set[object],
+    harness: str,
+) -> list[dict[str, object]]:
+    restored: list[dict[str, object]] = []
+    for rule in load_registry(root):
+        trigger = rule['trigger']
+        assert isinstance(trigger, dict)
+        if _is_file_rule(rule):
+            if rule['id'] in activated:
+                restored.append(rule)
+        elif trigger['type'] == 'always' or harness in trigger['harnesses']:
+            restored.append(rule)
+    return restored
 
 
 def _is_write_tool(payload: object) -> bool:
@@ -113,21 +143,21 @@ def _context(root: Path, rules: list[dict[str, object]]) -> str:
     return '\n\n'.join(blocks) + ('\n' if blocks else '')
 
 
-def context_for(root: Path, payload: object, event: str) -> str:
-    return _context(root, _selected_rules(root, payload, event))
+def context_for(root: Path, payload: object, event: str, harness: str) -> str:
+    return _context(root, _selected_rules(root, payload, event, harness))
 
 
 def _state_path(
     root: Path,
     payload: object,
-    platform: str,
+    harness: str,
     state_root: Path | None = None,
 ) -> Path:
     session = None
     if isinstance(payload, dict):
         session = payload.get('session_id') or payload.get('sessionId')
     identity = str(session) if session else f'{Path.cwd().resolve()}:{os.getppid()}'
-    digest = hashlib.sha256(f'{root.resolve()}:{platform}:{identity}'.encode()).hexdigest()
+    digest = hashlib.sha256(f'{root.resolve()}:{harness}:{identity}'.encode()).hexdigest()
     base = state_root
     if base is None:
         configured = os.environ.get('PLUGIN_DATA')
@@ -150,14 +180,14 @@ def _session_state(path: Path) -> dict[str, object]:
         value = json.loads(path.read_text(encoding='utf-8'))
     except OSError as error:
         raise RuleConfigError(f'cannot read Rule activation state: {error}') from error
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return _empty_session_state()
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuleConfigError(f'invalid Rule activation state: {error}') from error
     if not isinstance(value, dict) or set(value) != {
         'activated_file_rule_ids',
         'context_generation',
         'restored_generation',
     }:
-        return _empty_session_state()
+        raise RuleConfigError('invalid Rule activation state: unexpected fields or shape')
     activated = value['activated_file_rule_ids']
     context_generation = value['context_generation']
     restored_generation = value['restored_generation']
@@ -165,13 +195,13 @@ def _session_state(path: Path) -> dict[str, object]:
         not isinstance(activated, list)
         or not all(isinstance(item, str) for item in activated)
         or len(set(activated)) != len(activated)
-        or not isinstance(context_generation, int)
+        or type(context_generation) is not int
         or context_generation < 0
-        or not isinstance(restored_generation, int)
+        or type(restored_generation) is not int
         or restored_generation < 0
         or restored_generation > context_generation
     ):
-        return _empty_session_state()
+        raise RuleConfigError('invalid Rule activation state: invalid field value')
     return value
 
 
@@ -189,32 +219,28 @@ def delivery(
     root: Path,
     payload: object,
     event: str,
-    platform: str,
+    harness: str,
     *,
     state_root: Path | None = None,
 ) -> dict[str, object]:
-    state_path = _state_path(root, payload, platform, state_root)
+    state_path = _state_path(root, payload, harness, state_root)
     state = _session_state(state_path)
     activated = set(state['activated_file_rule_ids'])
     restore_required = state['restored_generation'] < state['context_generation']
 
     if event == 'compact':
-        if platform != 'copilot':
+        if harness != 'copilot':
             raise RuleConfigError('compact Rule delivery is supported only for Copilot')
         state['context_generation'] = int(state['context_generation']) + 1
         _store_session_state(state_path, state)
         return {}
 
     if event == 'stop':
-        if platform != 'copilot':
+        if harness != 'copilot':
             raise RuleConfigError('stop Rule delivery is supported only for Copilot')
         if not restore_required:
             return {}
-        registered = load_registry(root)
-        restored = [
-            rule for rule in registered
-            if not _is_file_rule(rule) or rule['id'] in activated
-        ]
+        restored = _restored_rules(root, activated, harness)
         context = _context(root, restored)
         state['restored_generation'] = state['context_generation']
         _store_session_state(state_path, state)
@@ -227,18 +253,15 @@ def delivery(
             ),
         }
 
-    if event == 'tool' and platform == 'copilot' and restore_required:
+    if event == 'tool' and harness == 'copilot' and restore_required:
         registered = load_registry(root)
         paths = _paths(payload)
         activated.update(
             str(rule['id'])
             for rule in registered
-            if _is_file_rule(rule) and _matches(rule['trigger'], paths)
+            if _is_file_rule(rule) and _matches(rule['trigger'], paths, harness, event)
         )
-        restored = [
-            rule for rule in registered
-            if not _is_file_rule(rule) or rule['id'] in activated
-        ]
+        restored = _restored_rules(root, activated, harness)
         context = _context(root, restored)
         state['activated_file_rule_ids'] = sorted(activated)
         state['restored_generation'] = state['context_generation']
@@ -253,7 +276,7 @@ def delivery(
     if event == 'tool' and not _paths(payload):
         return {}
 
-    selected = _selected_rules(root, payload, event)
+    selected = _selected_rules(root, payload, event, harness)
 
     if event == 'session':
         registered = load_registry(root)
@@ -265,7 +288,7 @@ def delivery(
         if restore_required:
             state['restored_generation'] = state['context_generation']
             _store_session_state(state_path, state)
-        if platform == 'copilot':
+        if harness == 'copilot':
             return {'additionalContext': context}
         return {'hookSpecificOutput': {
             'hookEventName': 'SessionStart',
@@ -280,11 +303,7 @@ def delivery(
         activated_ids = set(state['activated_file_rule_ids'])
         activated_ids.update(str(rule['id']) for rule in newly_activated)
         if restore_required:
-            registered = load_registry(root)
-            delivered = [
-                rule for rule in registered
-                if not _is_file_rule(rule) or rule['id'] in activated_ids
-            ]
+            delivered = _restored_rules(root, activated_ids, harness)
             state['restored_generation'] = state['context_generation']
         else:
             delivered = newly_activated
@@ -292,7 +311,7 @@ def delivery(
             state['activated_file_rule_ids'] = sorted(activated_ids)
             _store_session_state(state_path, state)
         context = _context(root, delivered)
-        if platform == 'copilot':
+        if harness == 'copilot':
             original = ''
             if isinstance(payload, dict):
                 original = str(
@@ -319,7 +338,7 @@ def delivery(
                 f'{context}\nSmartKit loaded file Rules required by this tool call. '
                 'Apply them, then retry the same operation.'
             )
-            if platform == 'copilot':
+            if harness == 'copilot':
                 return {
                     'permissionDecision': 'deny',
                     'permissionDecisionReason': reason,
@@ -344,7 +363,7 @@ def delivery(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--platform', choices=('codex', 'copilot'), required=True)
+    parser.add_argument('--harness', choices=('codex', 'copilot'), required=True)
     parser.add_argument(
         '--event',
         choices=('session', 'prompt', 'tool', 'compact', 'stop'),
@@ -357,10 +376,17 @@ def main() -> int:
     args = parse_args()
     try:
         payload = json.load(sys.stdin)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        payload = {}
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        print(f'SmartKit Rule delivery skipped: invalid Hook payload: {error}', file=sys.stderr)
+        return 1
+    if not isinstance(payload, dict):
+        print(
+            'SmartKit Rule delivery skipped: invalid Hook payload: expected a JSON object',
+            file=sys.stderr,
+        )
+        return 1
     try:
-        output = delivery(plugin_root(), payload, args.event, args.platform)
+        output = delivery(plugin_root(), payload, args.event, args.harness)
     except (OSError, RuleConfigError) as error:
         print(f'SmartKit Rule delivery skipped: {error}', file=sys.stderr)
         return 1
@@ -368,7 +394,7 @@ def main() -> int:
     if output:
         print(
             'SmartKit Rule delivery attempted: '
-            f'platform={args.platform}, event={args.event}, response_bytes={len(encoded.encode())}. '
+            f'harness={args.harness}, event={args.event}, response_bytes={len(encoded.encode())}. '
             'Host trust, acceptance, spill, and truncation remain host-owned; '
             'inspect the host Hook diagnostics if expected Rule behavior is absent.',
             file=sys.stderr,

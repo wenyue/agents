@@ -1,5 +1,11 @@
 # Matt Pocock Skills 插件内置迁移 Implementation Plan
 
+> **Historical terminology:** 本计划中的 `platform-config` 路径和 `platform integration` 提交文本
+> 记录当时的真实名称。当前契约使用 `Harness` 表示 Codex、Cursor 和 Copilot，并使用 `Platform`
+> 表示 Windows、Linux 或 macOS；不要把这些历史命令当作当前入口。
+> 本计划中的 `Workflow Configuration` 也是当时的真实 Rule 标题；当前 owner 已拆分为
+> `Skill Governance` 和 `Workspace Policy`，不要把旧标题当作当前 Rule。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 Matt Pocock Skills 的完整官方稳定集合直接作为 SmartKit 插件 Skills 分发，并提供可审计、可回滚的上游同步与插件升级能力。

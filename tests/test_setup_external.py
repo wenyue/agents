@@ -212,7 +212,6 @@ class SetupExternalSkillTest(unittest.TestCase):
                     skill_item.pop('files')
             existing_manifest = first_session / 'smartkit.lock.json'
             existing_manifest.write_text(json.dumps({
-                'version': 1,
                 'sources': source_metadata['sources'],
                 'assets': [{
                     'kind': 'tree',

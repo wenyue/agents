@@ -1,5 +1,5 @@
 {
-  "platform": "codex",
+  "harness": "codex",
   "required_values": [
     {
       "id": "multi_agent",

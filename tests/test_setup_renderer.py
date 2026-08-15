@@ -1,4 +1,4 @@
-"""Golden contracts for platform-native setup-project-agent rendering."""
+"""Golden contracts for harness-native setup-project-agent rendering."""
 from __future__ import annotations
 
 import json
@@ -26,7 +26,7 @@ from agents_setup.models import (  # noqa: E402
     Catalog,
     ChangeKind,
     OperatingSystem,
-    Platform,
+    Harness,
     ProjectConfig,
 )
 from agents_setup.planner import build_plan  # noqa: E402
@@ -51,7 +51,6 @@ class SetupRendererTest(unittest.TestCase):
 
     def config(self) -> ProjectConfig:
         return ProjectConfig(
-            1,
             (),
             (),
         )
@@ -78,7 +77,7 @@ class SetupRendererTest(unittest.TestCase):
     def mcp_config(self, target: Path, servers: list[dict]) -> ProjectConfig:
         path = target / '.agents/config.json'
         path.parent.mkdir(parents=True, exist_ok=True)
-        document = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {'version': 1}
+        document = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
         document['mcp'] = servers
         path.write_text(
             json.dumps(document),
@@ -92,12 +91,11 @@ class SetupRendererTest(unittest.TestCase):
         source.write_text('# L10n\n\nUse the project localization workflow.\n', encoding='utf-8')
         path = target / '.agents/config.json'
         path.write_text(json.dumps({
-            'version': 1,
             'agents': [{
                 'id': 'l10n',
                 'source': '.agents/agents/l10n.md',
                 'description': 'Project-local agent: l10n',
-                'platforms': {
+                'harnesses': {
                     'codex': {
                         'model': 'gpt-5.6-terra',
                         'model_reasoning_effort': 'medium',
@@ -145,7 +143,7 @@ class SetupRendererTest(unittest.TestCase):
                     'cwd': 'cache',
                     'env': ['INSPECTOR_TOKEN'],
                     'readiness': {
-                        'platforms': ['codex'],
+                        'harnesses': ['codex'],
                         'operatingSystems': ['windows'],
                         'checks': [],
                     },
@@ -157,7 +155,7 @@ class SetupRendererTest(unittest.TestCase):
                             },
                         },
                         {
-                            'when': {'platforms': ['codex']},
+                            'when': {'harnesses': ['codex']},
                             'set': {'command': 'cache/inspector.exe'},
                         },
                     ],
@@ -246,7 +244,7 @@ class SetupRendererTest(unittest.TestCase):
             }), encoding='utf-8')
             config = self.mcp_config(target, [{
                 'id': 'sentry',
-                'url': 'https://mcp.sentry.dev/mcp', 'platforms': ['cursor'],
+                'url': 'https://mcp.sentry.dev/mcp', 'harnesses': ['cursor'],
             }])
 
             rendered = self.render_with_config(target, self.generated_tree(root), config)
@@ -282,7 +280,7 @@ class SetupRendererTest(unittest.TestCase):
             }}), encoding='utf-8')
             owned = self.mcp_config(target, [{
                 'id': 'retired', 'url': 'https://retired.invalid/mcp',
-                'platforms': ['cursor'],
+                'harnesses': ['cursor'],
             }])
             first = self.render_with_config(target, self.generated_tree(root), owned)
             self.materialize(target, first.files)
@@ -292,7 +290,7 @@ class SetupRendererTest(unittest.TestCase):
 
             self.assertEqual(set(desired['mcpServers']), {'keep'})
 
-    def test_owned_stdio_mcp_can_move_platforms_without_touching_user_entries(self):
+    def test_owned_stdio_mcp_can_move_harnesses_without_touching_user_entries(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -304,7 +302,7 @@ class SetupRendererTest(unittest.TestCase):
                 },
             }}), encoding='utf-8')
             old = self.mcp_config(target, [{
-                'id': 'inspector', 'platforms': ['cursor'], 'command': 'old-inspector',
+                'id': 'inspector', 'harnesses': ['cursor'], 'command': 'old-inspector',
             }])
             self.materialize(
                 target,
@@ -312,7 +310,7 @@ class SetupRendererTest(unittest.TestCase):
             )
             config = self.mcp_config(target, [{
                 'id': 'inspector',
-                'platforms': ['codex'], 'command': 'new-inspector',
+                'harnesses': ['codex'], 'command': 'new-inspector',
             }])
 
             rendered = self.render_with_config(target, self.generated_tree(root), config)
@@ -327,7 +325,7 @@ class SetupRendererTest(unittest.TestCase):
                 {'command': 'new-inspector', 'args': []},
             )
 
-    def test_owned_mcp_entry_can_update_on_the_same_platform(self):
+    def test_owned_mcp_entry_can_update_on_the_same_harness(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
@@ -335,7 +333,7 @@ class SetupRendererTest(unittest.TestCase):
             old = self.mcp_config(target, [{
                 'id': 'sentry',
                 'url': 'https://old.invalid/mcp',
-                'platforms': ['cursor'],
+                'harnesses': ['cursor'],
             }])
             self.materialize(
                 target,
@@ -344,7 +342,7 @@ class SetupRendererTest(unittest.TestCase):
             new = self.mcp_config(target, [{
                 'id': 'sentry',
                 'url': 'https://new.invalid/mcp',
-                'platforms': ['cursor'],
+                'harnesses': ['cursor'],
             }])
 
             rendered = self.render_with_config(target, self.generated_tree(root), new)
@@ -371,7 +369,7 @@ class SetupRendererTest(unittest.TestCase):
             config = self.mcp_config(target, [{
                 'id': 'sentry',
                 'url': 'https://mcp.sentry.dev/mcp',
-                'platforms': ['cursor'],
+                'harnesses': ['cursor'],
             }])
 
             rendered = self.render_with_config(target, self.generated_tree(root), config)
@@ -423,7 +421,6 @@ class SetupRendererTest(unittest.TestCase):
 
             loaded = load_project_config(target / '.agents/config.json', catalog=self.catalog)
 
-            self.assertEqual(loaded.version, 1)
             rendered_config = json.loads(
                 rendered.files_by_path['.agents/config.json'].decode()
             )
@@ -438,7 +435,7 @@ class SetupRendererTest(unittest.TestCase):
                     for path, key in rendered.fields_by_key
                     if path == '.agents/config.json'
                 },
-                {'$schema', 'version'},
+                {'$schema'},
             )
 
     def test_owned_template_field_can_update_at_the_same_path(self):
@@ -456,7 +453,7 @@ class SetupRendererTest(unittest.TestCase):
             shutil.copy2(
                 REPO_ROOT / 'agents/codex/change-set-verifier.toml', plugin_agent,
             )
-            template = source / 'setup-assets/templates/platform-config/agents.config.json'
+            template = source / 'setup-assets/templates/harness-config/agents.config.json'
             document = json.loads(template.read_text(encoding='utf-8'))
             document['$schema'] = 'https://example.invalid/project-config.schema.json'
             template.write_text(json.dumps(document), encoding='utf-8')
@@ -495,7 +492,6 @@ class SetupRendererTest(unittest.TestCase):
             config_path.write_text(
                 json.dumps(
                     {
-                        'version': 1,
                         'skills': [{
                             'source': 'example/local-check',
                             'ref': 'main',
@@ -519,7 +515,7 @@ class SetupRendererTest(unittest.TestCase):
                     encoding='utf-8',
                 )
             (external_root / 'sources.json').write_text(
-                json.dumps({'version': 1, 'sources': [{
+                json.dumps({'sources': [{
                     'id': 'example/local-check',
                     'url': 'https://github.com/example/local-check',
                     'requested_ref': 'main',
@@ -585,7 +581,7 @@ class SetupRendererTest(unittest.TestCase):
                 '---\nname: retired-external\ndescription: Retired.\n---\n', encoding='utf-8'
             )
             (external_root / 'sources.json').write_text(json.dumps({
-                'version': 1, 'sources': [{
+                'sources': [{
                     'id': 'example/repository', 'url': 'https://github.com/example/repository',
                     'requested_ref': None, 'resolved_ref': 'main', 'ref_kind': 'branch',
                     'commit': 'a' * 40,
@@ -603,7 +599,6 @@ class SetupRendererTest(unittest.TestCase):
             }), encoding='utf-8')
             config_path = target / '.agents/config.json'
             config_path.write_text(json.dumps({
-                'version': 1,
                 'skills': [{
                     'source': 'example/repository',
                     'include': ['skills/retired-external'],
@@ -644,7 +639,6 @@ class SetupRendererTest(unittest.TestCase):
                 encoding='utf-8',
             )
             (external_root / 'sources.json').write_text(json.dumps({
-                'version': 1,
                 'sources': [{
                     'id': 'example/local-check',
                     'url': 'https://github.com/example/local-check',
@@ -663,7 +657,6 @@ class SetupRendererTest(unittest.TestCase):
             config_path = target / '.agents/config.json'
             config_path.parent.mkdir(parents=True, exist_ok=True)
             config_path.write_text(json.dumps({
-                'version': 1,
                 'skills': [{
                     'source': 'example/local-check',
                     'include': ['skills/local-check'],
@@ -707,7 +700,6 @@ class SetupRendererTest(unittest.TestCase):
 
             rendered = render_desired_state(
                 REPO_ROOT, target, renamed_catalog, ProjectConfig(
-                    1,
                     tuple(asset.id for asset in assets if asset.kind == 'rule' and not asset.control_plane),
                     tuple(asset.id for asset in assets if asset.kind == 'skill' and not asset.control_plane),
                 ), generated,
@@ -907,14 +899,14 @@ class SetupRendererTest(unittest.TestCase):
                         'rule',
                         PurePosixPath('rules/shared.md'),
                         target_path,
-                        (Platform.CODEX,),
+                        (Harness.CODEX,),
                     ),
                     AssetSpec(
                         'generated-shared',
                         'blueprint',
                         PurePosixPath('blueprints/shared.md'),
                         target_path,
-                        (Platform.CODEX,),
+                        (Harness.CODEX,),
                         'generate',
                     ),
                 ),
@@ -923,7 +915,6 @@ class SetupRendererTest(unittest.TestCase):
             generated.mkdir(parents=True)
             (generated / 'shared.md').write_text('generated\n', encoding='utf-8')
             config = ProjectConfig(
-                1,
                 ('shared',),
                 (),
             )
@@ -987,7 +978,6 @@ class SetupRendererTest(unittest.TestCase):
             config_path.parent.mkdir(parents=True)
             config_path.write_text(
                 json.dumps({
-                    'version': 1,
                     'selected_rules': ['project-owned-rule'],
                 }),
                 encoding='utf-8',
@@ -995,15 +985,15 @@ class SetupRendererTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'selected_rules'):
                 load_project_config(config_path, catalog=self.catalog)
 
-    def test_first_adoption_rejects_conflicting_managed_config_field(self):
+    def test_project_config_rejects_retired_version_field(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / 'target'
             config_path = target / '.agents/config.json'
             config_path.parent.mkdir(parents=True)
             config_path.write_text('{"version": 2}\n', encoding='utf-8')
-            with self.assertRaisesRegex(RenderError, 'cannot adopt conflicting'):
-                self.render(target, self.generated_tree(root))
+            with self.assertRaisesRegex(ValueError, 'unknown project config fields: version'):
+                load_project_config(config_path, catalog=self.catalog)
 
     def test_malformed_ownership_sources_and_seeded_assets_are_rejected(self):
         malformed_values = (
@@ -1017,7 +1007,6 @@ class SetupRendererTest(unittest.TestCase):
                 manifest = target / '.agents/smartkit.lock.json'
                 manifest.parent.mkdir(parents=True)
                 manifest.write_text(json.dumps({
-                    'version': 1,
                     'sources': malformed['sources'],
                     'assets': [],
                     'seeded': malformed['seeded'],
@@ -1039,7 +1028,6 @@ class SetupRendererTest(unittest.TestCase):
                 encoding='utf-8',
             )
             (external_root / 'sources.json').write_text(json.dumps({
-                'version': 1,
                 'sources': [{
                     'id': 'example/local-check',
                     'url': 'https://github.com/example/local-check',
@@ -1058,7 +1046,6 @@ class SetupRendererTest(unittest.TestCase):
             config_path = target / '.agents/config.json'
             config_path.parent.mkdir(parents=True, exist_ok=True)
             config_path.write_text(json.dumps({
-                'version': 1,
                 'skills': [{
                     'source': 'example/local-check',
                     'include': ['skills/local-check'],
@@ -1196,7 +1183,7 @@ class SetupRendererTest(unittest.TestCase):
                         'agent',
                         PurePosixPath('agents/codex'),
                         PurePosixPath('.codex/agents'),
-                        (Platform.CODEX,),
+                        (Harness.CODEX,),
                     ),
                 ),
             )
@@ -1244,12 +1231,11 @@ class SetupRendererTest(unittest.TestCase):
             agent_source.write_text('# Project verifier\n', encoding='utf-8')
             config_path = target / '.agents/config.json'
             config_path.write_text(json.dumps({
-                'version': 1,
                 'agents': [{
                     'id': 'change-set-verifier',
                     'source': '.agents/agents/change-set-verifier.md',
                     'description': 'Project verifier',
-                    'platforms': {'codex': {'sandbox_mode': 'workspace-write'}},
+                    'harnesses': {'codex': {'sandbox_mode': 'workspace-write'}},
                 }],
             }), encoding='utf-8')
             config = load_project_config(config_path, catalog=self.catalog)
@@ -1308,12 +1294,11 @@ class SetupRendererTest(unittest.TestCase):
             config_path = target / '.agents/config.json'
             config_path.parent.mkdir(parents=True)
             config_path.write_text(json.dumps({
-                'version': 1,
                 'agents': [{
                     'id': 'l10n',
                     'source': '.agents/agents/l10n.md',
                     'description': 'L10n',
-                    'platforms': {'cursor': {'readonly': False}},
+                    'harnesses': {'cursor': {'readonly': False}},
                 }],
             }), encoding='utf-8')
             config = load_project_config(config_path, catalog=self.catalog)

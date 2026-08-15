@@ -63,15 +63,15 @@ class RecommendedToolPolicyTest(unittest.TestCase):
             'cursor': {'cursor-agent', 'codegraph', 'tokscale'},
             'copilot': {'copilot', 'codegraph', 'tokscale'},
         }
-        for platform, tool_ids in expected.items():
-            with self.subTest(platform=platform):
-                policy = json.loads((POLICY_ROOT / f'{platform}.json').read_text(encoding='utf-8'))
-                self.assertEqual(policy['platform'], platform)
+        for harness, tool_ids in expected.items():
+            with self.subTest(harness=harness):
+                policy = json.loads((POLICY_ROOT / f'{harness}.json').read_text(encoding='utf-8'))
+                self.assertEqual(policy['harness'], harness)
                 self.assertEqual({tool['id'] for tool in policy['tools']}, tool_ids)
                 self.assertNotIn('hooks', json.dumps(policy).lower())
                 self.assertEqual(
                     [item['id'] for item in policy.get('required_values', [])],
-                    ['multi_agent'] if platform == 'codex' else [],
+                    ['multi_agent'] if harness == 'codex' else [],
                 )
 
     def test_default_policy_path_resolves_plugin_root_policy(self):
@@ -83,7 +83,7 @@ class RecommendedToolPolicyTest(unittest.TestCase):
     def test_hook_mode_does_not_call_maintenance_runner(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             policy = Path(temp_dir) / 'codex.json'
-            policy.write_text('{"platform": "codex", "tools": []}\n', encoding='utf-8')
+            policy.write_text('{"harness": "codex", "tools": []}\n', encoding='utf-8')
             maintenance_runner = mock.Mock(side_effect=AssertionError('Hooks must not mutate tools'))
             with mock.patch.object(self.checker, 'check_policy', return_value=[]):
                 with mock.patch.object(self.checker.subprocess, 'run', maintenance_runner):
@@ -117,7 +117,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.checker.parse_version('unknown')
 
-    def test_platform_policies_keep_all_thresholds_out_of_python(self):
+    def test_harness_policies_keep_all_thresholds_out_of_python(self):
         policies = RECOMMENDED_TOOL_POLICIES
         expected = {
             'codex': {
@@ -136,9 +136,9 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 'tokscale': '4.6.1',
             },
         }
-        for platform, targets in expected.items():
-            policy = json.loads((policies / f'{platform}.json').read_text(encoding='utf-8'))
-            self.assertEqual(policy['platform'], platform)
+        for harness, targets in expected.items():
+            policy = json.loads((policies / f'{harness}.json').read_text(encoding='utf-8'))
+            self.assertEqual(policy['harness'], harness)
             self.assertEqual(
                 {tool['id']: tool['target_version'] for tool in policy['tools']},
                 targets,
@@ -166,7 +166,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
                 guidance = f'{tool["install"]}\n{tool["upgrade"]}'.lower()
                 for command in forbidden:
                     with self.subTest(
-                        platform=policy['platform'],
+                        harness=policy['harness'],
                         tool=tool['id'],
                         command=command,
                     ):
@@ -280,7 +280,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
 
     def test_policy_findings_distinguish_missing_equal_and_unreadable(self):
         policy = {
-            'platform': 'test',
+            'harness': 'test',
             'tools': [
                 {
                     'id': 'missing',
@@ -338,7 +338,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
 
         matching = checker.check_policy(
             {
-                'platform': 'codex',
+                'harness': 'codex',
                 'tools': [],
                 'required_values': [
                     {
@@ -350,7 +350,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         )
         mismatching = checker.check_policy(
             {
-                'platform': 'codex',
+                'harness': 'codex',
                 'tools': [],
                 'required_values': [
                     {
@@ -391,16 +391,16 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             'Popen',
             return_value=timed_out_process,
         ):
-            timeout = checker.check_policy({'platform': 'test', 'tools': [tool]})
+            timeout = checker.check_policy({'harness': 'test', 'tools': [tool]})
         equal = checker.check_policy(
             {
-                'platform': 'test',
+                'harness': 'test',
                 'tools': [{**tool, 'detectors': [{'kind': 'fixed', 'value': '2.0.0'}]}],
             }
         )
         lower = checker.check_policy(
             {
-                'platform': 'test',
+                'harness': 'test',
                 'tools': [{**tool, 'detectors': [{'kind': 'fixed', 'value': '1.9.9'}]}],
             }
         )
@@ -425,7 +425,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
 
         process.kill.assert_called()
 
-    def test_daily_state_is_independent_per_project_and_platform(self):
+    def test_daily_state_is_independent_per_project_and_harness(self):
         checker = self.checker
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -439,15 +439,15 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             codex_policy = first_project / 'codex.json'
             other_codex_policy = second_project / 'codex.json'
             cursor_policy = first_project / 'cursor.json'
-            codex_policy.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            codex_policy.write_text('{"harness":"codex","tools":[]}\n', encoding='utf-8')
             other_codex_policy.write_text(
-                '{"platform":"codex","tools":[]}\n', encoding='utf-8'
+                '{"harness":"codex","tools":[]}\n', encoding='utf-8'
             )
-            cursor_policy.write_text('{"platform":"cursor","tools":[]}\n', encoding='utf-8')
+            cursor_policy.write_text('{"harness":"cursor","tools":[]}\n', encoding='utf-8')
             calls = []
 
             def evaluator(policy):
-                calls.append(policy['platform'])
+                calls.append(policy['harness'])
                 return []
 
             today = datetime(2026, 7, 21, 9, tzinfo=timezone.utc)
@@ -510,9 +510,8 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             root = Path(temp_dir)
             registry = root / 'registry.json'
             registry.write_text(json.dumps({
-                'version': 1,
                 'servers': [{
-                    'id': 'playwright', 'platforms': ['codex'],
+                    'id': 'playwright', 'harnesses': ['codex'],
                     'readiness': {'checks': [
                         {'kind': 'runtime-version', 'runtime': 'node', 'minimum': '18.0.0'},
                         {'kind': 'command-exists', 'command': 'npx'},
@@ -522,18 +521,17 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             config = root / '.agents/config.json'
             config.parent.mkdir()
             config.write_text(json.dumps({
-                'version': 1,
                 'mcp': [
                     {
-                        'id': 'inspector', 'platforms': ['codex'],
+                        'id': 'inspector', 'harnesses': ['codex'],
                         'command': 'cache/inspector.exe',
                     },
                     {
-                        'id': 'private', 'platforms': ['codex'],
+                        'id': 'private', 'harnesses': ['codex'],
                         'command': 'private-mcp', 'env': ['MCP_TOKEN'],
                     },
                     {
-                        'id': 'sentry', 'platforms': ['codex'],
+                        'id': 'sentry', 'harnesses': ['codex'],
                         'url': 'https://mcp.sentry.dev/mcp',
                     },
                 ],
@@ -556,27 +554,25 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             )
             self.assertNotIn('sentry MCP', [finding.tool for finding in findings])
 
-    def test_mcp_readiness_filters_platforms_and_rejects_unsafe_profiles(self):
+    def test_mcp_readiness_filters_harnesses_and_rejects_unsafe_profiles(self):
         checker = self.checker
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             registry = root / 'registry.json'
             registry.write_text(json.dumps({
-                'version': 1,
                 'servers': [{
-                    'id': 'playwright', 'platforms': ['codex', 'cursor'],
+                    'id': 'playwright', 'harnesses': ['codex', 'cursor'],
                     'readiness': {'checks': []},
                 }],
             }), encoding='utf-8')
             config = root / '.agents/config.json'
             config.parent.mkdir()
             config.write_text(json.dumps({
-                'version': 1,
                 'mcp': [{
-                    'id': 'inspector', 'platforms': ['cursor'],
+                    'id': 'inspector', 'harnesses': ['cursor'],
                     'command': 'cache/inspector.exe',
                 }, {
-                    'id': 'unsafe', 'platforms': ['codex'],
+                    'id': 'unsafe', 'harnesses': ['codex'],
                     'readiness': {'checks': [
                         {'kind': 'shell', 'command': 'echo unsafe'},
                         {'kind': 'environment-variable', 'name': 'MISSING_TOKEN'},
@@ -602,17 +598,16 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             registry = root / 'registry.json'
-            registry.write_text(json.dumps({'version': 1, 'servers': []}), encoding='utf-8')
+            registry.write_text(json.dumps({'servers': []}), encoding='utf-8')
             config = root / '.agents/config.json'
             config.parent.mkdir()
             config.write_text(json.dumps({
-                'version': 1,
                 'mcp': [{
                     'id': 'inspector',
                     'command': 'python3',
                     'overrides': [{
                         'when': {
-                            'platforms': ['cursor'],
+                            'harnesses': ['cursor'],
                             'operatingSystems': ['windows'],
                         },
                         'set': {
@@ -644,17 +639,16 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             root = Path(temp_dir)
             registry = root / 'registry.json'
             registry.write_text(json.dumps({
-                'version': 1,
                 'servers': [{
                     'id': 'plugin-auto',
-                    'platforms': ['codex', 'cursor'],
+                    'harnesses': ['codex', 'cursor'],
                     'command': 'plugin-mcp',
                 }, {
                     'id': 'plugin-custom',
-                    'platforms': ['codex'],
+                    'harnesses': ['codex'],
                     'command': 'ignored-plugin-command',
                     'readiness': {
-                        'platforms': ['codex'],
+                        'harnesses': ['codex'],
                         'operatingSystems': ['windows'],
                         'checks': [
                             {'kind': 'environment-variable', 'name': 'PLUGIN_TOKEN'},
@@ -665,18 +659,17 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             config = root / '.agents/config.json'
             config.parent.mkdir()
             config.write_text(json.dumps({
-                'version': 1,
                 'mcp': [{
                     'id': 'project-auto',
-                    'platforms': ['codex', 'cursor'],
+                    'harnesses': ['codex', 'cursor'],
                     'command': 'project-mcp',
                     'env': ['PROJECT_TOKEN'],
                 }, {
                     'id': 'project-custom',
-                    'platforms': ['codex'],
+                    'harnesses': ['codex'],
                     'command': 'ignored-project-command',
                     'readiness': {
-                        'platforms': ['codex'],
+                        'harnesses': ['codex'],
                         'operatingSystems': ['windows'],
                         'checks': [
                             {'kind': 'command-exists', 'command': 'custom-check'},
@@ -741,7 +734,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             project.mkdir()
             (project / '.git').mkdir()
             policy = root / 'codex.json'
-            policy.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            policy.write_text('{"harness":"codex","tools":[]}\n', encoding='utf-8')
             tool_finding = checker.Finding('tool-missing', 'tool', 'missing', 'install')
             mcp_finding = checker.Finding(
                 'mcp-prerequisite-missing', 'MCP', 'missing', 'install'
@@ -771,7 +764,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             root = Path(temp_dir)
             policy_path = root / 'codex.json'
             cache = root / 'cache'
-            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            policy_path.write_text('{"harness":"codex","tools":[]}\n', encoding='utf-8')
             calls = []
 
             def evaluator(policy):
@@ -780,7 +773,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
 
             day = datetime(2026, 7, 21, 9)
             checker.run_hook('codex', policy_path, cache, day, evaluator=evaluator)
-            policy_path.write_text('{"platform":"codex","tools":[],"revision":2}\n', encoding='utf-8')
+            policy_path.write_text('{"harness":"codex","tools":[],"revision":2}\n', encoding='utf-8')
             changed = checker.run_hook('codex', policy_path, cache, day, evaluator=evaluator)
             forced = checker.run_hook(
                 'codex', policy_path, cache, day, force=True, evaluator=evaluator
@@ -800,7 +793,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             root = Path(temp_dir)
             policy_path = root / 'codex.json'
             cache = root / 'cache'
-            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            policy_path.write_text('{"harness":"codex","tools":[]}\n', encoding='utf-8')
             calls = []
             finding = checker.Finding(
                 'tool-missing',
@@ -844,7 +837,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             policy_path = root / 'codex.json'
-            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            policy_path.write_text('{"harness":"codex","tools":[]}\n', encoding='utf-8')
 
             def fail(_policy):
                 raise RuntimeError('secret detector output')
@@ -867,7 +860,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             policy_path = root / 'codex.json'
-            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            policy_path.write_text('{"harness":"codex","tools":[]}\n', encoding='utf-8')
             calls = []
 
             def detector_error(_policy):
@@ -893,7 +886,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             self.assertFalse(first.requires_user_prompt)
             self.assertEqual(len(calls), 1)
 
-    def test_hook_output_uses_each_platform_native_shape(self):
+    def test_hook_output_uses_each_harness_native_shape(self):
         checker = self.checker
         result = checker.HookResult(
             True,
@@ -1042,7 +1035,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
             cache = root / 'cache'
             cache.mkdir()
             policy_path = root / 'codex.json'
-            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            policy_path.write_text('{"harness":"codex","tools":[]}\n', encoding='utf-8')
             project = root / 'project'
             project.mkdir()
             (project / '.git').mkdir()
@@ -1073,7 +1066,7 @@ class RecommendedToolCheckerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             policy_path = root / 'codex.json'
-            policy_path.write_text('{"platform":"codex","tools":[]}\n', encoding='utf-8')
+            policy_path.write_text('{"harness":"codex","tools":[]}\n', encoding='utf-8')
             cache = root / 'cache'
             project = root / 'project'
             project.mkdir()
@@ -1108,11 +1101,11 @@ class RecommendedToolMaintainerTest(unittest.TestCase):
     def test_every_recommended_tool_has_install_and_upgrade_handling(self):
         for policy_path in sorted(POLICY_ROOT.glob('*.json')):
             policy = json.loads(policy_path.read_text(encoding='utf-8'))
-            platform = policy['platform']
+            harness = policy['harness']
             for tool in policy['tools']:
                 for action in ('install', 'upgrade'):
-                    with self.subTest(platform=platform, tool=tool['id'], action=action):
-                        recipe = self.maintainer.resolve_recipe(platform, tool['id'], action)
+                    with self.subTest(harness=harness, tool=tool['id'], action=action):
+                        recipe = self.maintainer.resolve_recipe(harness, tool['id'], action)
                         self.assertTrue(recipe.command or recipe.manual_guidance)
                         self.assertFalse(recipe.command and recipe.manual_guidance)
 
@@ -1161,10 +1154,10 @@ class RecommendedToolMaintainerTest(unittest.TestCase):
         self.assertNotIn('codegraph upgrade', rendered)
 
     def test_retired_plugin_is_not_a_supported_maintenance_target(self):
-        for platform in ('codex', 'cursor', 'copilot'):
-            with self.subTest(platform=platform):
+        for harness in ('codex', 'cursor', 'copilot'):
+            with self.subTest(harness=harness):
                 with self.assertRaises(self.maintainer.MaintenanceError):
-                    self.maintainer.resolve_recipe(platform, 'superpowers', 'install')
+                    self.maintainer.resolve_recipe(harness, 'superpowers', 'install')
 
     def test_manual_recipe_returns_manual_action_without_execution(self):
         executor = mock.Mock()

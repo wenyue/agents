@@ -80,7 +80,6 @@ def write_valid_source(root: Path, *, version: str = '0.1.0') -> None:
         (root / relative).write_text(json.dumps(document), encoding='utf-8')
     (root / 'skills' / 'registry.json').write_text(
         json.dumps({
-            'version': 1,
             'custom': [{
                 'id': 'smartkit/setup-project-agents',
                 'path': 'setup-project-agents',
@@ -259,7 +258,7 @@ class SetupSourceTest(unittest.TestCase):
                 'kind': 'agent',
                 'source': 'agents/codex',
                 'target': '.codex/agents',
-                'platforms': ['codex'],
+                'harnesses': ['codex'],
                 'mode': 'copy',
             })
             catalog_path.write_text(json.dumps(catalog), encoding='utf-8')
@@ -291,7 +290,7 @@ class SetupSourceTest(unittest.TestCase):
                     with self.assertRaises(InvalidFetchedSource):
                         validate_source(source)
 
-    def test_validate_source_requires_exact_platform_manifest_roots(self):
+    def test_validate_source_requires_exact_harness_manifest_roots(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             cases = (
                 ('.codex-plugin/plugin.json', {'rules': './rules/'}),

@@ -1,5 +1,9 @@
 # Smartkit 项目 Agent 设置设计
 
+> **Historical terminology:** 本文保留的“平台”“三平台”和 `platform-*` 名称记录当时的真实术语。
+> 当前契约使用 `Harness` 表示 Codex、Cursor 和 Copilot，并使用 `Platform` 表示 Windows、Linux
+> 或 macOS；不要把这些历史术语、路径或命令当作当前入口。
+
 ## 目标
 
 Smartkit 从远端规范 `master` 为一个目标仓库生成可重复收敛的 Rule、Skill、Agent 和平台配置

@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
 
-PLATFORMS = ('codex', 'cursor', 'copilot')
+HARNESSES = ('codex', 'cursor', 'copilot')
 OPERATING_SYSTEMS = ('windows', 'linux')
 OUTPUTS = {
     'codex': Path('.mcp.json'),
@@ -95,21 +95,21 @@ def _readiness_check(value: object, label: str) -> dict[str, object]:
 def _readiness(
     value: object,
     label: str,
-    enabled_platforms: list[str],
+    enabled_harnesses: list[str],
 ) -> dict[str, object]:
     readiness = _object(value, label)
-    _fields(readiness, {'platforms', 'operatingSystems', 'checks'}, label)
+    _fields(readiness, {'harnesses', 'operatingSystems', 'checks'}, label)
     rendered: dict[str, object] = {}
-    if 'platforms' in readiness:
-        platforms = _strings(
-            readiness['platforms'], f'{label}.platforms', allow_empty=False
+    if 'harnesses' in readiness:
+        harnesses = _strings(
+            readiness['harnesses'], f'{label}.harnesses', allow_empty=False
         )
         if (
-            len(platforms) != len(set(platforms))
-            or set(platforms) - set(enabled_platforms)
+            len(harnesses) != len(set(harnesses))
+            or set(harnesses) - set(enabled_harnesses)
         ):
-            raise McpRegistryError(f'{label}.platforms is invalid')
-        rendered['platforms'] = platforms
+            raise McpRegistryError(f'{label}.harnesses is invalid')
+        rendered['harnesses'] = harnesses
     if 'operatingSystems' in readiness:
         operating_systems = _strings(
             readiness['operatingSystems'],
@@ -139,9 +139,7 @@ def load_registry(path: Path) -> tuple[dict[str, object], ...]:
     except (OSError, json.JSONDecodeError) as error:
         raise McpRegistryError(f'cannot load MCP registry: {path}') from error
     root = _object(document, 'MCP registry')
-    _fields(root, {'version', 'servers'}, 'MCP registry')
-    if root.get('version') != 1:
-        raise McpRegistryError('MCP registry version must be 1')
+    _fields(root, {'servers'}, 'MCP registry')
     raw_servers = root.get('servers')
     if not isinstance(raw_servers, list):
         raise McpRegistryError('MCP registry servers must be an array')
@@ -153,7 +151,7 @@ def load_registry(path: Path) -> tuple[dict[str, object], ...]:
         _fields(
             server,
             {
-                'id', 'transport', 'command', 'args', 'url', 'platforms', 'tools',
+                'id', 'transport', 'command', 'args', 'url', 'harnesses', 'tools',
                 'readiness',
             },
             label,
@@ -167,9 +165,9 @@ def load_registry(path: Path) -> tuple[dict[str, object], ...]:
         transport = server.get('transport')
         if transport not in {'stdio', 'http'}:
             raise McpRegistryError(f'{label}.transport is unsupported')
-        platforms = _strings(server.get('platforms'), f'{label}.platforms', allow_empty=False)
-        if len(platforms) != len(set(platforms)) or set(platforms) - set(PLATFORMS):
-            raise McpRegistryError(f'{label}.platforms is invalid')
+        harnesses = _strings(server.get('harnesses'), f'{label}.harnesses', allow_empty=False)
+        if len(harnesses) != len(set(harnesses)) or set(harnesses) - set(HARNESSES):
+            raise McpRegistryError(f'{label}.harnesses is invalid')
         if transport == 'stdio':
             if set(server).intersection({'url'}):
                 raise McpRegistryError(f'{label} stdio server cannot declare url')
@@ -200,32 +198,32 @@ def load_registry(path: Path) -> tuple[dict[str, object], ...]:
         if server_id == 'playwright' and tools != ['*']:
             raise McpRegistryError('playwright must expose all tools through host approval')
         if 'readiness' in server:
-            _readiness(server['readiness'], f'{label}.readiness', platforms)
+            _readiness(server['readiness'], f'{label}.readiness', harnesses)
         servers.append(dict(server))
     return tuple(servers)
 
 
-def render_platform(servers: tuple[dict[str, object], ...], platform: str) -> bytes:
+def render_harness(servers: tuple[dict[str, object], ...], harness: str) -> bytes:
     rendered: dict[str, object] = {}
     for server in servers:
-        if platform not in server['platforms']:
+        if harness not in server['harnesses']:
             continue
         if server['transport'] == 'http':
             entry: dict[str, object] = {
-                **({'type': 'http'} if platform != 'codex' else {}),
+                **({'type': 'http'} if harness != 'codex' else {}),
                 'url': server['url'],
             }
         else:
             entry = {
                 **(
-                    {'type': 'local' if platform == 'copilot' else 'stdio'}
-                    if platform != 'codex'
+                    {'type': 'local' if harness == 'copilot' else 'stdio'}
+                    if harness != 'codex'
                     else {}
                 ),
                 'command': server['command'],
                 'args': list(server.get('args', [])),
             }
-        if platform == 'copilot':
+        if harness == 'copilot':
             entry['tools'] = list(server.get('tools', ['*']))
         rendered[str(server['id'])] = entry
     return (json.dumps({'mcpServers': rendered}, indent=2) + '\n').encode()
@@ -235,9 +233,9 @@ def synchronize(root: Path, *, write: bool) -> tuple[Path, ...]:
     root = root.resolve()
     servers = load_registry(root / REGISTRY_PATH)
     changed: list[Path] = []
-    for platform in PLATFORMS:
-        relative = OUTPUTS[platform]
-        desired = render_platform(servers, platform)
+    for harness in HARNESSES:
+        relative = OUTPUTS[harness]
+        desired = render_harness(servers, harness)
         path = root / relative
         try:
             current = path.read_bytes()

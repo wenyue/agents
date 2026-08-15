@@ -27,7 +27,7 @@ class PluginRuleContractTest(unittest.TestCase):
 
     def run_dispatch(
         self,
-        platform: str,
+        harness: str,
         event: str,
         payload: dict[str, object],
         *,
@@ -39,8 +39,8 @@ class PluginRuleContractTest(unittest.TestCase):
             [
                 sys.executable,
                 str(ROOT / 'runtime/rules/dispatch.py'),
-                '--platform',
-                platform,
+                '--harness',
+                harness,
                 '--event',
                 event,
             ],
@@ -53,12 +53,42 @@ class PluginRuleContractTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         return json.loads(result.stdout)
 
-    def test_registry_order_and_platform_delivery_contract(self):
+    def run_raw_dispatch(
+        self,
+        harness: str,
+        event: str,
+        payload: bytes,
+        *,
+        plugin_data: Path,
+    ) -> subprocess.CompletedProcess[bytes]:
+        environment = dict(os.environ)
+        environment['PLUGIN_DATA'] = str(plugin_data)
+        return subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / 'runtime/rules/dispatch.py'),
+                '--harness',
+                harness,
+                '--event',
+                event,
+            ],
+            input=payload,
+            capture_output=True,
+            cwd=ROOT,
+            env=environment,
+            check=False,
+        )
+
+    def test_registry_order_and_harness_delivery_contract(self):
         registry = json.loads((ROOT / 'rules/registry.json').read_text(encoding='utf-8'))
         rules = registry['rules']
         self.assertEqual(rules[0]['id'], 'smartkit/core-rule-config')
         self.assertEqual(rules[0]['strength'], 'Mandatory')
         self.assertEqual(rules[0]['trigger'], {'type': 'always'})
+        rule_ids = [item['id'] for item in rules]
+        self.assertIn('smartkit/core-skill-governance', rule_ids)
+        self.assertIn('smartkit/core-workspace-policy', rule_ids)
+        self.assertNotIn('smartkit/core-skill-config', rule_ids)
         self.assertEqual(len({item['id'] for item in rules}), len(rules))
         self.assertTrue(all((ROOT / 'rules' / item['source']).is_file() for item in rules))
         self.assertEqual(
@@ -70,6 +100,141 @@ class PluginRuleContractTest(unittest.TestCase):
             capture_output=True, cwd=ROOT, check=False,
         )
         self.assertEqual(adapter_check.returncode, 0, adapter_check.stderr.decode())
+        self.assertFalse((ROOT / 'rules/cursor/harness-codex.mdc').exists())
+
+    def test_codex_harness_rule_is_session_scoped_and_ordered(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_data = Path(temp_dir)
+            for source in ('startup', 'resume', 'clear', 'compact'):
+                with self.subTest(source=source):
+                    session = self.run_dispatch(
+                        'codex',
+                        'session',
+                        {'session_id': f'harness-{source}', 'source': source},
+                        plugin_data=plugin_data,
+                    )
+                    context = session['hookSpecificOutput']['additionalContext']
+                    self.assertEqual(context.count('Rule-ID: smartkit/harness-codex;'), 1)
+                    self.assertLess(
+                        context.index('Rule-ID: smartkit/core-rule-config;'),
+                        context.index('Rule-ID: smartkit/harness-codex;'),
+                    )
+                    self.assertLess(
+                        context.index('Rule-ID: smartkit/harness-codex;'),
+                        context.index('Rule-ID: smartkit/core-personality;'),
+                    )
+                    self.assertLess(len(context.encode()), 50000)
+
+            prompt = self.run_dispatch(
+                'codex',
+                'prompt',
+                {'session_id': 'harness-prompt', 'prompt': 'hello'},
+                plugin_data=plugin_data,
+            )
+            self.assertNotIn(
+                'smartkit/harness-codex',
+                prompt['hookSpecificOutput']['additionalContext'],
+            )
+            copilot = self.run_dispatch(
+                'copilot',
+                'session',
+                {'sessionId': 'harness-copilot'},
+                plugin_data=plugin_data,
+            )
+            self.assertNotIn('smartkit/harness-codex', copilot['additionalContext'])
+
+    def test_codex_compact_session_restores_harness_and_activated_file_rules(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_data = Path(temp_dir)
+            payload = {
+                'session_id': 'codex-compact',
+                'prompt': 'Edit src/main.go',
+            }
+            prompt = self.run_dispatch(
+                'codex', 'prompt', payload, plugin_data=plugin_data
+            )
+            self.assertIn(
+                'smartkit/file-go',
+                prompt['hookSpecificOutput']['additionalContext'],
+            )
+
+            compact = self.run_dispatch(
+                'codex',
+                'session',
+                {'session_id': 'codex-compact', 'source': 'compact'},
+                plugin_data=plugin_data,
+            )['hookSpecificOutput']['additionalContext']
+            self.assertEqual(compact.count('Rule-ID: smartkit/harness-codex;'), 1)
+            self.assertIn('smartkit/core-rule-config', compact)
+            self.assertIn('smartkit/file-go', compact)
+
+            retry = self.run_dispatch(
+                'codex',
+                'tool',
+                {
+                    'session_id': 'codex-compact',
+                    'tool_name': 'view_file',
+                    'tool_input': {'path': 'src/main.go'},
+                },
+                plugin_data=plugin_data,
+            )
+            self.assertEqual(retry, {})
+
+    def test_registry_rejects_invalid_harness_trigger(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / 'rules/source'
+            source.mkdir(parents=True)
+            (source / 'core-rule-config.md').write_text('core\n', encoding='utf-8')
+            (source / 'harness-bad.md').write_text('bad\n', encoding='utf-8')
+            for invalid in ('cursor', 'vscode'):
+                with self.subTest(invalid=invalid):
+                    (root / 'rules/registry.json').write_text(json.dumps({'rules': [
+                        {
+                            'id': 'smartkit/core-rule-config',
+                            'source': 'source/core-rule-config.md',
+                            'strength': 'Mandatory',
+                            'trigger': {'type': 'always'},
+                        },
+                        {
+                            'id': 'smartkit/harness-bad',
+                            'source': 'source/harness-bad.md',
+                            'strength': 'Default',
+                            'trigger': {'type': 'harness', 'harnesses': [invalid]},
+                        },
+                    ]}), encoding='utf-8')
+                    environment = dict(os.environ)
+                    environment['PLUGIN_ROOT'] = str(root)
+                    environment['PLUGIN_DATA'] = str(root / 'data')
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            str(ROOT / 'runtime/rules/dispatch.py'),
+                            '--harness', 'codex', '--event', 'session',
+                        ],
+                        input=b'{}',
+                        capture_output=True,
+                        cwd=ROOT,
+                        env=environment,
+                        check=False,
+                    )
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn('invalid harnesses', result.stderr.decode())
+
+    def test_dispatch_rejects_retired_platform_option(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / 'runtime/rules/dispatch.py'),
+                '--platform', 'codex', '--event', 'session',
+            ],
+            input=b'{}',
+            capture_output=True,
+            cwd=ROOT,
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('required: --harness', result.stderr.decode())
 
     def test_codex_rule_hooks_allow_large_additional_context(self):
         hooks = json.loads((ROOT / 'hooks/hooks.json').read_text(encoding='utf-8'))['hooks']
@@ -83,7 +248,7 @@ class PluginRuleContractTest(unittest.TestCase):
                     if 'runtime/rules/dispatch.py' in handler['command']
                 ]
                 self.assertEqual(len(handlers), 1)
-                self.assertEqual(handlers[0]['additionalContextLimit'], 10000)
+                self.assertEqual(handlers[0]['additionalContextLimit'], 50000)
 
     def test_registry_rejects_removed_exclusion_globs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -95,7 +260,6 @@ class PluginRuleContractTest(unittest.TestCase):
             (source / 'core-rule-config.md').write_text('core\n', encoding='utf-8')
             (source / 'file-example.md').write_text('example\n', encoding='utf-8')
             registry.write_text(json.dumps({
-                'version': 1,
                 'rules': [
                     {
                         'id': 'smartkit/core-rule-config',
@@ -122,7 +286,7 @@ class PluginRuleContractTest(unittest.TestCase):
                 [
                     sys.executable,
                     str(ROOT / 'runtime/rules/dispatch.py'),
-                    '--platform', 'codex', '--event', 'session',
+                    '--harness', 'codex', '--event', 'session',
                 ],
                 input=b'{}',
                 capture_output=True,
@@ -139,7 +303,6 @@ class PluginRuleContractTest(unittest.TestCase):
             registry = root / 'rules/registry.json'
             registry.parent.mkdir(parents=True)
             registry.write_text(json.dumps({
-                'version': 1,
                 'rules': [{
                     'id': 'smartkit/core-rule-config',
                     'source': 'source/core-rule-config.md',
@@ -155,7 +318,7 @@ class PluginRuleContractTest(unittest.TestCase):
                 [
                     sys.executable,
                     str(ROOT / 'runtime/rules/dispatch.py'),
-                    '--platform', 'codex', '--event', 'session',
+                    '--harness', 'codex', '--event', 'session',
                 ],
                 input=b'{}',
                 capture_output=True,
@@ -195,7 +358,7 @@ class PluginRuleContractTest(unittest.TestCase):
                         'trigger': {'type': 'file', 'include_globs': ['**/*.txt']},
                     })
                 registry.write_text(
-                    json.dumps({'version': 1, 'rules': rules}),
+                    json.dumps({'rules': rules}),
                     encoding='utf-8',
                 )
 
@@ -290,7 +453,7 @@ class PluginRuleContractTest(unittest.TestCase):
                 [
                     sys.executable,
                     str(ROOT / 'runtime/rules/dispatch.py'),
-                    '--platform',
+                    '--harness',
                     'codex',
                     '--event',
                     'session',
@@ -338,7 +501,7 @@ class PluginRuleContractTest(unittest.TestCase):
                 [
                     sys.executable,
                     str(ROOT / 'runtime/rules/dispatch.py'),
-                    '--platform',
+                    '--harness',
                     'codex',
                     '--event',
                     'tool',
@@ -400,7 +563,7 @@ class PluginRuleContractTest(unittest.TestCase):
                 },
             )
 
-    def test_invalid_session_state_starts_fresh(self):
+    def test_invalid_session_state_fails_closed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             plugin_data = Path(temp_dir)
             payload = {
@@ -410,14 +573,46 @@ class PluginRuleContractTest(unittest.TestCase):
             self.run_dispatch('copilot', 'prompt', payload, plugin_data=plugin_data)
             state_file, = (plugin_data / 'rule-sessions').iterdir()
 
-            for invalid_state in ('["smartkit/file-go"]\n', '{invalid json'):
+            valid_state = json.loads(state_file.read_text(encoding='utf-8'))
+            versioned_state = dict(valid_state, version=1)
+            boolean_context_generation = dict(valid_state, context_generation=True)
+            boolean_restored_generation = dict(valid_state, restored_generation=False)
+
+            for invalid_state in (
+                '["smartkit/file-go"]\n',
+                '{invalid json',
+                json.dumps(versioned_state),
+                json.dumps(boolean_context_generation),
+                json.dumps(boolean_restored_generation),
+            ):
                 with self.subTest(invalid_state=invalid_state):
                     state_file.write_text(invalid_state, encoding='utf-8')
-                    restored = self.run_dispatch(
-                        'copilot', 'prompt', payload, plugin_data=plugin_data
-                    )['modifiedTransformedPrompt']
+                    result = self.run_raw_dispatch(
+                        'copilot',
+                        'prompt',
+                        json.dumps({
+                            'sessionId': 'invalid-state',
+                            'transformedPrompt': 'Continue',
+                        }).encode(),
+                        plugin_data=plugin_data,
+                    )
 
-                    self.assertIn('smartkit/file-go', restored)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertEqual(result.stdout, b'')
+                    self.assertIn(b'invalid Rule activation state', result.stderr)
+
+    def test_invalid_hook_payload_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_data = Path(temp_dir)
+            for payload in (b'{invalid json', b'[]'):
+                with self.subTest(payload=payload):
+                    result = self.run_raw_dispatch(
+                        'codex', 'tool', payload, plugin_data=plugin_data
+                    )
+
+                    self.assertEqual(result.returncode, 1)
+                    self.assertEqual(result.stdout, b'')
+                    self.assertIn(b'invalid Hook payload', result.stderr)
 
     def test_copilot_pre_compact_restores_rules_before_next_tool(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -450,6 +645,7 @@ class PluginRuleContractTest(unittest.TestCase):
             self.assertIn('smartkit/core-rule-config', reason)
             self.assertIn('smartkit/file-go', reason)
             self.assertIn('smartkit/file-python', reason)
+            self.assertNotIn('smartkit/harness-codex', reason)
 
             retry = self.run_dispatch(
                 'copilot', 'tool', payload, plugin_data=plugin_data
@@ -480,6 +676,7 @@ class PluginRuleContractTest(unittest.TestCase):
             )['modifiedTransformedPrompt']
             self.assertIn('smartkit/core-rule-config', restored)
             self.assertIn('smartkit/file-go', restored)
+            self.assertNotIn('smartkit/harness-codex', restored)
             self.assertTrue(restored.endswith('Continue'))
 
             tool = self.run_dispatch(
@@ -519,6 +716,7 @@ class PluginRuleContractTest(unittest.TestCase):
             self.assertEqual(blocked['decision'], 'block')
             self.assertIn('smartkit/core-rule-config', blocked['reason'])
             self.assertIn('smartkit/file-go', blocked['reason'])
+            self.assertNotIn('smartkit/harness-codex', blocked['reason'])
 
             repeated = self.run_dispatch(
                 'copilot',

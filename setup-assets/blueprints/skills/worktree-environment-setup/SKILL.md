@@ -20,7 +20,7 @@ variables, credentials, local services, and readiness checks. Establish:
 - the minimum preparation every new worktree requires, plus optional task-specific branches;
 - the narrowest repository-owned commands that install locked dependencies, initialize required
   inputs, generate required outputs, or start required services;
-- the supported host platforms, script runtime already established by the project, rerun behavior,
+- the supported platforms, script runtime already established by the project, rerun behavior,
   failure behavior, and observable readiness result;
 - for each long-running entry point, whether the command terminates or remains running, its expected
   duration or startup time, applicable execution timeout, a wait mechanism that preserves the

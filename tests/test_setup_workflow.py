@@ -306,7 +306,7 @@ class SetupWorkflowTest(unittest.TestCase):
             ownership_path = target / '.agents/smartkit.lock.json'
             self.assertTrue(ownership_path.is_file())
             ownership = json.loads(ownership_path.read_text(encoding='utf-8'))
-            self.assertEqual(ownership['version'], 1)
+            self.assertEqual(set(ownership), {'sources', 'assets', 'seeded'})
             self.assertEqual(ownership['sources'], [])
             project_rule = next(
                 item

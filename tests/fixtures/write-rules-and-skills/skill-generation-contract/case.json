@@ -1,5 +1,4 @@
 {
-  "version": 1,
   "id": "skill-generation-contract",
   "lifecycle": "generation-contract",
   "acceptance_mode": "static-walkthrough",

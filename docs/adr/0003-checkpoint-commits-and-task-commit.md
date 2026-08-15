@@ -15,6 +15,6 @@ as Already Delivered and creates no empty Task Commit.
 Checkpoint Commits may include clearly marked work-in-progress recovery points but never bypass
 commit hooks. Consolidation retains explicit recovery refs until the selected finish outcome is
 verified. Pull-request fixes published after the initial Task Commit remain visible review history;
-the repository's pull-request policy owns any final platform squash. An empty diff alone cannot
+the repository's pull-request policy owns any final repository-host squash. An empty diff alone cannot
 establish Already Delivered; current ancestry or equivalent-change evidence and the task's required
 verification must prove the accepted result on the selected target.

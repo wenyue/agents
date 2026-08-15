@@ -35,7 +35,7 @@ class Recipe:
 
 @dataclass(frozen=True)
 class MaintenanceResult:
-    platform: str
+    harness: str
     tool_id: str
     tool_name: str
     action: str
@@ -63,7 +63,7 @@ _COMMON_RECIPES = {
     },
 }
 
-_PLATFORM_RECIPES = {
+_HARNESS_RECIPES = {
     'codex': {
         'codex': {
             'install': Recipe(
@@ -96,21 +96,21 @@ _PLATFORM_RECIPES = {
 }
 
 
-def resolve_recipe(platform: str, tool_id: str, action: str) -> Recipe:
+def resolve_recipe(harness: str, tool_id: str, action: str) -> Recipe:
     if action not in {'install', 'upgrade'}:
         raise MaintenanceError('maintenance action must be install or upgrade')
-    recipes = _PLATFORM_RECIPES.get(platform)
+    recipes = _HARNESS_RECIPES.get(harness)
     if recipes is None:
-        raise MaintenanceError('unsupported platform')
+        raise MaintenanceError('unsupported harness')
     tool_recipes = recipes.get(tool_id) or _COMMON_RECIPES.get(tool_id)
     if tool_recipes is None or action not in tool_recipes:
         raise MaintenanceError('unsupported recommended tool')
     return tool_recipes[action]
 
 
-def _tool_policy(platform: str, tool_id: str, policy_path: Path | None) -> dict:
-    path = policy_path or checker.default_policy_path(platform)
-    policy = checker.load_policy(path, platform)
+def _tool_policy(harness: str, tool_id: str, policy_path: Path | None) -> dict:
+    path = policy_path or checker.default_policy_path(harness)
+    policy = checker.load_policy(path, harness)
     for raw_tool in policy['tools']:
         tool = checker._validate_tool(raw_tool)
         if tool['id'] == tool_id:
@@ -119,12 +119,12 @@ def _tool_policy(platform: str, tool_id: str, policy_path: Path | None) -> dict:
 
 
 def required_action(
-    platform: str,
+    harness: str,
     tool_id: str,
     policy_path: Path | None = None,
 ) -> str | None:
-    tool = _tool_policy(platform, tool_id, policy_path)
-    findings = checker.check_policy({'platform': platform, 'tools': [tool]})
+    tool = _tool_policy(harness, tool_id, policy_path)
+    findings = checker.check_policy({'harness': harness, 'tools': [tool]})
     if not findings:
         return None
     code = findings[0].code
@@ -136,7 +136,7 @@ def required_action(
 
 
 def apply_maintenance(
-    platform: str,
+    harness: str,
     tool_id: str,
     action: str,
     *,
@@ -146,11 +146,11 @@ def apply_maintenance(
 ) -> MaintenanceResult:
     if not approved:
         raise ApprovalRequired('user consent is required before maintenance')
-    recipe = resolve_recipe(platform, tool_id, action)
-    current_action = required_action(platform, tool_id, policy_path)
+    recipe = resolve_recipe(harness, tool_id, action)
+    current_action = required_action(harness, tool_id, policy_path)
     if current_action is None:
         return MaintenanceResult(
-            platform,
+            harness,
             tool_id,
             recipe.tool_name,
             action,
@@ -160,7 +160,7 @@ def apply_maintenance(
         raise MaintenanceError('requested action does not match the current tool state')
     if recipe.manual_guidance:
         return MaintenanceResult(
-            platform,
+            harness,
             tool_id,
             recipe.tool_name,
             action,
@@ -172,7 +172,7 @@ def apply_maintenance(
         completed = executor(list(recipe.command), check=False)
     except OSError:
         return MaintenanceResult(
-            platform,
+            harness,
             tool_id,
             recipe.tool_name,
             action,
@@ -180,22 +180,22 @@ def apply_maintenance(
         )
     if completed.returncode != 0:
         return MaintenanceResult(
-            platform,
+            harness,
             tool_id,
             recipe.tool_name,
             action,
             'failed',
         )
-    if required_action(platform, tool_id, policy_path) is not None:
+    if required_action(harness, tool_id, policy_path) is not None:
         return MaintenanceResult(
-            platform,
+            harness,
             tool_id,
             recipe.tool_name,
             action,
             'verification-failed',
         )
     return MaintenanceResult(
-        platform,
+        harness,
         tool_id,
         recipe.tool_name,
         action,
@@ -221,7 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
     apply = subparsers.add_parser('apply')
-    apply.add_argument('--platform', required=True, choices=('codex', 'cursor', 'copilot'))
+    apply.add_argument('--harness', required=True, choices=('codex', 'cursor', 'copilot'))
     apply.add_argument('--tool', required=True)
     apply.add_argument('--action', required=True, choices=('install', 'upgrade'))
     apply.add_argument('--approved', action='store_true')
@@ -233,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         result = apply_maintenance(
-            args.platform,
+            args.harness,
             args.tool,
             args.action,
             approved=args.approved,

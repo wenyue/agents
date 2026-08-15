@@ -10,7 +10,7 @@ class ContractError(ValueError):
     """Raised when a setup contract document is invalid."""
 
 
-class Platform(str, Enum):
+class Harness(str, Enum):
     CODEX = 'codex'
     CURSOR = 'cursor'
     COPILOT = 'copilot'
@@ -28,7 +28,7 @@ class McpTransport(str, Enum):
 
 @dataclass(frozen=True)
 class McpOverride:
-    platforms: tuple[Platform, ...] | None = None
+    harnesses: tuple[Harness, ...] | None = None
     operating_systems: tuple[OperatingSystem, ...] | None = None
     command: str | None = None
     args: tuple[str, ...] | None = None
@@ -39,7 +39,7 @@ class McpOverride:
 
 @dataclass(frozen=True)
 class McpReadiness:
-    platforms: tuple[Platform, ...] | None = None
+    harnesses: tuple[Harness, ...] | None = None
     operating_systems: tuple[OperatingSystem, ...] | None = None
     checks: tuple[Mapping[str, object], ...] | None = None
 
@@ -48,7 +48,7 @@ class McpReadiness:
 class McpServerSpec:
     id: str
     transport: McpTransport
-    platforms: tuple[Platform, ...]
+    harnesses: tuple[Harness, ...]
     command: str | None = None
     args: tuple[str, ...] = ()
     cwd: str | None = None
@@ -93,7 +93,7 @@ class AssetSpec:
     kind: str
     source: PurePosixPath
     target: PurePosixPath | None
-    platforms: tuple[Platform, ...]
+    harnesses: tuple[Harness, ...]
     mode: str = 'copy'
     control_plane: bool = False
     metadata: Mapping[str, object] = field(default_factory=dict)
@@ -102,7 +102,6 @@ class AssetSpec:
 
 @dataclass(frozen=True)
 class ProjectConfig:
-    version: int
     selected_rules: tuple[str, ...]
     selected_skills: tuple[str, ...]
     external_sources: tuple[ExternalSourceSpec, ...] = ()

@@ -43,7 +43,7 @@ Require evidence for every command, ownership mapping, and supported scope.
    callable analyzer or test tool when it preserves the required scope and evidence; retain the
    repository command when the tool would broaden a formatter or fixer mutation, discard a needed
    selector, or weaken diagnostics.
-5. Group independent calls into one orchestration request when the platform supports it. Configure
+5. Group independent calls into one orchestration request when the Harness supports it. Configure
    an evidence-backed owning-tool timeout for a legitimate long-running operation, and keep a
    synchronous tool call under its owning wait mechanism.
 6. Prefer repository-owned selectors. Add a skill-owned script only when repeated deterministic

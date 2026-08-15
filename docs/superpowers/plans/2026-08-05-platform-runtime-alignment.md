@@ -1,5 +1,9 @@
 # 平台运行时对齐实施计划
 
+> **Historical terminology:** 本文保留的“平台”“三平台”和 `platform-*` 名称记录当时的真实术语。
+> 当前契约使用 `Harness` 表示 Codex、Cursor 和 Copilot，并使用 `Platform` 表示 Windows、Linux
+> 或 macOS；不要把这些历史术语、路径或命令当作当前入口。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在不修改 Copilot 包装器的前提下，让 Cursor 推荐工具 Hook 在 Windows 和 Linux 使用各自可靠的 Python 入口，并用可执行测试固化三平台的共同能力与原生差异。

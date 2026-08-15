@@ -21,7 +21,7 @@ from .models import (
     McpServerSpec,
     McpTransport,
     OperatingSystem,
-    Platform,
+    Harness,
     ProjectAgentSpec,
     ProjectConfig,
 )
@@ -122,9 +122,9 @@ _TRANSIENT_NAMES = frozenset({
     '__pycache__', '.DS_Store', 'Thumbs.db', '.pytest_cache', '.mypy_cache', '.ruff_cache'
 })
 _MCP_NATIVE = {
-    Platform.CODEX: (PurePosixPath('.codex/config.toml'), 'mcp_servers'),
-    Platform.CURSOR: (PurePosixPath('.cursor/mcp.json'), 'mcpServers'),
-    Platform.COPILOT: (PurePosixPath('.vscode/mcp.json'), 'servers'),
+    Harness.CODEX: (PurePosixPath('.codex/config.toml'), 'mcp_servers'),
+    Harness.CURSOR: (PurePosixPath('.cursor/mcp.json'), 'mcpServers'),
+    Harness.COPILOT: (PurePosixPath('.vscode/mcp.json'), 'servers'),
 }
 
 
@@ -327,14 +327,14 @@ def _set_dotted_field(document: dict[str, object], key: str, value: object) -> N
 
 def _effective_mcp_server(
     server: McpServerSpec,
-    platform: Platform,
+    harness: Harness,
     operating_system: OperatingSystem | None,
 ) -> tuple[str | None, tuple[str, ...], str | None, tuple[str, ...], str | None]:
     command, args, cwd, env, url = (
         server.command, server.args, server.cwd, server.env, server.url,
     )
     for override in server.overrides:
-        if override.platforms is not None and platform not in override.platforms:
+        if override.harnesses is not None and harness not in override.harnesses:
             continue
         if (
             override.operating_systems is not None
@@ -351,28 +351,28 @@ def _effective_mcp_server(
 
 def _render_mcp_entry(
     server: McpServerSpec,
-    platform: Platform,
+    harness: Harness,
     operating_system: OperatingSystem | None,
 ) -> dict[str, object]:
     command, args, cwd, env, url = _effective_mcp_server(
-        server, platform, operating_system
+        server, harness, operating_system
     )
     if server.transport is McpTransport.HTTP:
         assert url is not None
         return {
-            **({'type': 'http'} if platform is not Platform.CODEX else {}),
+            **({'type': 'http'} if harness is not Harness.CODEX else {}),
             'url': url,
         }
     assert command is not None
     entry: dict[str, object] = {
-        **({'type': 'stdio'} if platform is not Platform.CODEX else {}),
+        **({'type': 'stdio'} if harness is not Harness.CODEX else {}),
         'command': command,
         'args': list(args),
     }
     if cwd is not None:
         entry['cwd'] = cwd
     if env:
-        if platform is Platform.CODEX:
+        if harness is Harness.CODEX:
             entry['env_vars'] = list(env)
         else:
             entry['env'] = {name: '${env:' + name + '}' for name in env}
@@ -419,10 +419,10 @@ def _render_project_mcp(
 
     touched_paths: set[PurePosixPath] = set()
     for server in config.mcp_servers:
-        for platform in server.platforms:
-            path, root = _MCP_NATIVE[platform]
+        for harness in server.harnesses:
+            path, root = _MCP_NATIVE[harness]
             key = f'{root}.{server.id}'
-            desired = _render_mcp_entry(server, platform, operating_system)
+            desired = _render_mcp_entry(server, harness, operating_system)
             document = native_document(path)
             desired_fields = dict(_safe_leaves(desired, key))
             for owned_path, owned_key in previous_owned_fields:
@@ -536,7 +536,7 @@ def render_desired_state(
             (asset.kind != 'rule' or asset.id in config.selected_rules)
             and (asset.kind != 'skill' or asset.id in config.selected_skills)
         )
-        if not asset.platforms or not asset_selected:
+        if not asset.harnesses or not asset_selected:
             if asset.kind == 'template' and _format_for(asset.target):
                 format_name = _format_for(asset.target)
                 assert format_name is not None

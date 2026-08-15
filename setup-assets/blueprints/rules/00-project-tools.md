@@ -24,8 +24,8 @@ than a tool inventory.
   boundaries, ports, startup dependencies, and health or readiness checks.
 - Inspect generator configuration and repository-owned verification or setup selectors without
   copying policy owned by generated files or project skills.
-- Inspect project-owned MCP and native agent-platform configuration. Reconcile names and intent
-  across supported platforms while preserving each platform's native schema.
+- Inspect project-owned MCP and native Harness configuration. Reconcile names and intent across
+  supported Harnesses while preserving each Harness's native schema.
 - Treat absent, conflicting, or machine-local evidence as unresolved until authoritative
   repository evidence establishes a repository-wide fact.
 
@@ -61,7 +61,7 @@ than a tool inventory.
   and invocation constraints to both.
 - Keep API contracts, domain behavior, generated-file edit policy, and lint interpretation in
   `Project Rules`. Keep module placement and dependency direction in `Project Structure`.
-- Leave platform wrapper generation and distribution metadata to their owning configuration or
+- Leave Harness wrapper generation and distribution metadata to their owning configuration or
   synchronization manifest.
 - Select commands per task need, reference policy owned elsewhere, protect credentials, and include
   only commands, selectors, costs, services, and integrations established by evidence.

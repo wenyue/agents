@@ -19,7 +19,7 @@ from agents_setup.catalog import (
 )
 from agents_setup.discovery import DiscoveryError
 from agents_setup.external import ExternalSkillError, snapshot_external_skills
-from agents_setup.models import Catalog, Platform, ProjectConfig
+from agents_setup.models import Catalog, Harness, ProjectConfig
 from agents_setup.planner import PlanningError, build_plan
 from agents_setup.project import ProjectError, inspect_project
 from agents_setup.renderer import RenderError, render_desired_state
@@ -41,7 +41,7 @@ _BLUEPRINT_TARGETS = (
     PurePosixPath('docs/agents/triage-labels.md'),
     PurePosixPath('docs/agents/domain.md'),
 )
-_PLATFORMS = tuple(Platform)
+_HARNESSES = tuple(Harness)
 
 
 class SetupError(ValueError):
@@ -135,12 +135,11 @@ def _request(
         for path in _BLUEPRINT_TARGETS
     ]
     return {
-        'version': 1,
         'target': str(target),
         'source_root': str(source_root),
         'source_commit': source_commit,
         'external_snapshot_sha256': external_snapshot_sha256,
-        'platforms': [item.value for item in _PLATFORMS],
+        'harnesses': [item.value for item in _HARNESSES],
         'selected_rules': list(config.selected_rules),
         'selected_skills': list(config.selected_skills),
         'external_sources': [
@@ -154,7 +153,7 @@ def _request(
         'mcp_servers': [
             {
                 'id': server.id,
-                'platforms': [platform.value for platform in server.platforms],
+                'harnesses': [harness.value for harness in server.harnesses],
                 **({'command': server.command} if server.command is not None else {}),
                 **({'args': list(server.args)} if server.args else {}),
                 **({'cwd': server.cwd} if server.cwd is not None else {}),
@@ -165,10 +164,10 @@ def _request(
                         {
                             'when': {
                                 **({
-                                    'platforms': [
-                                        platform.value for platform in override.platforms
+                                    'harnesses': [
+                                        harness.value for harness in override.harnesses
                                     ]
-                                } if override.platforms is not None else {}),
+                                } if override.harnesses is not None else {}),
                                 **({
                                     'operatingSystems': [
                                         item.value for item in override.operating_systems
@@ -195,10 +194,10 @@ def _request(
                 **({
                     'readiness': {
                         **({
-                            'platforms': [
-                                platform.value for platform in server.readiness.platforms
+                            'harnesses': [
+                                harness.value for harness in server.readiness.harnesses
                             ]
-                        } if server.readiness.platforms is not None else {}),
+                        } if server.readiness.harnesses is not None else {}),
                         **({
                             'operatingSystems': [
                                 item.value for item in server.readiness.operating_systems
@@ -217,7 +216,7 @@ def _request(
                 'id': agent.id,
                 'source': agent.source.as_posix(),
                 'description': agent.description,
-                'platforms': {
+                'harnesses': {
                     **({
                         'codex': {
                             **({'model': agent.codex.model} if agent.codex.model else {}),
@@ -278,11 +277,11 @@ def _request_config(
     catalog: Catalog,
 ) -> ProjectConfig:
     required = {
-        'version', 'target', 'source_root', 'source_commit', 'platforms', 'selected_rules',
+        'target', 'source_root', 'source_commit', 'harnesses', 'selected_rules',
         'selected_skills', 'external_sources', 'mcp_servers', 'generation_requests',
         'external_snapshot_sha256', 'project_agents',
     }
-    if set(request) != required or request.get('version') != 1:
+    if set(request) != required:
         raise SetupError('session request has an invalid shape')
     if request.get('source_commit') != source_commit:
         raise SetupError('session request source commit does not match this pinned source')
@@ -298,8 +297,8 @@ def _request_config(
             or any(character not in '0123456789abcdef' for character in snapshot_digest)
         ):
             raise ValueError
-        platforms = tuple(Platform(item) for item in request['platforms'])
-        if platforms != _PLATFORMS:
+        harnesses = tuple(Harness(item) for item in request['harnesses'])
+        if harnesses != _HARNESSES:
             raise ValueError
         selections = (
             _selected_request_ids(request['selected_rules'], catalog=catalog, kind='rule'),
@@ -332,7 +331,7 @@ def _request_config(
         mcp_servers = parse_mcp_servers(request['mcp_servers'])
         project_agents = parse_project_agents(request['project_agents'])
         config = ProjectConfig(
-            1, *selections, external_sources, mcp_servers, project_agents,
+            *selections, external_sources, mcp_servers, project_agents,
         )
     except (KeyError, TypeError, ValueError, SetupError) as error:
         raise SetupError('session request has invalid setup choices') from error
@@ -383,17 +382,16 @@ def _emit_result(
     phase: str,
     source_commit: str | None,
     changed_paths: Sequence[str],
-    platforms: Sequence[str],
+    harnesses: Sequence[str],
     external_skills: Sequence[str],
     preserved_paths: Sequence[str],
     drift: Mapping[str, object] | None = None,
 ) -> None:
     print(json.dumps({
-        'version': 1,
         'phase': phase,
         'source_commit': source_commit,
         'changed_paths': sorted(changed_paths),
-        'platforms': list(platforms),
+        'harnesses': list(harnesses),
         'external_skills': sorted(external_skills),
         'preserved_paths': sorted(preserved_paths),
         'drift': drift,
@@ -512,7 +510,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         plan, target, config, rendered = _plan(args, session, source_commit)
         result_context = {
-            'platforms': [item.value for item in _PLATFORMS],
+            'harnesses': [item.value for item in _HARNESSES],
             'external_skills': [item.name for item in config.external_skills],
             'preserved_paths': [item.as_posix() for item in rendered.preserved_paths],
         }

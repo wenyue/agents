@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
 
-PLATFORMS = ('codex', 'cursor', 'copilot')
+HARNESSES = ('codex', 'cursor', 'copilot')
 OUTPUTS = {
     'codex': Path('agents/codex'),
     'cursor': Path('agents/cursor'),
@@ -62,9 +62,7 @@ def load_registry(root: Path) -> tuple[dict[str, object], ...]:
     except (OSError, json.JSONDecodeError) as error:
         raise AgentRegistryError(f'cannot load Agent registry: {path}') from error
     registry = _object(document, 'Agent registry')
-    _fields(registry, {'version', 'agents'}, 'Agent registry')
-    if registry.get('version') != 1:
-        raise AgentRegistryError('Agent registry version must be 1')
+    _fields(registry, {'agents'}, 'Agent registry')
     raw_agents = registry.get('agents')
     if not isinstance(raw_agents, list):
         raise AgentRegistryError('Agent registry agents must be an array')
@@ -74,7 +72,7 @@ def load_registry(root: Path) -> tuple[dict[str, object], ...]:
     for index, raw_agent in enumerate(raw_agents):
         label = f'Agent registry agents[{index}]'
         agent = _object(raw_agent, label)
-        _fields(agent, {'id', 'source', 'description', 'platforms'}, label)
+        _fields(agent, {'id', 'source', 'description', 'harnesses'}, label)
         agent_id = _nonempty(agent.get('id'), f'{label}.id')
         if SAFE_ID.fullmatch(agent_id) is None:
             raise AgentRegistryError(f'{label}.id must be a safe name')
@@ -93,48 +91,48 @@ def load_registry(root: Path) -> tuple[dict[str, object], ...]:
             raise AgentRegistryError(f'{label}.source cannot contain a TOML multiline delimiter')
 
         description = _nonempty(agent.get('description'), f'{label}.description')
-        platforms = _object(agent.get('platforms'), f'{label}.platforms')
-        _fields(platforms, set(PLATFORMS), f'{label}.platforms')
-        if not platforms:
-            raise AgentRegistryError(f'{label}.platforms must not be empty')
-        rendered_platforms: dict[str, dict[str, object]] = {}
-        for platform, raw_config in platforms.items():
-            config = _object(raw_config, f'{label}.platforms.{platform}')
-            if platform == 'codex':
-                _fields(config, {'sandbox_mode'}, f'{label}.platforms.codex')
-                rendered_platforms[platform] = {
+        harnesses = _object(agent.get('harnesses'), f'{label}.harnesses')
+        _fields(harnesses, set(HARNESSES), f'{label}.harnesses')
+        if not harnesses:
+            raise AgentRegistryError(f'{label}.harnesses must not be empty')
+        rendered_harnesses: dict[str, dict[str, object]] = {}
+        for harness, raw_config in harnesses.items():
+            config = _object(raw_config, f'{label}.harnesses.{harness}')
+            if harness == 'codex':
+                _fields(config, {'sandbox_mode'}, f'{label}.harnesses.codex')
+                rendered_harnesses[harness] = {
                     'sandbox_mode': _nonempty(
-                        config.get('sandbox_mode'), f'{label}.platforms.codex.sandbox_mode'
+                        config.get('sandbox_mode'), f'{label}.harnesses.codex.sandbox_mode'
                     )
                 }
-            elif platform == 'cursor':
-                _fields(config, {'readonly'}, f'{label}.platforms.cursor')
+            elif harness == 'cursor':
+                _fields(config, {'readonly'}, f'{label}.harnesses.cursor')
                 readonly = config.get('readonly')
                 if type(readonly) is not bool:
                     raise AgentRegistryError(
-                        f'{label}.platforms.cursor.readonly must be a boolean'
+                        f'{label}.harnesses.cursor.readonly must be a boolean'
                     )
-                rendered_platforms[platform] = {'readonly': readonly}
+                rendered_harnesses[harness] = {'readonly': readonly}
             else:
                 _fields(
                     config,
                     {'disable_model_invocation'},
-                    f'{label}.platforms.copilot',
+                    f'{label}.harnesses.copilot',
                 )
                 disabled = config.get('disable_model_invocation')
                 if type(disabled) is not bool:
                     raise AgentRegistryError(
-                        f'{label}.platforms.copilot.disable_model_invocation '
+                        f'{label}.harnesses.copilot.disable_model_invocation '
                         'must be a boolean'
                     )
-                rendered_platforms[platform] = {'disable_model_invocation': disabled}
+                rendered_harnesses[harness] = {'disable_model_invocation': disabled}
 
         agents.append({
             'id': agent_id,
             'source': source.as_posix(),
             'description': description,
             'instructions': instructions,
-            'platforms': rendered_platforms,
+            'harnesses': rendered_harnesses,
         })
     return tuple(agents)
 
@@ -143,15 +141,15 @@ def _quoted(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def render_agent(agent: Mapping[str, object], platform: str) -> tuple[str, bytes]:
+def render_agent(agent: Mapping[str, object], harness: str) -> tuple[str, bytes]:
     agent_id = str(agent['id'])
     description = str(agent['description'])
     instructions = str(agent['instructions'])
-    platforms = agent['platforms']
-    assert isinstance(platforms, Mapping)
-    config = platforms[platform]
+    harnesses = agent['harnesses']
+    assert isinstance(harnesses, Mapping)
+    config = harnesses[harness]
     assert isinstance(config, Mapping)
-    if platform == 'codex':
+    if harness == 'codex':
         name = f'{agent_id}.toml'
         content = (
             f'name = {_quoted(agent_id)}\n'
@@ -161,7 +159,7 @@ def render_agent(agent: Mapping[str, object], platform: str) -> tuple[str, bytes
             f'{instructions}\n'
             '"""\n'
         )
-    elif platform == 'cursor':
+    elif harness == 'cursor':
         name = f'{agent_id}.md'
         content = (
             '---\n'
@@ -186,13 +184,13 @@ def render_agent(agent: Mapping[str, object], platform: str) -> tuple[str, bytes
 
 
 def desired_adapters(root: Path) -> dict[str, dict[str, bytes]]:
-    desired = {platform: {} for platform in PLATFORMS}
+    desired = {harness: {} for harness in HARNESSES}
     for agent in load_registry(root):
-        platforms = agent['platforms']
-        assert isinstance(platforms, Mapping)
-        for platform in platforms:
-            name, content = render_agent(agent, platform)
-            desired[str(platform)][name] = content
+        harnesses = agent['harnesses']
+        assert isinstance(harnesses, Mapping)
+        for harness in harnesses:
+            name, content = render_agent(agent, harness)
+            desired[str(harness)][name] = content
     return desired
 
 
@@ -200,14 +198,14 @@ def synchronize(root: Path, *, write: bool) -> tuple[Path, ...]:
     root = root.resolve()
     desired = desired_adapters(root)
     changed: list[Path] = []
-    for platform, relative_directory in OUTPUTS.items():
+    for harness, relative_directory in OUTPUTS.items():
         directory = root / relative_directory
         actual = {
             path.name: path.read_bytes()
             for path in directory.iterdir()
             if path.is_file()
         } if directory.is_dir() else {}
-        expected = desired[platform]
+        expected = desired[harness]
         for name in sorted(set(actual) | set(expected)):
             if actual.get(name) != expected.get(name):
                 changed.append(relative_directory / name)

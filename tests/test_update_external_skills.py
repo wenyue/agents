@@ -41,7 +41,6 @@ class ExternalSkillsUpdaterTest(unittest.TestCase):
     @staticmethod
     def registry(sources):
         return {
-            'version': 1,
             'custom': [{'id': 'smartkit/custom', 'path': 'custom'}],
             'external_sources': sources,
         }
@@ -100,7 +99,6 @@ class ExternalSkillsUpdaterTest(unittest.TestCase):
             encoding='utf-8',
         )
         registry = {
-            'version': 1,
             'custom': [
                 {'id': 'smartkit/setup-project-agents', 'path': 'setup-project-agents'}
             ],
@@ -173,7 +171,6 @@ class ExternalSkillsUpdaterTest(unittest.TestCase):
         )
         (project / 'skills/registry.json').write_text(
             json.dumps({
-                'version': 1,
                 'custom': [{'id': 'smartkit/custom', 'path': 'custom'}],
                 'external_sources': [{
                     'id': 'acme/skills',
@@ -229,7 +226,6 @@ class ExternalSkillsUpdaterTest(unittest.TestCase):
         )
         (project / 'skills/registry.json').write_text(
             json.dumps({
-                'version': 1,
                 'custom': [{'id': 'smartkit/custom', 'path': 'custom'}],
                 'external_sources': [{
                     'id': 'acme/skills',
@@ -429,7 +425,6 @@ class ExternalSkillsUpdaterTest(unittest.TestCase):
 
     def test_lock_rejects_destinations_outside_managed_roots(self):
         malicious = {
-            'version': 1,
             'sources': [{
                 'id': 'acme/skills',
                 'license': {'destination': '../../outside'},

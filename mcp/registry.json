@@ -1,5 +1,4 @@
 {
-  "version": 1,
   "servers": [
     {
       "id": "playwright",
@@ -11,7 +10,7 @@
         "--isolated",
         "--headless"
       ],
-      "platforms": [
+      "harnesses": [
         "codex",
         "cursor",
         "copilot"

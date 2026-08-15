@@ -57,7 +57,7 @@ class WriteRulesAndSkillsFixtureTest(unittest.TestCase):
             with self.subTest(case=case_id):
                 case_root = FIXTURE_ROOT / case_id
                 case = load_case(case_id)
-                self.assertEqual(case["version"], 1)
+                self.assertNotIn("version", case)
                 self.assertEqual(case["id"], case_id)
                 self.assertEqual(
                     (case["lifecycle"], case["semantic_type"], case["scope"]),

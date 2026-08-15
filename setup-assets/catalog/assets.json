@@ -1,7 +1,7 @@
 {
   "plugin": {
     "id": "smartkit",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "repository": "https://github.com/wenyue/agents.git",
     "ref": "master"
   },
@@ -111,16 +111,16 @@
     {
       "id": "config-agents",
       "kind": "template",
-      "source": "setup-assets/templates/platform-config/agents.config.json",
+      "source": "setup-assets/templates/harness-config/agents.config.json",
       "target": ".agents/config.json",
       "mode": "render"
     },
     {
       "id": "config-codex",
       "kind": "template",
-      "source": "setup-assets/templates/platform-config/codex.config.toml",
+      "source": "setup-assets/templates/harness-config/codex.config.toml",
       "target": ".codex/config.toml",
-      "platforms": [
+      "harnesses": [
         "codex"
       ],
       "mode": "render"
@@ -128,9 +128,9 @@
     {
       "id": "config-codex-rules",
       "kind": "template",
-      "source": "setup-assets/templates/platform-config/codex.rules",
+      "source": "setup-assets/templates/harness-config/codex.rules",
       "target": ".codex/rules/setup-project-agents.rules",
-      "platforms": [
+      "harnesses": [
         "codex"
       ],
       "mode": "render"
@@ -140,7 +140,7 @@
       "kind": "agent",
       "source": "agents/codex",
       "target": ".codex/agents",
-      "platforms": [
+      "harnesses": [
         "codex"
       ],
       "mode": "copy"
@@ -148,9 +148,9 @@
     {
       "id": "config-cursor-cli",
       "kind": "template",
-      "source": "setup-assets/templates/platform-config/cursor.cli.json",
+      "source": "setup-assets/templates/harness-config/cursor.cli.json",
       "target": ".cursor/cli.json",
-      "platforms": [
+      "harnesses": [
         "cursor"
       ],
       "mode": "render"
@@ -160,7 +160,7 @@
       "kind": "wrapper",
       "source": "setup-assets/templates/wrappers/rule-wrappers/cursor.mdc",
       "target": ".cursor/rules/{rule-name}.mdc",
-      "platforms": [
+      "harnesses": [
         "cursor"
       ],
       "mode": "render"
@@ -170,7 +170,7 @@
       "kind": "wrapper",
       "source": "setup-assets/templates/wrappers/rule-wrappers/github.instructions.md",
       "target": ".github/instructions/{rule-name}.instructions.md",
-      "platforms": [
+      "harnesses": [
         "copilot"
       ],
       "mode": "render"

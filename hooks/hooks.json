@@ -6,17 +6,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${PLUGIN_ROOT}/runtime/recommended-tools/check_recommended_tools.sh\" hook --platform codex",
-            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}\\runtime\\recommended-tools\\check_recommended_tools.ps1\" hook --platform codex",
+            "command": "sh \"${PLUGIN_ROOT}/runtime/recommended-tools/check_recommended_tools.sh\" hook --harness codex",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}\\runtime\\recommended-tools\\check_recommended_tools.ps1\" hook --harness codex",
             "timeout": 30,
             "statusMessage": "Checking daily project readiness"
           },
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform codex --event session",
-            "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform codex --event session",
+            "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --harness codex --event session",
+            "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --harness codex --event session",
             "timeout": 30,
-            "additionalContextLimit": 10000,
+            "additionalContextLimit": 50000,
             "statusMessage": "Loading SmartKit plugin rules"
           }
         ]
@@ -27,10 +27,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform codex --event prompt",
-            "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform codex --event prompt",
+            "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --harness codex --event prompt",
+            "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --harness codex --event prompt",
             "timeout": 30,
-            "additionalContextLimit": 10000
+            "additionalContextLimit": 50000
           }
         ]
       }
@@ -40,10 +40,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform codex --event tool",
-            "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform codex --event tool",
+            "command": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --harness codex --event tool",
+            "commandWindows": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --harness codex --event tool",
             "timeout": 30,
-            "additionalContextLimit": 10000
+            "additionalContextLimit": 50000
           }
         ]
       }

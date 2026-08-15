@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check platform recommendations and required effective runtime values."""
+"""Check harness recommendations and required effective runtime values."""
 
 from __future__ import annotations
 
@@ -345,8 +345,8 @@ def _check_required_values(policy: dict[str, Any]) -> list[Finding]:
 
 def check_policy(policy: dict[str, Any]) -> list[Finding]:
     tools = policy.get('tools')
-    if not isinstance(policy.get('platform'), str) or not isinstance(tools, list):
-        raise PolicyError('policy requires platform and tools')
+    if not isinstance(policy.get('harness'), str) or not isinstance(tools, list):
+        raise PolicyError('policy requires harness and tools')
     findings: list[Finding] = []
     for raw_tool in tools:
         tool = _validate_tool(raw_tool)
@@ -379,7 +379,7 @@ def check_policy(policy: dict[str, Any]) -> list[Finding]:
                 message = (
                     'version detection failed'
                     if detector_failed
-                    else 'is not installed for this platform'
+                    else 'is not installed for this harness'
                 )
                 findings.append(Finding(code, tool['name'], message, tool['install']))
             continue
@@ -449,31 +449,31 @@ def _load_json_object(path: Path, label: str) -> dict[str, Any]:
     return value
 
 
-def _mcp_servers_from_registry(path: Path, platform: str) -> list[dict[str, Any]]:
-    if platform not in {'codex', 'cursor', 'copilot'}:
-        raise PolicyError('MCP platform is invalid')
+def _mcp_servers_from_registry(path: Path, harness: str) -> list[dict[str, Any]]:
+    if harness not in {'codex', 'cursor', 'copilot'}:
+        raise PolicyError('MCP harness is invalid')
     document = _load_json_object(path, 'plugin MCP registry')
-    if document.get('version') != 1 or not isinstance(document.get('servers'), list):
+    if set(document) != {'servers'} or not isinstance(document.get('servers'), list):
         raise PolicyError('plugin MCP registry is invalid')
     servers: list[dict[str, Any]] = []
     for raw_server in document['servers']:
         if not isinstance(raw_server, dict):
             raise PolicyError('plugin MCP registry is invalid')
-        platforms = raw_server.get('platforms')
+        harnesses = raw_server.get('harnesses')
         if (
-            not isinstance(platforms, list)
-            or not platforms
-            or not all(isinstance(item, str) for item in platforms)
-            or len(platforms) != len(set(platforms))
-            or set(platforms) - {'codex', 'cursor', 'copilot'}
+            not isinstance(harnesses, list)
+            or not harnesses
+            or not all(isinstance(item, str) for item in harnesses)
+            or len(harnesses) != len(set(harnesses))
+            or set(harnesses) - {'codex', 'cursor', 'copilot'}
         ):
             raise PolicyError('plugin MCP registry is invalid')
-        if platform in platforms:
+        if harness in harnesses:
             checks = _effective_readiness_checks(
                 raw_server,
                 raw_server,
-                platform=platform,
-                enabled_platforms=platforms,
+                harness=harness,
+                enabled_harnesses=harnesses,
                 label='plugin MCP registry',
             )
             if checks is not None:
@@ -519,8 +519,8 @@ def _effective_readiness_checks(
     declared: dict[str, Any],
     effective: dict[str, Any],
     *,
-    platform: str,
-    enabled_platforms: list[str],
+    harness: str,
+    enabled_harnesses: list[str],
     label: str,
 ) -> list[object] | None:
     readiness = declared.get('readiness')
@@ -528,17 +528,17 @@ def _effective_readiness_checks(
         return _inferred_readiness_checks(effective)
     if (
         not isinstance(readiness, dict)
-        or set(readiness) - {'platforms', 'operatingSystems', 'checks'}
+        or set(readiness) - {'harnesses', 'operatingSystems', 'checks'}
     ):
         raise PolicyError(f'{label} readiness is invalid')
-    selected_platforms = enabled_platforms
-    if 'platforms' in readiness:
-        selected_platforms = _override_selector_values(
-            readiness['platforms'], allowed={'codex', 'cursor', 'copilot'}
+    selected_harnesses = enabled_harnesses
+    if 'harnesses' in readiness:
+        selected_harnesses = _override_selector_values(
+            readiness['harnesses'], allowed={'codex', 'cursor', 'copilot'}
         )
-        if set(selected_platforms) - set(enabled_platforms):
+        if set(selected_harnesses) - set(enabled_harnesses):
             raise PolicyError(f'{label} readiness is invalid')
-    if platform not in selected_platforms:
+    if harness not in selected_harnesses:
         return None
     if 'operatingSystems' in readiness:
         selected_operating_systems = _override_selector_values(
@@ -600,9 +600,9 @@ def _validate_override_values(values: dict[str, Any], transport: str) -> None:
         raise PolicyError('project MCP configuration is invalid')
 
 
-def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[str, Any]]:
-    if platform not in {'codex', 'cursor', 'copilot'}:
-        raise PolicyError('MCP platform is invalid')
+def _mcp_servers_from_project(project_root: Path, harness: str) -> list[dict[str, Any]]:
+    if harness not in {'codex', 'cursor', 'copilot'}:
+        raise PolicyError('MCP harness is invalid')
     path = project_root / '.agents' / 'config.json'
     if not path.is_file():
         return []
@@ -616,16 +616,16 @@ def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[st
     for raw_server in mcp:
         if not isinstance(raw_server, dict):
             raise PolicyError('project MCP configuration is invalid')
-        platforms = raw_server.get('platforms', ['codex', 'cursor', 'copilot'])
+        harnesses = raw_server.get('harnesses', ['codex', 'cursor', 'copilot'])
         if (
-            not isinstance(platforms, list)
-            or not platforms
-            or not all(isinstance(item, str) for item in platforms)
-            or len(platforms) != len(set(platforms))
-            or set(platforms) - {'codex', 'cursor', 'copilot'}
+            not isinstance(harnesses, list)
+            or not harnesses
+            or not all(isinstance(item, str) for item in harnesses)
+            or len(harnesses) != len(set(harnesses))
+            or set(harnesses) - {'codex', 'cursor', 'copilot'}
         ):
             raise PolicyError('project MCP configuration is invalid')
-        if platform in platforms:
+        if harness in harnesses:
             base_command = raw_server.get('command')
             base_url = raw_server.get('url')
             has_base_command = isinstance(base_command, str) and bool(base_command)
@@ -646,19 +646,19 @@ def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[st
                 if (
                     not isinstance(selector, dict)
                     or not selector
-                    or set(selector) - {'platforms', 'operatingSystems'}
+                    or set(selector) - {'harnesses', 'operatingSystems'}
                     or not isinstance(values, dict)
                     or not values
                     or set(values) - {'command', 'args', 'cwd', 'env', 'url'}
                 ):
                     raise PolicyError('project MCP configuration is invalid')
-                selected_platforms = (
+                selected_harnesses = (
                     _override_selector_values(
-                        selector['platforms'], allowed={'codex', 'cursor', 'copilot'}
+                        selector['harnesses'], allowed={'codex', 'cursor', 'copilot'}
                     )
-                    if 'platforms' in selector else platforms
+                    if 'harnesses' in selector else harnesses
                 )
-                if set(selected_platforms) - set(platforms):
+                if set(selected_harnesses) - set(harnesses):
                     raise PolicyError('project MCP configuration is invalid')
                 selected_operating_systems = (
                     _override_selector_values(
@@ -670,7 +670,7 @@ def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[st
                 if selected_operating_systems is not None and operating_system is None:
                     operating_system = _current_operating_system()
                 if (
-                    platform in selected_platforms
+                    harness in selected_harnesses
                     and (
                         selected_operating_systems is None
                         or operating_system in selected_operating_systems
@@ -686,8 +686,8 @@ def _mcp_servers_from_project(project_root: Path, platform: str) -> list[dict[st
             checks = _effective_readiness_checks(
                 raw_server,
                 effective,
-                platform=platform,
-                enabled_platforms=platforms,
+                harness=harness,
+                enabled_harnesses=harnesses,
                 label='project MCP configuration',
             )
             if checks is not None:
@@ -801,7 +801,7 @@ def _mcp_check_finding(
 
 
 def check_mcp_readiness(
-    platform: str,
+    harness: str,
     project_root: Path,
     registry_path: Path | None = None,
 ) -> list[Finding]:
@@ -809,8 +809,8 @@ def check_mcp_readiness(
     findings: list[Finding] = []
     try:
         servers = [
-            *_mcp_servers_from_registry(registry_path, platform),
-            *_mcp_servers_from_project(project_root, platform),
+            *_mcp_servers_from_registry(registry_path, harness),
+            *_mcp_servers_from_project(project_root, harness),
         ]
     except (PolicyError, DetectorError):
         findings.append(Finding(
@@ -855,22 +855,22 @@ def check_mcp_readiness(
     return findings
 
 
-def load_policy(path: Path, platform: str | None = None) -> dict[str, Any]:
+def load_policy(path: Path, harness: str | None = None) -> dict[str, Any]:
     try:
         policy = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise PolicyError('unable to load recommended-tool policy') from error
     if not isinstance(policy, dict):
         raise PolicyError('recommended-tool policy must contain an object')
-    if platform is not None and policy.get('platform') != platform:
-        raise PolicyError('recommended-tool policy platform does not match invocation')
+    if harness is not None and policy.get('harness') != harness:
+        raise PolicyError('recommended-tool policy harness does not match invocation')
     return policy
 
 
-def default_policy_path(platform: str) -> Path:
+def default_policy_path(harness: str) -> Path:
     runtime_root = Path(__file__).resolve().parents[1]
     for ancestor in runtime_root.parents:
-        plugin_policy = ancestor / 'policies' / 'recommended-tools' / f'{platform}.json'
+        plugin_policy = ancestor / 'policies' / 'recommended-tools' / f'{harness}.json'
         if plugin_policy.is_file():
             return plugin_policy
     raise PolicyError('recommended-tool policy is unavailable')
@@ -968,7 +968,7 @@ def _acquire_lock(path: Path) -> str:
 
 
 def run_hook(
-    platform: str,
+    harness: str,
     policy_path: Path,
     cache_root: Path | None = None,
     now: datetime | None = None,
@@ -982,8 +982,8 @@ def run_hook(
     now = now or datetime.now().astimezone()
     project_root = resolve_project_root(project_root)
     project_cache = cache_root / _project_cache_key(project_root)
-    state_path = project_cache / f'{platform}.json'
-    lock_path = project_cache / f'{platform}.lock'
+    state_path = project_cache / f'{harness}.json'
+    lock_path = project_cache / f'{harness}.lock'
     try:
         date = now.date().isoformat()
         if not force and _load_state(state_path, date):
@@ -1001,13 +1001,13 @@ def run_hook(
                     _write_state(state_path, date, 'started')
                 except OSError:
                     return HookResult(False, internal_error=True)
-            policy = load_policy(policy_path, platform)
+            policy = load_policy(policy_path, harness)
             findings_list = (
                 evaluator(policy)
                 if evaluator is not None
                 else [
                     *check_policy(policy),
-                    *check_mcp_readiness(platform, project_root, mcp_registry_path),
+                    *check_mcp_readiness(harness, project_root, mcp_registry_path),
                 ]
             )
             findings = tuple(findings_list)
@@ -1059,7 +1059,7 @@ def _user_consent_request(findings: str) -> str:
     )
 
 
-def _agent_consent_request(findings: str, platform: str) -> str:
+def _agent_consent_request(findings: str, harness: str) -> str:
     maintenance_runner = Path(__file__).resolve().with_name(
         'maintain_recommended_tools.py'
     )
@@ -1068,7 +1068,7 @@ def _agent_consent_request(findings: str, platform: str) -> str:
         'Codex plugin, use an available Codex plugin-management tool for that plugin. If '
         'no such tool is available, tell the user to complete the action in the Codex '
         'Plugins interface.'
-        if platform == 'codex'
+        if harness == 'codex'
         else ''
     )
     return (
@@ -1081,7 +1081,7 @@ def _agent_consent_request(findings: str, platform: str) -> str:
         'configuration before the user consents. End this turn after requesting consent '
         'and wait for the next user message. After a subsequent user message grants '
         'consent, invoke the bundled internal maintenance runner at '
-        f'{maintenance_runner} with apply, --platform {platform}, --tool TOOL_ID, '
+        f'{maintenance_runner} with apply, --harness {harness}, --tool TOOL_ID, '
         '--action install|upgrade, and --approved for only the named tool actions. This '
         f'runner is plugin Hook support, not an exposed Skill.{plugin_fallback}'
     )
@@ -1089,13 +1089,13 @@ def _agent_consent_request(findings: str, platform: str) -> str:
 
 def render_hook_result(
     result: HookResult,
-    platform: str,
+    harness: str,
     *,
     delivery: str = 'native',
 ) -> str:
     findings = render_findings(result.findings)
     if result.requires_user_prompt:
-        if platform == 'codex':
+        if harness == 'codex':
             return json.dumps(
                 {
                     'continue': True,
@@ -1103,17 +1103,17 @@ def render_hook_result(
                     'hookSpecificOutput': {
                         'hookEventName': 'SessionStart',
                         'additionalContext': _agent_consent_request(
-                            findings, platform
+                            findings, harness
                         ),
                     },
                 }
             )
-        if platform == 'cursor':
+        if harness == 'cursor':
             if delivery == 'context':
                 return json.dumps(
                     {
                         'additional_context': _agent_consent_request(
-                            findings, platform
+                            findings, harness
                         )
                     }
                 )
@@ -1124,7 +1124,7 @@ def render_hook_result(
                 }
             )
         return json.dumps(
-            {'additionalContext': _agent_consent_request(findings, platform)}
+            {'additionalContext': _agent_consent_request(findings, harness)}
         )
     if result.internal_error:
         message = '[smartkit] Recommended-tool check could not complete; continuing.'
@@ -1132,9 +1132,9 @@ def render_hook_result(
         message = findings
     if not message:
         return ''
-    if platform == 'codex':
+    if harness == 'codex':
         return json.dumps({'continue': True, 'systemMessage': message})
-    if platform == 'cursor':
+    if harness == 'cursor':
         if delivery == 'context':
             return json.dumps({'additional_context': message})
         return json.dumps({'continue': True})
@@ -1146,7 +1146,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest='command', required=True)
     for command in ('check', 'hook'):
         child = subparsers.add_parser(command)
-        child.add_argument('--platform', required=True, choices=('codex', 'cursor', 'copilot'))
+        child.add_argument('--harness', required=True, choices=('codex', 'cursor', 'copilot'))
         child.add_argument('--policy', type=Path)
         if command == 'hook':
             child.add_argument('--force', action='store_true')
@@ -1160,23 +1160,23 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    policy_path = args.policy or default_policy_path(args.platform)
+    policy_path = args.policy or default_policy_path(args.harness)
     if args.command == 'hook':
         result = run_hook(
-            args.platform,
+            args.harness,
             policy_path,
             force=args.force,
         )
         output = render_hook_result(
             result,
-            args.platform,
+            args.harness,
             delivery=args.delivery,
         )
         if output:
             print(output)
         return 0
     try:
-        findings = check_policy(load_policy(policy_path, args.platform))
+        findings = check_policy(load_policy(policy_path, args.harness))
     except Exception:
         print('[smartkit] Recommended-tool check could not complete.', file=sys.stderr)
         return 2

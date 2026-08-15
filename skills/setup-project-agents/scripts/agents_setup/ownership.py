@@ -295,9 +295,9 @@ def _parse_seeded(raw: object, index: int) -> tuple[PurePosixPath, str]:
 
 
 def _parse_ownership_document(document: object) -> OwnershipState:
-    if not isinstance(document, Mapping) or set(document) != {'version', 'sources', 'assets', 'seeded'}:
+    if not isinstance(document, Mapping) or set(document) != {'sources', 'assets', 'seeded'}:
         raise OwnershipError('SmartKit ownership manifest is invalid')
-    if document.get('version') != 1 or not isinstance(document.get('sources'), list):
+    if not isinstance(document.get('sources'), list):
         raise OwnershipError('SmartKit ownership manifest is invalid')
     if not isinstance(document.get('assets'), list) or not isinstance(document.get('seeded'), list):
         raise OwnershipError('SmartKit ownership manifest is invalid')
@@ -475,7 +475,6 @@ def reconcile_ownership(
         for path in sorted(SEEDED_PATHS.intersection(files), key=lambda item: item.as_posix())
     ]
     next_document = {
-        'version': 1,
         'sources': [dict(item) for item in sources],
         'assets': manifest_assets,
         'seeded': seeded,

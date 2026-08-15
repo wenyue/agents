@@ -28,11 +28,11 @@ class SyncMcpAdaptersTest(unittest.TestCase):
         servers = self.module.load_registry(REPO_ROOT / 'mcp/registry.json')
 
         self.assertEqual([server['id'] for server in servers], ['playwright'])
-        for platform, relative in self.module.OUTPUTS.items():
-            with self.subTest(platform=platform):
+        for harness, relative in self.module.OUTPUTS.items():
+            with self.subTest(harness=harness):
                 self.assertEqual(
                     (REPO_ROOT / relative).read_bytes(),
-                    self.module.render_platform(servers, platform),
+                    self.module.render_harness(servers, harness),
                 )
 
         codex = json.loads((REPO_ROOT / '.mcp.json').read_text())
@@ -55,11 +55,10 @@ class SyncMcpAdaptersTest(unittest.TestCase):
             (root / 'mcp').mkdir()
             (root / 'mcp/registry.json').write_text(
                 json.dumps({
-                    'version': 1,
                     'servers': [{
                         'id': 'example', 'transport': 'http',
                         'url': 'https://example.invalid/mcp',
-                        'platforms': ['codex', 'cursor', 'copilot'],
+                        'harnesses': ['codex', 'cursor', 'copilot'],
                     }],
                 }),
                 encoding='utf-8',
@@ -78,13 +77,13 @@ class SyncMcpAdaptersTest(unittest.TestCase):
             root = Path(directory)
             path = root / 'registry.json'
             invalid = (
-                {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'script': 'run'}]},
-                {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'checks': [{'kind': 'shell', 'command': 'x'}]}}]},
-                {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'checks': [{'kind': 'runtime-version', 'runtime': 'python', 'minimum': '3.10.0'}]}}]},
-                {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'platforms': ['cursor']}}]},
-                {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'operatingSystems': ['macos']}}]},
-                {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'checks': [{'kind': 'workspace-path', 'path': '../x'}]}}]},
-                {'version': 1, 'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'platforms': ['codex'], 'readiness': {'checks': [{'kind': 'environment-variable', 'name': 'BAD-NAME'}]}}]},
+                {'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'harnesses': ['codex'], 'script': 'run'}]},
+                {'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'harnesses': ['codex'], 'readiness': {'checks': [{'kind': 'shell', 'command': 'x'}]}}]},
+                {'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'harnesses': ['codex'], 'readiness': {'checks': [{'kind': 'runtime-version', 'runtime': 'python', 'minimum': '3.10.0'}]}}]},
+                {'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'harnesses': ['codex'], 'readiness': {'harnesses': ['cursor']}}]},
+                {'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'harnesses': ['codex'], 'readiness': {'operatingSystems': ['macos']}}]},
+                {'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'harnesses': ['codex'], 'readiness': {'checks': [{'kind': 'workspace-path', 'path': '../x'}]}}]},
+                {'servers': [{'id': 'x', 'transport': 'stdio', 'command': 'x', 'harnesses': ['codex'], 'readiness': {'checks': [{'kind': 'environment-variable', 'name': 'BAD-NAME'}]}}]},
             )
             for document in invalid:
                 with self.subTest(document=document):
@@ -96,14 +95,13 @@ class SyncMcpAdaptersTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'registry.json'
             path.write_text(json.dumps({
-                'version': 1,
                 'servers': [{
                     'id': 'x',
                     'transport': 'stdio',
                     'command': 'x',
-                    'platforms': ['codex', 'cursor'],
+                    'harnesses': ['codex', 'cursor'],
                     'readiness': {
-                        'platforms': ['codex'],
+                        'harnesses': ['codex'],
                         'operatingSystems': ['windows'],
                         'checks': [
                             {'kind': 'command-exists', 'command': 'x'},
@@ -124,13 +122,13 @@ class SyncMcpAdaptersTest(unittest.TestCase):
                     'id': 'auto',
                     'transport': 'stdio',
                     'command': 'auto-mcp',
-                    'platforms': ['codex'],
+                    'harnesses': ['codex'],
                 }],
             }), encoding='utf-8')
 
             servers = self.module.load_registry(path)
 
-            self.assertEqual(servers[0]['readiness']['platforms'], ['codex'])
+            self.assertEqual(servers[0]['readiness']['harnesses'], ['codex'])
             self.assertEqual(servers[0]['readiness']['operatingSystems'], ['windows'])
             self.assertEqual(
                 [check['kind'] for check in servers[0]['readiness']['checks']],
@@ -155,13 +153,12 @@ class SyncMcpAdaptersTest(unittest.TestCase):
             ):
                 with self.subTest(args=args):
                     path.write_text(json.dumps({
-                        'version': 1,
                         'servers': [{
                             'id': 'playwright',
                             'transport': 'stdio',
                             'command': 'npx',
                             'args': args,
-                            'platforms': ['codex', 'cursor', 'copilot'],
+                            'harnesses': ['codex', 'cursor', 'copilot'],
                             'tools': ['*'],
                         }],
                     }), encoding='utf-8')

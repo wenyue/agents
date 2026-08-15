@@ -83,9 +83,7 @@ def load_skill_registry(root: Path) -> SkillRegistry:
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise SkillRegistryError(f'Skill registry is not valid UTF-8 JSON: {path}') from error
     registry = _object(document, 'Skill registry')
-    _fields(registry, {'version', 'custom', 'external_sources'}, 'Skill registry')
-    if registry.get('version') != 1:
-        raise SkillRegistryError('Skill registry version must be 1')
+    _fields(registry, {'custom', 'external_sources'}, 'Skill registry')
 
     custom: list[CustomSkill] = []
     for index, raw in enumerate(

@@ -1,5 +1,5 @@
 {
-  "platform": "cursor",
+  "harness": "cursor",
   "tools": [
     {
       "id": "cursor-agent",

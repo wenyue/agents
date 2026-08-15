@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-`WenYue SmartKit` 是同时适配 Codex、Cursor 和 GitHub Copilot 的跨平台插件。它将 Rules、Skills、
+`WenYue SmartKit` 是同时适配 Codex、Cursor 和 GitHub Copilot 的跨 Harness 插件。它将 Rules、Skills、
 Agents 和 MCP 作为平级能力提供，并在会话开始时检查推荐工具和已配置 MCP 的前置条件是否可用。
 
 ## 安装插件
@@ -40,7 +40,7 @@ copilot plugin install smartkit@wenyue
 
 | 能力 | SmartKit 提供的内容 |
 | --- | --- |
-| Rules | Always-on 和 file-scoped 指令。优先比较强度（`Mandatory` > `Default` > `Advisory`），再比较项目归属和更窄的文件范围。 |
+| Rules | Always-on、file-scoped 和 Harness-scoped 指令。优先比较强度（`Mandatory` > `Default` > `Advisory`），再比较项目归属和更窄的文件范围。Harness 范围只控制激活，并与 always-on 处于同一优先级层级。 |
 | Skills | SmartKit 工作流，以及经过审查、许可证校验和版本固定的第三方工作流。 |
 | Agents | 三个宿主上的 `change-set-verifier`。它使用项目的 change-set-verification Skill；setup 未安装该 Skill 时报告 `inconclusive`，并继承宿主选择的模型。Cursor 和 Copilot 从插件获取它；Codex 通过 setup-managed 默认交付获取它。 |
 | MCP | 三个宿主上隔离、无界面模式的 Playwright，并继续遵守宿主正常的审批行为。 |
@@ -52,7 +52,7 @@ Codex 插件包不会加载自定义 Agents。请在每个受维护的项目快�
 SmartKit 的 Codex Agent adapter 安装到 `.codex/agents/`。该 adapter 仍归插件所有，不需要在
 `.agents/config.json` 中添加 Project Agent 声明。
 
-## 平台支持
+## Harness 与平台支持
 
 三个宿主都支持 Windows 和 Linux。
 
@@ -80,14 +80,14 @@ tracker。
 | --- | --- |
 | Rules | 将项目自有 source 保存在 `.agents/rules/`；setup 会保留这些 source，并安装请求生成的 Rules。 |
 | Skills | 将项目自有 Skills 保存在 `.agents/skills/`，或在 `.agents/config.json` 的 `skills` 中声明 GitHub `source`、可选 `ref` 和非空 `include`。 |
-| Agents | 将 canonical source 保存在 `.agents/agents/`，并在 `.agents/config.json` 的 `agents` 中声明匹配的 `id`、`source`、`description` 和宿主 `platforms`；应编辑这些输入，而不是生成的 adapter。 |
+| Agents | 将 canonical source 保存在 `.agents/agents/`，并在 `.agents/config.json` 的 `agents` 中声明匹配的 `id`、`source`、`description` 和 `harnesses`；应编辑这些输入，而不是生成的 adapter。 |
 | MCP | 在 `.agents/config.json` 的 `mcp` 中用稳定 ID 和 `url` 或 `command` 之一声明每个 server；环境变量仅按名称引用，不存储 secret 值。 |
 
 Setup 会保留不受其管理的宿主配置；受管条目发生冲突或被本地修改时，会在写入前停止。
 
 ### MCP overrides
 
-每条 override 都包含 `when` selector 和 `set` 对象。省略 `when.platforms` 时匹配该 server 启用的
+每条 override 都包含 `when` selector 和 `set` 对象。省略 `when.harnesses` 时匹配该 server 启用的
 全部宿主，省略 `when.operatingSystems` 时匹配全部受支持的操作系统（`windows` 和 `linux`）。两者
 同时提供时必须都匹配。匹配的规则按数组顺序应用，后面的规则只覆盖其声明的字段：
 
@@ -101,7 +101,7 @@ Setup 会保留不受其管理的宿主配置；受管条目发生冲突或被�
       "set": {"command": "py"}
     },
     {
-      "when": {"platforms": ["cursor", "copilot"]},
+      "when": {"harnesses": ["cursor", "copilot"]},
       "set": {"cwd": "tools/inspector"}
     }
   ]
@@ -111,7 +111,7 @@ Setup 会保留不受其管理的宿主配置；受管条目发生冲突或被�
 ### Project MCP readiness
 
 Project MCP 的前置条件检查默认自动执行。当检查只适用于特定宿主或操作系统时，使用
-`readiness.platforms` 或 `readiness.operatingSystems` 限定范围：
+`readiness.harnesses` 或 `readiness.operatingSystems` 限定范围：
 
 ```json
 {
@@ -137,7 +137,7 @@ SmartKit 只管理自己生成的内容，并尽量保留项目原有文件和�
 
 - 推荐工具的安装状态和版本，包括 CodeGraph 与 Tokscale；
 - 必要的实际配置值，包括 Codex 多智能体支持；
-- 适用于当前宿主平台和操作系统的 MCP 前置条件。
+- 适用于当前 Harness 和操作系统的 MCP 前置条件。
 
 这些检查不会安装工具、修改 MCP 配置、启动 MCP server、探测网络或应用端口、触发 OAuth，也不
 要求 debug session 在线。因此，Project HTTP MCP 不会执行连接检查。

@@ -1,5 +1,5 @@
 {
-  "platform": "copilot",
+  "harness": "copilot",
   "tools": [
     {
       "id": "copilot",

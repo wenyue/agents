@@ -19,9 +19,10 @@ description: 当需要跨 Codex、Cursor 和 Copilot 初始化或对齐仓库的
 | Agents | `.agents/agents/` 下的项目自有 source，以及 `.agents/config.json` 的 `agents` 声明 | 保留 Agent source，生成声明的宿主 adapter，并安装 catalog 声明的 Codex Plugin Agent 默认项。 |
 | MCP | `.agents/config.json` 的 `mcp` 声明 | 生成声明的宿主原生 MCP 条目，不存储 secret 值。 |
 
-使用 `.agents/config.json` 声明的 version 1 schema。配置的 Agent source 必须是与 ID 匹配的
-`.agents/agents/<id>.md`。MCP 条目只能声明 `url` 或 `command` 之一；按顺序执行的 `when`/`set`
-override 可选择宿主平台和操作系统。可选的 MCP readiness 可以选择执行检查的宿主平台和操作系统，
+使用 `.agents/config.json` 声明的 schema；该契约随插件一同发布，没有独立 JSON 版本。配置的 Agent
+source 必须是与 ID 匹配的 `.agents/agents/<id>.md`。MCP 条目只能声明 `url` 或 `command` 之一；
+按顺序执行的 `when`/`set` override 可选择 Harness 和操作系统。可选的 MCP readiness 可以选择执行
+检查的 Harness 和操作系统，
 也可以用明确的安全检查列表替换推断出的检查。
 
 项目自有 canonical input 始终是可编辑的项目内容。Setup 生成的文件和结构化字段由 setup 拥有。

@@ -1,7 +1,6 @@
 {
-  "version": 1,
   "requiredOperatingSystems": ["windows", "linux"],
-  "platforms": {
+  "harnesses": {
     "codex": {
       "hookManifest": "hooks/hooks.json",
       "hookEvent": "SessionStart",

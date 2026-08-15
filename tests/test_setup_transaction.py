@@ -128,7 +128,7 @@ class SetupTransactionTest(unittest.TestCase):
             target = Path(temp_dir)
             content = self.write(target, 'a-content.txt', b'old-content\n')
             manifest = self.write(
-                target, '.agents/smartkit.lock.json', b'{"version": 1, "old": true}\n'
+                target, '.agents/smartkit.lock.json', b'{"old": true}\n'
             )
             real_replace = transaction._replace
 
@@ -144,13 +144,13 @@ class SetupTransactionTest(unittest.TestCase):
                         Change(
                             ChangeKind.UPDATE,
                             PurePosixPath('.agents/smartkit.lock.json'),
-                            b'{"version": 1, "old": false}\n',
+                            b'{"old": false}\n',
                         ),
                     ))
 
             self.assertEqual(content.read_bytes(), b'old-content\n')
             self.assertEqual(
-                manifest.read_bytes(), b'{"version": 1, "old": true}\n'
+                manifest.read_bytes(), b'{"old": true}\n'
             )
 
     def test_rolls_back_a_retired_directory_when_parent_removal_fails(self):

@@ -418,7 +418,7 @@ def _load_lock(root: Path) -> dict[str, object] | None:
 def _lock_sources(lock: Mapping[str, object] | None) -> dict[str, Mapping[str, object]]:
     if lock is None:
         return {}
-    if lock.get('version') != 1 or not isinstance(lock.get('sources'), list):
+    if set(lock) != {'sources'} or not isinstance(lock.get('sources'), list):
         raise UpdateError('external Skill lock has an invalid shape')
     result: dict[str, Mapping[str, object]] = {}
     for raw in lock['sources']:
@@ -533,7 +533,7 @@ def _desired_lock(
             sources.append(old_sources[source.id])
         else:
             raise UpdateError(f'external source has no resolved snapshot: {source.id}')
-    return {'version': 1, 'sources': sources}
+    return {'sources': sources}
 
 
 def replace_path(staged: Path | None, target: Path) -> None:
@@ -573,11 +573,9 @@ def update_repository(
         {selected_source} if selected_source is not None else set(old_sources) | set(desired_sources)
     )
     touched_old_names = _managed_names({
-        'version': 1,
         'sources': [old_sources[item] for item in touched_source_ids if item in old_sources],
     })
     touched_new_names = _managed_names({
-        'version': 1,
         'sources': [desired_sources[item] for item in touched_source_ids if item in desired_sources],
     })
     desired_skill_records = {

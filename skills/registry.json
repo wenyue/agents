@@ -1,5 +1,4 @@
 {
-  "version": 1,
   "custom": [
     {"id": "smartkit/setup-project-agents", "path": "setup-project-agents"},
     {"id": "smartkit/create-worktree", "path": "create-worktree"},

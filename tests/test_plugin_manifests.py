@@ -284,7 +284,7 @@ class PluginManifestTest(unittest.TestCase):
         }
         self.assertEqual(plugin_skills, { *custom, *MATT_PROMOTED})
         lock = load_json('vendor/external-skills.lock.json')
-        self.assertEqual(lock['version'], 1)
+        self.assertEqual(set(lock), {'sources'})
         matt = lock['sources'][0]
         self.assertEqual(matt['id'], 'mattpocock/skills')
         self.assertEqual(matt['requested_ref'], 'v1.2.3')
@@ -334,18 +334,18 @@ class PluginManifestTest(unittest.TestCase):
             'cursor': REPO_ROOT / cursor['hooks'],
             'copilot': REPO_ROOT / copilot['hooks'],
         }
-        for platform, path in hook_paths.items():
-            with self.subTest(platform=platform):
+        for harness, path in hook_paths.items():
+            with self.subTest(harness=harness):
                 self.assertTrue(path.is_file())
                 content = path.read_text(encoding='utf-8')
                 expected_entry = (
                     'run_recommended_tools'
-                    if platform == 'cursor'
+                    if harness == 'cursor'
                     else 'check_recommended_tools'
                 )
                 self.assertIn(expected_entry, content)
                 self.assertIn('runtime/recommended-tools', content.replace('\\', '/'))
-                self.assertIn(f'--platform {platform}', content)
+                self.assertIn(f'--harness {harness}', content)
                 self.assertNotIn('.agents/', content)
                 self.assertNotIn('.agents\\', content)
                 self.assertNotIn(' install', content.lower())
@@ -404,23 +404,23 @@ class PluginManifestTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('usage:', result.stdout.lower())
 
-    def test_hook_platform_contract(self):
-        contract_path = REPO_ROOT / 'setup-assets/catalog/platforms.json'
+    def test_hook_harness_contract(self):
+        contract_path = REPO_ROOT / 'setup-assets/catalog/harnesses.json'
         self.assertTrue(contract_path.is_file())
-        contract = load_json('setup-assets/catalog/platforms.json')
+        contract = load_json('setup-assets/catalog/harnesses.json')
 
-        self.assertEqual(contract['version'], 1)
+        self.assertEqual(set(contract), {'requiredOperatingSystems', 'harnesses'})
         self.assertEqual(
             contract['requiredOperatingSystems'],
             ['windows', 'linux'],
         )
         self.assertEqual(
-            set(contract['platforms']),
+            set(contract['harnesses']),
             {'codex', 'cursor', 'copilot'},
         )
 
-        for platform, spec in contract['platforms'].items():
-            with self.subTest(platform=platform):
+        for harness, spec in contract['harnesses'].items():
+            with self.subTest(harness=harness):
                 manifest = load_json(spec['hookManifest'])
                 entry = manifest['hooks'][spec['hookEvent']][0]
                 if 'hooks' in entry:
@@ -431,9 +431,23 @@ class PluginManifestTest(unittest.TestCase):
                     else:
                         self.assertIn(route, entry)
 
+    def test_internal_json_contracts_use_only_the_plugin_version(self):
+        internal_documents = (
+            'agents/registry.json',
+            'mcp/registry.json',
+            'rules/registry.json',
+            'skills/registry.json',
+            'setup-assets/catalog/harnesses.json',
+            'setup-assets/templates/harness-config/agents.config.json',
+            'vendor/external-skills.lock.json',
+        )
+        for relative in internal_documents:
+            with self.subTest(relative=relative):
+                self.assertNotIn('version', load_json(relative))
+
     def test_agent_registry_has_generated_host_adapters_without_model_pins(self):
         registry = load_json('agents/registry.json')
-        self.assertEqual(registry['version'], 1)
+        self.assertEqual(set(registry), {'agents'})
         self.assertEqual([item['id'] for item in registry['agents']], ['change-set-verifier'])
 
         paths = {
@@ -441,8 +455,8 @@ class PluginManifestTest(unittest.TestCase):
             'cursor': REPO_ROOT / 'agents/cursor/change-set-verifier.md',
             'copilot': REPO_ROOT / 'agents/copilot/change-set-verifier.agent.md',
         }
-        for platform, path in paths.items():
-            with self.subTest(platform=platform):
+        for harness, path in paths.items():
+            with self.subTest(harness=harness):
                 self.assertTrue(path.is_file())
                 content = path.read_text(encoding='utf-8')
                 self.assertIn('change-set-verification/SKILL.md', content)

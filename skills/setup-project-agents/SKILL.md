@@ -21,10 +21,11 @@ requests that change.
 | Agents | Project-owned sources under `.agents/agents/` and `.agents/config.json` `agents` declarations | Preserve Agent sources, render the declared host adapters, and install catalog-declared Codex Plugin Agent defaults. |
 | MCP | `.agents/config.json` `mcp` declarations | Render the declared host-native MCP entries without storing secret values. |
 
-Use the version 1 schema declared by `.agents/config.json`. A configured Agent source must be the
-matching `.agents/agents/<id>.md` file. MCP entries declare exactly one of `url` or `command`; ordered
-`when`/`set` overrides may select host platforms and operating systems. Optional MCP readiness may
-select the host platforms and operating systems where checks apply and may replace inferred checks
+Use the schema declared by `.agents/config.json`; its contract ships with the plugin and has no
+independent JSON version. A configured Agent source must be the matching `.agents/agents/<id>.md`
+file. MCP entries declare exactly one of `url` or `command`; ordered
+`when`/`set` overrides may select host harnesses and operating systems. Optional MCP readiness may
+select the host harnesses and operating systems where checks apply and may replace inferred checks
 with an explicit safe check list.
 
 Project-owned canonical inputs remain editable project content. Files and structured fields

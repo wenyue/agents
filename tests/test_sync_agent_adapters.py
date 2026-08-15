@@ -28,7 +28,7 @@ class SyncAgentAdaptersTest(unittest.TestCase):
     def test_repository_adapters_match_registry(self):
         agents = self.module.load_registry(ROOT)
         self.assertEqual([agent['id'] for agent in agents], ['change-set-verifier'])
-        self.assertEqual(set(agents[0]['platforms']), {'codex', 'cursor', 'copilot'})
+        self.assertEqual(set(agents[0]['harnesses']), {'codex', 'cursor', 'copilot'})
 
         result = subprocess.run(
             [sys.executable, str(SCRIPT), '--check'],
@@ -56,12 +56,11 @@ class SyncAgentAdaptersTest(unittest.TestCase):
             (root / 'agents/source').mkdir(parents=True)
             (root / 'agents/source/example.md').write_text('Verify it.\n', encoding='utf-8')
             (root / 'agents/registry.json').write_text(json.dumps({
-                'version': 1,
                 'agents': [{
                     'id': 'example',
                     'source': 'source/example.md',
                     'description': 'Example verifier.',
-                    'platforms': {'codex': {'sandbox_mode': 'read-only'}},
+                    'harnesses': {'codex': {'sandbox_mode': 'read-only'}},
                 }],
             }), encoding='utf-8')
             result = subprocess.run(
@@ -86,14 +85,14 @@ class SyncAgentAdaptersTest(unittest.TestCase):
                     'id': agent_id,
                     'source': 'source/example.md',
                     'description': 'Example verifier.',
-                    'platforms': {
+                    'harnesses': {
                         'codex': {'sandbox_mode': 'read-only'},
                         'cursor': {'readonly': True},
                         'copilot': {'disable_model_invocation': False},
                     },
                 }]
                 registry.write_text(
-                    json.dumps({'version': 1, 'agents': agents}),
+                    json.dumps({'agents': agents}),
                     encoding='utf-8',
                 )
 
@@ -125,16 +124,16 @@ class SyncAgentAdaptersTest(unittest.TestCase):
             (root / 'agents').mkdir()
             path = root / 'agents/registry.json'
             invalid = (
-                {'version': 1, 'agents': [], 'templates': {}},
-                {'version': 1, 'agents': [{
+                {'agents': [], 'templates': {}},
+                {'agents': [{
                     'id': 'example', 'source': '../example.md',
                     'description': 'Example.',
-                    'platforms': {'codex': {'sandbox_mode': 'read-only'}},
+                    'harnesses': {'codex': {'sandbox_mode': 'read-only'}},
                 }]},
-                {'version': 1, 'agents': [{
+                {'agents': [{
                     'id': 'example', 'source': 'source/example.md',
                     'description': 'Example.',
-                    'platforms': {'cursor': {'readonly': 'false'}},
+                    'harnesses': {'cursor': {'readonly': 'false'}},
                 }]},
             )
             for document in invalid:

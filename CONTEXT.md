@@ -5,6 +5,30 @@ ownership of its project-specific agent configuration.
 
 ## Language
 
+**Harness**:
+An agent host application, such as Codex, Cursor, or GitHub Copilot, that loads and executes
+SmartKit capabilities through its native interfaces.
+_Avoid_: Platform, operating system, runtime
+
+**Platform**:
+An operating-system family, such as Windows, Linux, or macOS, on which a Harness and SmartKit run.
+_Avoid_: Harness, agent host
+
+**Harness Adaptation**:
+A plugin-private, Harness-scoped Rule that maps shared SmartKit actions to one Harness's native
+tools, capabilities, lifecycle semantics, constraints, and missing-capability fallbacks.
+_Avoid_: Platform adaptation, duplicated workflow policy
+
+**Skill Governance**:
+The shared policy that constrains Skill authority, precedence, and routing regardless of whether a
+Skill is project-owned, plugin-owned, or external.
+_Avoid_: Skill configuration, plugin governance, Agent orchestration
+
+**Workspace Policy**:
+The shared policy that selects the current workspace or a Task Worktree and governs local Git state,
+commit authority, and remote actions independently of any Skill workflow.
+_Avoid_: Skill configuration, worktree Skill, repository setup
+
 **Plugin MCP**:
 An MCP server distributed with the SmartKit plugin and made available through each supported
 host's plugin integration.
@@ -17,7 +41,7 @@ _Avoid_: Plugin MCP, hard-coded project template
 
 **MCP Adapter**:
 A host-native MCP configuration generated from a canonical Plugin MCP or Project MCP declaration.
-_Avoid_: MCP source, handwritten platform copy
+_Avoid_: MCP source, handwritten harness copy
 
 **Managed Asset**:
 A project file, directory tree, or structured field that setup may update or delete because its
@@ -48,7 +72,7 @@ _Avoid_: MCP health, live MCP availability
 
 **Daily Project Check Gate**:
 The first step of the automatic check pipeline, allowing at most one evaluation per canonical project
-root, host platform, and local calendar day regardless of the number or outcome of downstream checks.
+root, Harness, and local calendar day regardless of the number or outcome of downstream checks.
 _Avoid_: Global daily check, per-check throttle, session throttle
 
 **MCP Readiness Profile**:

@@ -22,12 +22,11 @@ class SetupCatalogTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / 'config.json'
             path.write_text(json.dumps({
-                'version': 1,
                 'agents': [{
                     'id': 'l10n',
                     'source': '.agents/agents/l10n.md',
                     'description': 'Project-local agent: l10n',
-                    'platforms': {
+                    'harnesses': {
                         'codex': {
                             'model': 'gpt-5.6-terra',
                             'model_reasoning_effort': 'medium',
@@ -53,23 +52,22 @@ class SetupCatalogTest(unittest.TestCase):
     def test_project_config_rejects_invalid_project_agents(self):
         invalid_agents = (
             {'id': 'l10n', 'source': '.agents/agents/other.md', 'description': 'x',
-             'platforms': {'cursor': {'readonly': False}}},
+             'harnesses': {'cursor': {'readonly': False}}},
             {'id': 'l10n', 'source': '../l10n.md', 'description': 'x',
-             'platforms': {'cursor': {'readonly': False}}},
+             'harnesses': {'cursor': {'readonly': False}}},
             {'id': 'l10n', 'source': '.agents/agents/l10n.md', 'description': 'x',
-             'platforms': {}},
+             'harnesses': {}},
             {'id': 'l10n', 'source': '.agents/agents/l10n.md', 'description': 'x',
-             'platforms': {'cursor': {'readonly': 'false'}}},
+             'harnesses': {'cursor': {'readonly': 'false'}}},
             {'id': 'l10n', 'source': '.agents/agents/l10n.md', 'description': 'x',
-             'platforms': {'codex': {}}},
+             'harnesses': {'codex': {}}},
             {'id': 'l10n', 'source': '.agents/agents/l10n.md', 'description': 'x',
-             'platforms': {'copilot': {'disable_model_invocation': False, 'extra': True}}},
+             'harnesses': {'copilot': {'disable_model_invocation': False, 'extra': True}}},
         )
         for agent in invalid_agents:
             with self.subTest(agent=agent), tempfile.TemporaryDirectory() as temp_dir:
                 path = Path(temp_dir) / 'config.json'
                 path.write_text(json.dumps({
-                    'version': 1,
                     'agents': [agent],
                 }), encoding='utf-8')
                 with self.assertRaises(ContractError):
@@ -79,20 +77,31 @@ class SetupCatalogTest(unittest.TestCase):
             path = Path(temp_dir) / 'config.json'
             agent = {
                 'id': 'l10n', 'source': '.agents/agents/l10n.md', 'description': 'x',
-                'platforms': {'cursor': {'readonly': False}},
+                'harnesses': {'cursor': {'readonly': False}},
             }
             path.write_text(json.dumps({
-                'version': 1,
                 'agents': [agent, agent],
             }), encoding='utf-8')
             with self.assertRaisesRegex(ContractError, 'duplicate ids'):
+                load_project_config(path, catalog=load_catalog(REPO_ROOT))
+
+    def test_project_config_rejects_retired_platforms_field(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'config.json'
+            path.write_text(json.dumps({
+                'mcp': [{
+                    'id': 'inspector',
+                    'command': 'inspector',
+                    'platforms': ['codex'],
+                }],
+            }), encoding='utf-8')
+            with self.assertRaisesRegex(ContractError, 'unknown.*platforms'):
                 load_project_config(path, catalog=load_catalog(REPO_ROOT))
 
     def test_project_config_parses_typed_mcp_servers_and_readiness(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / 'config.json'
             path.write_text(json.dumps({
-                'version': 1,
                 'mcp': [
                         {
                             'id': 'inspector',
@@ -100,7 +109,7 @@ class SetupCatalogTest(unittest.TestCase):
                             'args': ['--port', '8181'],
                             'env': ['INSPECTOR_TOKEN'],
                             'readiness': {
-                                'platforms': ['codex', 'cursor'],
+                                'harnesses': ['codex', 'cursor'],
                                 'operatingSystems': ['windows'],
                                 'checks': [
                                     {'kind': 'command-exists', 'command': 'inspector'},
@@ -123,7 +132,7 @@ class SetupCatalogTest(unittest.TestCase):
                             'overrides': [
                                 {
                                     'when': {
-                                        'platforms': ['cursor'],
+                                        'harnesses': ['cursor'],
                                         'operatingSystems': ['windows'],
                                     },
                                     'set': {
@@ -153,17 +162,17 @@ class SetupCatalogTest(unittest.TestCase):
                 '${workspaceFolder}/cache/inspector.exe',
             )
             self.assertEqual(
-                [platform.value for platform in inspector.overrides[0].platforms or ()],
+                [harness.value for harness in inspector.overrides[0].harnesses or ()],
                 ['cursor'],
             )
             self.assertEqual(
                 [item.value for item in inspector.overrides[0].operating_systems or ()],
                 ['windows'],
             )
-            self.assertIsNone(inspector.overrides[1].platforms)
+            self.assertIsNone(inspector.overrides[1].harnesses)
             self.assertEqual(inspector.transport.value, 'stdio')
             self.assertEqual(
-                [platform.value for platform in inspector.readiness.platforms or ()],
+                [harness.value for harness in inspector.readiness.harnesses or ()],
                 ['codex', 'cursor'],
             )
             self.assertEqual(
@@ -190,13 +199,13 @@ class SetupCatalogTest(unittest.TestCase):
             {
                 'id': 'bad', 'url': 'https://example.invalid',
                 'overrides': [{
-                    'when': {'platforms': ['codex']},
+                    'when': {'harnesses': ['codex']},
                     'set': {'command': 'bridge'},
                 }],
             },
             {
                 'id': 'bad', 'command': 'x',
-                'platforms': ['codex', 'codex'],
+                'harnesses': ['codex', 'codex'],
             },
             {
                 'id': 'bad', 'command': 'x',
@@ -204,16 +213,16 @@ class SetupCatalogTest(unittest.TestCase):
             },
             {
                 'id': 'bad', 'command': 'x',
-                'platforms': ['codex'],
+                'harnesses': ['codex'],
                 'overrides': [{
-                    'when': {'platforms': ['cursor']},
+                    'when': {'harnesses': ['cursor']},
                     'set': {'command': 'y'},
                 }],
             },
             {
                 'id': 'bad', 'command': 'x',
                 'overrides': [{
-                    'when': {'platforms': ['vscode']},
+                    'when': {'harnesses': ['vscode']},
                     'set': {'command': 'y'},
                 }],
             },
@@ -237,8 +246,8 @@ class SetupCatalogTest(unittest.TestCase):
                 }],
             },
             {
-                'id': 'bad', 'command': 'x', 'platforms': ['codex'],
-                'readiness': {'platforms': ['cursor']},
+                'id': 'bad', 'command': 'x', 'harnesses': ['codex'],
+                'readiness': {'harnesses': ['cursor']},
             },
             {
                 'id': 'bad', 'command': 'x',
@@ -263,7 +272,6 @@ class SetupCatalogTest(unittest.TestCase):
             with self.subTest(server=server), tempfile.TemporaryDirectory() as temp_dir:
                 path = Path(temp_dir) / 'config.json'
                 path.write_text(json.dumps({
-                    'version': 1,
                     'mcp': [server],
                 }), encoding='utf-8')
                 with self.assertRaises(ContractError):
@@ -273,7 +281,6 @@ class SetupCatalogTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / 'config.json'
             path.write_text(json.dumps({
-                'version': 1,
                 'mcp': [{
                     'id': 'example', 'command': 'runner',
                     'args': ['--flag', '--flag'],
@@ -319,7 +326,7 @@ class SetupCatalogTest(unittest.TestCase):
                         '.codex/agents',
                     )
                     self.assertEqual(
-                        tuple(platform.value for platform in asset.platforms),
+                        tuple(harness.value for harness in asset.harnesses),
                         ('codex',),
                     )
                     self.assertEqual(asset.mode, 'copy')
@@ -391,7 +398,7 @@ class SetupCatalogTest(unittest.TestCase):
             'kind': 'agent',
             'source': 'agents/codex',
             'target': '.codex/agents',
-            'platforms': ['codex'],
+            'harnesses': ['codex'],
             'mode': 'copy',
         }
         self.assertEqual(parse_asset(valid).target.as_posix(), valid['target'])
@@ -401,8 +408,8 @@ class SetupCatalogTest(unittest.TestCase):
             {'source': 'agents/codex/change-set-verifier.toml'},
             {'target': '.cursor/agents'},
             {'target': '.codex/agents/change-set-verifier.toml'},
-            {'platforms': ['cursor']},
-            {'platforms': ['codex', 'cursor']},
+            {'harnesses': ['cursor']},
+            {'harnesses': ['codex', 'cursor']},
             {'mode': 'render'},
         )
         for override in invalid:
@@ -557,19 +564,19 @@ class SetupCatalogTest(unittest.TestCase):
             catalog = load_catalog(REPO_ROOT)
             config_path = root / 'config.json'
             config_path.write_text(
-                json.dumps({'version': 1, 'unknown': True}), encoding='utf-8'
+                json.dumps({'unknown': True}), encoding='utf-8'
             )
             with self.assertRaisesRegex(ContractError, 'unknown project config fields'):
                 load_project_config(config_path, catalog=catalog)
 
             config_path.write_text(
-                json.dumps({'version': 1, 'platforms': ['codex']}), encoding='utf-8'
+                json.dumps({'harnesses': ['codex']}), encoding='utf-8'
             )
             with self.assertRaisesRegex(ContractError, 'unknown project config fields'):
                 load_project_config(config_path, catalog=catalog)
 
             config_path.write_text(
-                json.dumps({'version': 1, 'hooks_enabled': True}), encoding='utf-8'
+                json.dumps({'hooks_enabled': True}), encoding='utf-8'
             )
             with self.assertRaisesRegex(ContractError, 'unknown project config fields'):
                 load_project_config(config_path, catalog=catalog)
@@ -580,7 +587,7 @@ class SetupCatalogTest(unittest.TestCase):
             (root / 'setup-assets' / 'catalog').mkdir(parents=True)
             (root / 'skills').mkdir()
             (root / 'skills' / 'registry.json').write_text(
-                json.dumps({'version': 1, 'custom': [], 'external_sources': []}),
+                json.dumps({'custom': [], 'external_sources': []}),
                 encoding='utf-8',
             )
             catalog_path = root / 'setup-assets' / 'catalog' / 'assets.json'
@@ -676,7 +683,6 @@ class SetupCatalogTest(unittest.TestCase):
                 json.dumps(
                     {
                         '$schema': 'project-config.schema.json',
-                        'version': 1,
                         'skills': [{
                             'source': 'getsentry/plugin-codex',
                             'ref': 'main',
@@ -703,7 +709,6 @@ class SetupCatalogTest(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        'version': 1,
                         'skills': [{'source': 'not-a-source', 'include': ['skill']}],
                     }
                 ),
@@ -718,7 +723,6 @@ class SetupCatalogTest(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        'version': 1,
                         'skills': [
                             {'source': 'example/one', 'ref': 'main', 'include': ['debug-mode']},
                             {'source': 'other/two', 'include': ['debug-mode']},

@@ -73,7 +73,7 @@ not trigger the gate; complete it if the task later moves to implementation.
   not change the user's chosen outcome. Repeat the objection only when new evidence, additional
   scope, or a materially different risk appears.
 - User confirmation cannot authorize behavior prohibited by higher-priority safety, security,
-  legal, or platform constraints. Refuse that behavior and offer safe alternatives when possible.
+  legal, or system constraints. Refuse that behavior and offer safe alternatives when possible.
 
 ## Act
 
@@ -86,11 +86,9 @@ not trigger the gate; complete it if the task later moves to implementation.
   results remain useful; use `Promise.all` when every result is required.
 - Keep dependent, state-changing, approval, and wait calls sequential, and batch only work already
   inside the authorized scope.
-- Minimize model-visible polling. Keep progress updates within the runtime's maximum interval; when
-  none is specified, do not let more than 60 seconds pass between updates. For long-running work,
-  prefer the longest single wait that does not exceed that interval. If a wait produces no new
-  state, query status only when it can change the next action; otherwise wait again or do useful
-  independent work.
+- Minimize model-visible polling. When the runtime defines a maximum progress-update interval, keep
+  updates within it. If a wait produces no new state, query status only when it can change the next
+  action; otherwise wait again or do useful independent work.
 - The progress-update interval is not a process timeout. When a command may run longer, set an
   execution timeout that covers the entire operation and use yielded execution or an equivalent
   wait mechanism to preserve the process and its output streams.

@@ -1,5 +1,4 @@
 {
-  "version": 1,
   "id": "shared-rule",
   "lifecycle": "ordinary-artifact",
   "acceptance_mode": "isolated-runner",

@@ -10,9 +10,10 @@ description: 需要报告 Tokscale 支持的一个稳定 Agent Session 的 Token
 
 ## 工作流
 
-1. 确定 Tokscale client 和稳定 Session ID。任何受支持的 client 都可以显式传入这两个值；Codex
-   存在 `CODEX_THREAD_ID` 时可以省略。两个来源都无法提供稳定 ID 时，向用户索取。
-2. 在当前平台运行一次 wrapper：
+1. 把 Tokscale client 和稳定 Session ID 作为一对值来确定。任何受支持的 client 都要显式传入
+   两者。存在 `CODEX_THREAD_ID` 时，Codex 可以同时省略两者。如果只提供了其中一个值，向用户索取
+   两者，并且不运行 wrapper。
+2. 只运行一次与平台匹配的 wrapper。在使用 PowerShell 的 Windows 上，运行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .agents/skills/report-session-usage/scripts/task-metrics.ps1 usage --client <client> --session-id <id>
@@ -25,6 +26,8 @@ sh .agents/skills/report-session-usage/scripts/task-metrics.sh usage --client <c
 ```
 
 两个 wrapper 都会调用 Python 3.11+ 的确定性核心 `scripts/timing.py`。
+
+在任何其他平台上，不运行内部脚本，直接停止并报告没有受支持的公共 wrapper。
 
 3. 在交接回复中原样引用 wrapper 输出，并将它作为唯一的指标摘要。本流程不计算时间、不重建任务边界、
    不聚合其他 Session，也不重新排版数值。
@@ -63,6 +66,6 @@ Token 和费用证据完整时省略 `Problems`。
 
 ## 停止条件
 
-- client 或稳定 Session ID 不可用时，应向用户索取两者，不得猜测。
+- 无法确定 client 和稳定 Session ID 这一对值时，应向用户索取两者，不得猜测或使用不完整参数运行。
 - Tokscale 不支持传入的 client 时，应报告原始错误，不得擅自替换 client。
 - Tokscale 和适用的 client 专属回退路径都无法提供消耗证据时，返回脚本生成的不可用结果，不得编造数值。

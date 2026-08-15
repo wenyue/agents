@@ -4,7 +4,7 @@
     "sessionStart": [
       {
         "name": "smartkit daily project readiness check",
-        "command": "\"${CURSOR_PLUGIN_ROOT}/runtime/recommended-tools/run_recommended_tools.cmd\" hook --platform cursor --delivery context"
+        "command": "\"${CURSOR_PLUGIN_ROOT}/runtime/recommended-tools/run_recommended_tools.cmd\" hook --harness cursor --delivery context"
       }
     ]
   }

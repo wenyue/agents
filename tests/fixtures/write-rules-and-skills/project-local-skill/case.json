@@ -1,5 +1,4 @@
 {
-  "version": 1,
   "id": "project-local-skill",
   "lifecycle": "ordinary-artifact",
   "acceptance_mode": "isolated-runner",

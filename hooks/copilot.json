@@ -4,46 +4,46 @@
     "sessionStart": [
       {
         "type": "command",
-        "bash": "sh \"${PLUGIN_ROOT}/runtime/recommended-tools/check_recommended_tools.sh\" hook --platform copilot",
-        "powershell": "& \"${PLUGIN_ROOT}\\runtime\\recommended-tools\\check_recommended_tools.ps1\" hook --platform copilot",
+        "bash": "sh \"${PLUGIN_ROOT}/runtime/recommended-tools/check_recommended_tools.sh\" hook --harness copilot",
+        "powershell": "& \"${PLUGIN_ROOT}\\runtime\\recommended-tools\\check_recommended_tools.ps1\" hook --harness copilot",
         "timeoutSec": 30
       },
       {
         "type": "command",
-        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform copilot --event session",
-        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform copilot --event session",
+        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --harness copilot --event session",
+        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --harness copilot --event session",
         "timeoutSec": 30
       }
     ],
     "userPromptTransformed": [
       {
         "type": "command",
-        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform copilot --event prompt",
-        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform copilot --event prompt",
+        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --harness copilot --event prompt",
+        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --harness copilot --event prompt",
         "timeoutSec": 30
       }
     ],
     "preCompact": [
       {
         "type": "command",
-        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform copilot --event compact",
-        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform copilot --event compact",
+        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --harness copilot --event compact",
+        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --harness copilot --event compact",
         "timeoutSec": 30
       }
     ],
     "preToolUse": [
       {
         "type": "command",
-        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform copilot --event tool",
-        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform copilot --event tool",
+        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --harness copilot --event tool",
+        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --harness copilot --event tool",
         "timeoutSec": 30
       }
     ],
     "agentStop": [
       {
         "type": "command",
-        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --platform copilot --event stop",
-        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --platform copilot --event stop",
+        "bash": "python3 \"${PLUGIN_ROOT}/runtime/rules/dispatch.py\" --harness copilot --event stop",
+        "powershell": "python \"${PLUGIN_ROOT}\\runtime\\rules\\dispatch.py\" --harness copilot --event stop",
         "timeoutSec": 30
       }
     ]

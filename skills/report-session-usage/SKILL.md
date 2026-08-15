@@ -11,10 +11,10 @@ lifecycle bookkeeping.
 
 ## Workflow
 
-1. Resolve the Tokscale client and stable session ID. Pass both explicitly for any supported client.
-   Codex may omit them when `CODEX_THREAD_ID` is available. Request the stable ID when neither
-   source provides it.
-2. Run the platform wrapper once:
+1. Resolve the Tokscale client and stable session ID as one pair. Pass both explicitly for any
+   supported client. Codex may omit both when `CODEX_THREAD_ID` is available. If exactly one value
+   was supplied, request both and do not run the wrapper.
+2. Run the matching platform wrapper once. On Windows with PowerShell, use:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .agents/skills/report-session-usage/scripts/task-metrics.ps1 usage --client <client> --session-id <id>
@@ -27,6 +27,9 @@ sh .agents/skills/report-session-usage/scripts/task-metrics.sh usage --client <c
 ```
 
 Both wrappers invoke the deterministic Python 3.11+ `scripts/timing.py` core.
+
+On any other platform, stop without running an internal script and report that no public wrapper is
+supported.
 
 3. Include the wrapper output verbatim as the only metrics summary in the handoff. Leave time
    calculation, task-boundary reconstruction, other-session aggregation, and value reformatting
@@ -70,7 +73,8 @@ The `Problems` line is omitted when Token and cost evidence are complete.
 
 ## Stop Conditions
 
-- If the client or stable session ID is unavailable, request both instead of guessing.
+- If the client and stable session ID pair cannot be resolved, request both instead of guessing or
+  running with a partial pair.
 - If Tokscale does not support the supplied client, report its error instead of substituting a client.
 - If Tokscale and any client-specific fallback provide no consumption evidence, report the generated
   unavailable result without inventing values.
