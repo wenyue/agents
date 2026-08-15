@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "checks": [
+    {"name": "schema", "argv": ["python3", "quality/verify.py", "schema"], "required": true},
+    {"name": "integration", "argv": ["python3", "quality/verify.py", "integration"], "required": true}
+  ]
+}

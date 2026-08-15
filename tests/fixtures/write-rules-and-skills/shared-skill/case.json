@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "id": "shared-skill",
+  "lifecycle": "ordinary-artifact",
+  "semantic_type": "skill",
+  "scope": "shared",
+  "candidate_contract": {"format": "skill-package", "name": "verify-repository-change", "relative_path": "SKILL.md"},
+  "request": "request.md",
+  "evidence_contexts": [
+    {"id": "alpha", "path": "contexts/alpha/.agents/verification.json"},
+    {"id": "beta", "path": "contexts/beta/project-verification.json"}
+  ],
+  "initial_state": {
+    "candidate": "absent",
+    "job": "run every repository-declared required verification without modifying the repository"
+  },
+  "acceptance_cases": [
+    {
+      "id": "alpha-complete",
+      "risk": "normal-completion",
+      "input": {"context": "alpha", "required_exits": [0, 0]},
+      "expected": {"exit": "completion", "reported_checks": 2}
+    },
+    {
+      "id": "beta-command-failure",
+      "risk": "failure",
+      "input": {"context": "beta", "required_exits": [0, 4]},
+      "expected": {"exit": "failure", "reported_checks": 2}
+    },
+    {
+      "id": "missing-contract",
+      "risk": "missing-precondition",
+      "input": {"context": null, "required_exits": []},
+      "expected": {"exit": "stop", "reason": "verification-contract-unavailable"}
+    },
+    {
+      "id": "failure-with-remaining-check",
+      "risk": "coincident-condition",
+      "input": {"context": "beta", "required_exits": [4, "not-run"]},
+      "expected": {"exit": "failure", "report": "failed-and-unverified"}
+    }
+  ]
+}

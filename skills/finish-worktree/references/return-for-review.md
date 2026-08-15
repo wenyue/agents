@@ -1,12 +1,12 @@
 # Return for Review
 
-Materialize the task's net result in the base working tree without advancing its branch or changing
-its index.
+Materialize the Task Commit's net result in the base working tree without advancing its branch or
+changing its index.
 
 1. Record the base `HEAD`, index tree, staged changes, unstaged changes, and untracked paths. Back up
    every task path outside the repository and record original file types and absent paths in a
    manifest.
-2. Derive the task result from the complete diff between its merge base and task `HEAD`. For task
+2. Derive the task result from the complete diff between the Task Commit's sole parent and its tree. For task
    paths without base-local changes, check the transfer first, then update only the working tree
    through a mode that leaves the index unchanged.
 3. For overlapping text paths, three-way merge the merge-base content, current base working file,

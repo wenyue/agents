@@ -1,4 +1,4 @@
-# 01 — Plugin Playwright MCP 三端交付
+# 01 — Plugin Playwright MCP Delivery Across Three Hosts
 
 Category: enhancement
 Status: resolved
@@ -6,21 +6,27 @@ Blocked by: None
 
 ## What to build
 
-从一个 canonical Plugin MCP registry 生成 Codex、Cursor、Copilot 的原生 adapter，使安装
-SmartKit 后三端都能发现并启动最新版、隔离、无头模式的 Playwright MCP。插件只交付配置，
-保留宿主工具审批，不复制 Playwright 服务实现。
+Generate native Codex, Cursor, and Copilot adapters from one canonical Plugin MCP registry so all
+three hosts can discover and start the latest isolated, headless Playwright MCP after SmartKit is
+installed. The plugin delivers only configuration, preserves host tool approval, and does not copy
+the Playwright service implementation.
 
-- [x] 一个严格校验的 registry 是三端 adapter 的唯一来源。
-- [x] Codex、Cursor、Copilot manifest 显式引用各自有效的 MCP 配置。
-- [x] 三端 adapter 表达同一个 Playwright 启动意图并保留必要的宿主 schema 差异。
-- [x] Copilot adapter 显式暴露全部工具，所有宿主继续使用默认审批行为。
-- [x] 只读同步检查能发现 registry 与生成物漂移。
-- [x] 未知字段、不安全 readiness 和危险 Playwright flags 被拒绝。
-- [x] Codex MCP companion validator 与相关契约测试通过。
+- [x] One strictly validated registry is the sole source for all three host adapters.
+- [x] The Codex, Cursor, and Copilot manifests explicitly reference their valid MCP configurations.
+- [x] All three adapters express the same Playwright launch intent while preserving required host
+  schema differences.
+- [x] The Copilot adapter explicitly exposes every tool, and all hosts retain default approval
+  behavior.
+- [x] A read-only synchronization check detects drift between the registry and generated outputs.
+- [x] Unknown fields, unsafe readiness configuration, and dangerous Playwright flags are rejected.
+- [x] The Codex MCP companion validator and related contract tests pass.
 
 ## Comments
 
-- 发布 ticket 时工作树已有该 slice 的部分未验收实现；验收标准仍以本 ticket 为准。
-- Plugin MCP adapter check、三端 manifest/adapter tests 和 Codex MCP companion validator 已通过。
-- 完整旧版 plugin-creator validator 仍报告 SmartKit 既有 Hooks 与 user-invoked Matt Skills；这些
-  基线诊断不属于本 ticket 的 MCP companion contract，未通过删除现有能力规避。
+- When this ticket was published, the worktree already contained a partially implemented but
+  unaccepted version of this slice; this ticket remains the source of its acceptance criteria.
+- The Plugin MCP adapter check, three-host manifest and adapter tests, and Codex MCP companion
+  validator passed.
+- The complete legacy plugin-creator validator still reports SmartKit's existing Hooks and
+  user-invoked Matt Skills. Those baseline diagnostics are outside this ticket's MCP companion
+  contract and were not avoided by deleting existing capabilities.

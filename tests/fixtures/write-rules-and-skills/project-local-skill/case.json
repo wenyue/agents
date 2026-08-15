@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "id": "project-local-skill",
+  "lifecycle": "ordinary-artifact",
+  "semantic_type": "skill",
+  "scope": "project-local",
+  "candidate_contract": {"format": "skill-package", "name": "refresh-generated-catalog", "relative_path": ".agents/skills/refresh-generated-catalog/SKILL.md"},
+  "request": "request.md",
+  "project_root": "project",
+  "evidence": [
+    "project/AGENTS.md",
+    "project/.agents/catalog.json",
+    "project/tools/catalog.py"
+  ],
+  "initial_state": {
+    "candidate": "absent",
+    "public_entry": ["python3", "tools/catalog.py"],
+    "check_exit": 3
+  },
+  "acceptance_cases": [
+    {
+      "id": "stale-rebuild",
+      "risk": "recovery",
+      "input": {"source": "valid", "check_exit": 3, "build_exit": 0, "retry_exit": 0},
+      "expected": {"exit": "completion", "action": "build-once"}
+    },
+    {
+      "id": "already-current",
+      "risk": "normal-completion",
+      "input": {"source": "valid", "check_exit": 0},
+      "expected": {"exit": "completion", "action": "no-build"}
+    },
+    {
+      "id": "missing-source",
+      "risk": "missing-precondition",
+      "input": {"source": "missing"},
+      "expected": {"exit": "stop", "action": "leave-unstarted"}
+    },
+    {
+      "id": "invalid-source",
+      "risk": "failure",
+      "input": {"source": "invalid-json", "check_exit": 2},
+      "expected": {"exit": "failure", "action": "report-partial-state"}
+    }
+  ]
+}

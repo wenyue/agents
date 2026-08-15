@@ -6,8 +6,9 @@ description: Use when state-changing repository work requires an isolated linked
 # Create Worktree
 
 Create or reuse one named linked Git worktree and leave it ready for implementation without changing
-the base checkout. This Skill owns worktree selection, creation, validation, and preparation
-handoff; it does not own business implementation, completed-change integration, or cleanup.
+the base checkout. This Skill owns worktree selection, creation, validation, Task Worktree
+qualification, and preparation handoff; it does not own business implementation, completed-change
+integration, or cleanup.
 
 ## Preconditions
 
@@ -15,8 +16,9 @@ handoff; it does not own business implementation, completed-change integration, 
    and the base checkout's staged, unstaged, and untracked state. Identify one intended base branch
    and commit; stop when the base is detached or ambiguous.
 2. Choose a lowercase hyphenated task slug and a named task branch. Follow a verified repository
-   branch convention; otherwise use `worktree/<task-slug>`. Stop when the branch or intended path
-   already exists rather than attaching or overwriting it implicitly.
+   branch convention; otherwise use `worktree/<task-slug>`. A current host-created worktree selected
+   for reuse takes precedence over the absence check; when creating instead, stop if the branch or
+   intended path already exists rather than attaching or overwriting it implicitly.
 3. Record the base branch, base commit, existing worktrees, existing local branches, and base
    checkout status before any mutation.
 
@@ -57,11 +59,15 @@ handoff; it does not own business implementation, completed-change integration, 
 2. Run the repository's declared baseline verification after environment preparation. Treat a
    failing baseline as pre-existing evidence and stop before implementation unless the user accepts
    that baseline explicitly.
-3. Report the ready worktree only after its environment and baseline satisfy the target repository's
+3. Qualify the selected worktree as a Task Worktree only when it has one named task branch, its
+   baseline is clean or explicitly accepted, and every local path belongs exclusively to the
+   accepted task. A reused worktree with ambiguously owned local state remains a worktree but does
+   not authorize autonomous Checkpoint Commits.
+4. Report the ready worktree only after its environment and baseline satisfy the target repository's
    contracts. Retain a failed worktree for diagnosis rather than discarding evidence automatically.
 
 ## Result
 
 Report the base checkout and commit, task branch, worktree path, whether `.gitignore` changed,
-creation owner, environment setup, baseline result, preserved base state, and the owner responsible
-for later integration or cleanup.
+creation owner, environment setup, baseline result, preserved base state, whether Task Worktree
+qualification passed and why, and the owner responsible for later integration or cleanup.

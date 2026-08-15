@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "id": "skill-generation-contract",
+  "lifecycle": "generation-contract",
+  "semantic_type": "skill",
+  "scope": "cross-project",
+  "candidate_contract": {"format": "skill-package", "name": "write-project-maintenance-skill", "relative_path": "SKILL.md"},
+  "request": "request.md",
+  "evidence": [
+    "evidence/host-mechanics.md",
+    "evidence/target-inputs.md"
+  ],
+  "initial_state": {
+    "candidate": "absent",
+    "future_target": "not-created",
+    "target_generation": "forbidden-during-qualification"
+  },
+  "acceptance_cases": [
+    {
+      "id": "complete-target-evidence",
+      "risk": "main-path",
+      "input": {"trigger": "refresh index", "public_entry": ["python3", "tools/index.py"], "exits": [0, 2, 3], "owner": "project"},
+      "expected": {"next_action": "author-contract-guidance"}
+    },
+    {
+      "id": "missing-public-entry",
+      "risk": "execution-owner",
+      "input": {"trigger": "refresh index", "public_entry": null, "owner": "project"},
+      "expected": {"next_action": "stop-for-entry-evidence"}
+    },
+    {
+      "id": "conflicting-exits",
+      "risk": "coincident-exit",
+      "input": {"public_entry": ["python3", "tools/index.py"], "stale_exit": 3, "failure_exit": 3},
+      "expected": {"next_action": "stop-for-exit-decision"}
+    },
+    {
+      "id": "existing-target-preservation",
+      "risk": "preservation",
+      "input": {"existing_target": "contains supported recovery not present in request"},
+      "expected": {"next_action": "stop-before-target-write"}
+    }
+  ]
+}

@@ -1,161 +1,142 @@
 ---
 name: write-rules-and-skills
-description: Use when creating, rewriting, or materially updating repository Rules or Agent Skills, including project-local or shared artifacts, generation contracts, owned resources, and discovery or distribution surfaces.
+description: Use when creating, rewriting, or materially updating a SmartKit Rule, Agent Skill, or Rule/Skill generation contract, including project-local or shared artifacts, owned resources, and discovery or distribution surfaces.
 ---
 
 # Write Rules and Skills
 
-**Route first:** a Rule owns one policy; a Skill owns one complete job. Rebuild every selected
-artifact from accepted intent and verified evidence. The existing artifact and diff are evidence of
-change, never the shape of the final result.
+Author the smallest complete artifact from accepted intent and verified evidence. Apply
+`writing-for-agents` first for information hierarchy, purposeful Markdown, and Skill invocation
+mechanics. This Skill owns the shared workflow; selected references own lifecycle and semantic-type
+requirements.
 
-Apply `writing-for-agents` first for context pointers, information hierarchy, relevance, pruning,
-and Skill invocation mechanics. This Skill owns Rule-or-Skill routing, their shared authoring
-contract, and the boundary between their specialized instructions.
+## Route the candidate
 
-Clarity, executability, and one unambiguous interpretation come before concision. Only then make the
-artifact as concise as possible without hiding, merging, or removing information that changes its
-meaning or behavior. Preserve every supported decision and safety boundary. Change no instruction
-or requirement semantically without current evidence or explicit user approval.
+Classify two independent properties before writing:
 
-## 1. Route the artifact
+1. **Lifecycle** — an Ordinary Artifact is used directly; a Generation Contract instructs another
+   Agent to author a future target.
+2. **Semantic type** — Rule for one persistent policy; Skill for one triggered job.
 
-Classify the requested outcome by its semantics, not its current filename or directory:
+A Generation Contract is a standalone instruction artifact. Its future target, not the contract's
+file extension or packaging, selects the semantic-type reference.
 
-| Target semantics | Route |
+| Candidate | Read completely |
 | --- | --- |
-| A policy that governs behavior whenever its conditions apply | Read [`references/rule-authoring.md`](references/rule-authoring.md). |
-| A triggered job with actions and explicit completion, stop, and failure exits | Read [`references/skill-authoring.md`](references/skill-authoring.md). |
-| Both policy and procedure | Split them into separately owned artifacts and read both references. |
+| Ordinary Rule | [`references/ordinary-artifact.md`](references/ordinary-artifact.md) and [`references/rule.md`](references/rule.md) |
+| Ordinary Skill | [`references/ordinary-artifact.md`](references/ordinary-artifact.md) and [`references/skill.md`](references/skill.md) |
+| Rule Generation Contract | [`references/generation-contract.md`](references/generation-contract.md) and [`references/rule.md`](references/rule.md) |
+| Skill Generation Contract | [`references/generation-contract.md`](references/generation-contract.md) and [`references/skill.md`](references/skill.md) |
 
-Before any write, read every selected reference completely and apply it with this shared contract.
-When semantics remain ambiguous, inspect the intended authority, owner, application conditions, and
-execution lifecycle. Resolve every unknown that could change the route before writing.
+When one request mixes durable policy with an executable job, create separately owned Rule and
+Skill candidates. Routing is complete when every candidate has one lifecycle, one semantic type,
+one owner, and both references loaded.
 
-Routing is complete when every requested artifact has one supported type and owner, every mixed
-artifact has been split, and every selected reference is loaded.
+## Reach readiness
 
-## 2. Gather shared evidence
+Before the first candidate write, establish from accepted intent and current evidence:
 
-Collect only evidence that can change the artifact's meaning, owner, applicability, execution,
-distribution, or validation:
+- the requested outcome, preserved semantics, approved changes, non-goals, and safety boundaries;
+- the artifact owner, permitted writes, broader and narrower owners, and affected loading,
+  resource, generation, and distribution surfaces; and
+- the current behavior, applicable project Rules and host mechanics, validation seams, and any
+  environmental fact that can change a policy, action, target, or exit.
 
-- the requested outcome, constraints, accepted decisions, safety boundaries, and excluded
-  responsibilities;
-- the owning artifact family, broader and narrower owners, real usage, enforcement or execution
-  points, wrappers, registries, manifests, mirrors, and contract tests; and
-- representative targets and supported overrides when claiming shared or generation behavior.
+Ask only when supported evidence still permits materially different behavior, ownership, write
+targets, authority, side effects, or exits. Otherwise record the uniquely supported fact and
+continue. Keep project facts in their active owners; the reusable Skill discovers them rather than
+caching them.
 
-Use the existing artifact as evidence and an omission check, not as an outline. Keep runtime facts in
-their owning configuration and change history outside the final artifact. When another owner falls
-outside the approved scope, report the dependency and obtain approval before changing it.
+Readiness passes when every selected reference can be applied without a material unknown.
 
-Evidence is sufficient when every route, contract choice, and repository or platform claim that
-could affect the result has support, and remaining unknowns cannot change the contract.
+## Build one Candidate Revision
 
-## 3. Rebuild the whole artifact
+Before writing, record one row for each independently changeable obligation:
 
-Write each selected artifact as it should exist today:
+| Obligation | Evidence | Owner | Disposition | Candidate location |
+| --- | --- | --- | --- | --- |
 
-- Synthesize one complete candidate from accepted intent and verified evidence. Preserve intended
-  outcomes, supported decisions, and safety boundaries; remove stale, duplicated, contradictory,
-  transitional, or misplaced content.
-- Lead with the artifact's governing model and boundary, not a taxonomy of topics. When one compact
-  leading term organizes the work, define it once and use it consistently.
-- Represent every current requirement exactly once in the narrowest artifact or owned resource that
-  owns it. Modify only the resources, wrappers, registries, manifests, mirrors, generation inputs,
-  and contract tests required to execute, load, or distribute the result.
-- State the steady-state contract from current conditions and behavior. Retain migration behavior
-  only while a current input can trigger it, with an explicit trigger and retirement condition.
-- Use observable conditions and outcomes. Replace evaluative adjectives with the property that
-  earns them.
-- Prefer positive instructions. Use a negative only to block a plausible harmful shortcut, and pair
-  it with the required alternative or enduring consequence.
+Split rows only when a predicate, exception, owner, action, recovery, or exit can change
+independently. Do not split wording choices that preserve the same behavior. Give every row one
+owner and one `preserve`, `change`, `add`, `move`, or `retire` disposition. Stop when an unresolved
+row permits materially different results.
 
-Tracked artifacts use repository-relative, artifact-root-relative, or stable protocol-owned paths.
-Derive runtime absolute paths from a discovered root or task input. Refer to another Rule or Skill by
-its canonical name unless its path is part of the runtime contract.
+Synthesize the whole candidate from the ledger. Use an existing artifact as omission evidence, not
+as the new outline. Preserve supported decisions and safety boundaries; remove stale, duplicated,
+contradictory, transitional, or misplaced content. Represent each obligation once in its narrowest
+owner. Keep working evidence, provenance, validation records, and reviewer instructions outside a
+runtime artifact unless they change its execution.
 
-## Markdown carries meaning
+A **Candidate Revision** is one complete current content state in the work area selected by the
+active project or host. It is not a copied revision tree or mandatory report. Read it without its
+predecessor or diff. Continue only when the lifecycle and semantic-type requirements pass and
+another Agent can use the artifact without inventing a condition, fact, step, owner, or exit.
 
-Markdown is semantic structure, not decoration. Every form must change how another Agent locates,
-understands, or executes the artifact; remove formatting that leaves the result unchanged.
+## Validate and freeze
 
-| Form | Use it for |
-| --- | --- |
-| Headings | Stable semantic regions or genuine branches. Keep the governing model above branch detail. |
-| Numbered lists | Ordered actions whose sequence changes correctness, safety, or the generated result. |
-| Bullets | Peer requirements or reference items with no execution order. |
-| Checklists | Independent obligations or gates with a named subject, action or property, and observable result. |
-| **Bold** | A few leading terms, invariants, or exact contrasts that organize the artifact. |
-| Fenced blocks | Exact syntax, templates, commands, or output shapes. State every normative requirement outside the block. |
-| Blockquotes | A short literal statement, prediction, or contrast that must stand apart. |
-| Tables | Exact mappings or repeated-field comparisons, not long prose or ordered work. |
-| Links | Context pointers whose surrounding text says when the target must be read. |
+Run the active project's required checks for every changed owner and affected loading, resource,
+generation, or distribution surface. Machine validation may prove schemas, identifiers,
+registration, resource reachability, generated relationships, filesystem effects, script results,
+state transitions, and process exits. It cannot prove natural-language meaning; keyword checks,
+prose snapshots, complete-heading snapshots, copied expectations, or author-written policy
+interpreters do not satisfy Semantic Review.
 
-Keep nesting shallow enough that the governing model remains visible. Add an example only when it
-resolves a material ambiguity; keep it minimal and state the requirement normatively outside it.
+If a required machine check fails, stop before semantic gates. Report its exact command, final exit,
+relevant output, unrun gates, and unverified surfaces. Do not call a walkthrough machine PASS.
 
-## Whole-Artifact Gate
+Record successful commands, final exits, and untested surfaces in a bounded Review Packet. When a
+baseline exists, compare lines, words, and bytes; growth requires a distinct supported obligation,
+not a numeric allowance. Create no persistent validation report unless an active owner requires it.
 
-Read every complete candidate without its diff and walk every selected branch. The result passes
-only when:
+Freeze candidate writes before review. A content change creates a new Candidate Revision and
+invalidates every dependent machine, Review, and Acceptance result. Stop the current review rather
+than automatically restarting it.
 
-- another Agent can discover when each artifact applies and use its complete contract without hidden
-  context or an invented condition, step, or exit;
-- the type, owner, boundaries, and every field required by the selected reference are explicit or
-  verifiably inapplicable;
-- every current requirement and supported decision appears once under its one owner;
-- every claim is supported, every required owned and distribution surface agrees, and no unrelated
-  owner changed;
-- every selected reference's specialized gate passes; and
-- clarity and executability still hold after pruning.
+## Review and accept
 
-If any routing, ownership, boundary, evidence, branch, or specialized-gate gap remains, return to the
-relevant step. The artifact is not ready for validation.
+Give one fresh reviewer that did not author the candidate this bounded packet:
 
-## Prove it
+- accepted outcome and semantic ledger;
+- complete candidate, owned resources, and loading or distribution surfaces;
+- governing evidence and applicable references; and
+- exact machine-validation results and untested surfaces.
 
-- Run the proof required by every selected reference. When both types are present, preserve separate
-  evidence for the Rule and Skill gates.
-- Compare language mirrors structurally. Preserve paths, commands, identifiers, code blocks,
-  artifact classes, and behavior.
-- Run the current validators, contract tests, and diff-integrity checks for every changed owned,
-  discovery, generation, or distribution surface.
-- Report any command failure with its exact command, final exit status, relevant output, and every
-  surface left unverified.
+Exclude the diff, author reasoning, suspected defects, intended fixes, and expected verdicts. Each
+candidate gets its own fresh reviewer; independent candidate reviews may run concurrently, but they
+do not share evidence or verdicts.
 
-## Get independent review
+The reviewer performs two gates in order:
 
-Treat review as an attempt to falsify the candidate, not an approval formality. Every authored or
-materially updated Rule and Skill requires a fresh subagent review after its applicable proof runs.
-The author does not satisfy this gate by reviewing its own work.
+1. **Semantic Review** reads the whole candidate and tries to falsify it with two to four of the
+   highest-risk supported counterexamples. It returns `PASS` or `FAIL`.
+2. **Acceptance** starts only after Semantic Review passes. It applies the selected references'
+   portfolio and returns a separate `PASS` or `FAIL`.
 
-1. Start a fresh reviewer for each candidate. Give it the complete candidate, its owned resources
-   and discovery or distribution surfaces, the accepted request and evidence, and exact validation
-   results. Require it to apply this Skill and the selected authoring reference. Do not give it the
-   diff, the author's reasoning, a suspected defect, an intended fix, or an expected answer.
-2. Instruct the reviewer to return `PASS` or `FAIL`, apply the Whole-Artifact Gate and the selected
-   specialized review, walk every material branch, and cite the artifact evidence for its verdict.
-   `PASS` means no blocking defect remains. `FAIL` names each violated gate, the concrete failing
-   scenario, and whether current evidence forces one correction or a new decision is required.
-3. Automatically fix a `FAIL` only when the correction is uniquely determined by accepted intent
-   and verified evidence, remains inside the approved scope and owner, and requires no new policy,
-   behavior, authority, or external side effect. Apply the fix in the authoring agent, rerun every
-   affected proof, then send the complete revised candidate to a different fresh reviewer.
-4. Stop and report to the user when a finding permits multiple materially different corrections,
-   requires missing intent, evidence, authority, scope, or an external side effect, or conflicts
-   with an accepted requirement. Report the exact finding, why it cannot be fixed safely, the
-   decision needed, and every surface still unreviewed or unverified.
+Every blocking finding names the gate, evidence, concrete counterexample, and one classification:
 
-If a fresh subagent cannot be started, report review as unavailable and do not claim the artifact is
-done. Independent review is complete only when the latest fresh reviewer returns `PASS` and every
-earlier finding is either fixed and re-reviewed or explicitly resolved by the user.
+- `uniquely-forced` — current evidence permits one in-scope correction without new policy,
+  authority, behavior, scope, or side effects;
+- `decision-required` — multiple material corrections remain, or new intent, evidence, authority,
+  scope, or external action is required.
 
-## Done
+Stop and report an unavailable fresh reviewer. A Generation Contract and a real target authored
+later are separate candidates, default to different fresh reviewers, and inherit neither evidence
+nor verdicts from one another.
 
-The work is done only when the Whole-Artifact Gate, every selected specialized gate, every
-applicable proof, and independent review pass. Report each artifact's type and owner, final
-structure, preserved decisions, material changes, moved or removed content and resources, every
-changed discovery or distribution surface, approved dependencies, review verdict and fixes,
-unresolved or untested surfaces, and exact validation outcomes.
+## Correct once and hand off
+
+On any `decision-required` finding, stop before correction and ask for the missing decision. If all
+findings are `uniquely-forced`, apply them together in one Correction Pass, rerun every invalidated
+machine check, and freeze the new Candidate Revision.
+
+Give the corrected revision, first findings, governing evidence, and exact revalidation to a
+different fresh Closure Reviewer. It repeats whole-candidate Semantic Review and affected
+Acceptance. `PASS` closes the run; `FAIL` stops it. Do not start another automatic correction. A
+user decision may begin a later explicit authoring run on the resulting state.
+
+Success requires machine validation, Semantic Review, and Acceptance to pass for the same Candidate
+Revision. Report the candidate's lifecycle, semantic type, owner, preserved and approved changes,
+affected surfaces, size comparison, exact commands and exits, gate and correction verdicts, and
+every unresolved or untested surface. Every stop reports the blocker, completed evidence, unrun
+gates, and next owner. Leave publication, installation, commit, push, and other external actions to
+their owners.

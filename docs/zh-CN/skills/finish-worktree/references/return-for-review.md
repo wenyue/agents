@@ -1,10 +1,10 @@
 # 返回供审查
 
-在不推进 base 分支或改变其 index 的情况下，将任务净结果放入 base working tree。
+在不推进 base 分支或改变其 index 的情况下，将 Task Commit 的净结果放入 base working tree。
 
 1. 记录 base `HEAD`、index tree、staged 变更、unstaged 变更和 untracked 路径。在仓库外备份每个
    任务路径，并在 manifest 中记录原始文件类型和原本不存在的路径。
-2. 从 merge base 与任务 `HEAD` 之间的完整 diff 推导任务结果。对于没有 base 本地变更的任务路径，
+2. 从 Task Commit 的唯一 parent 与其 tree 之间的完整 diff 推导任务结果。对于没有 base 本地变更的任务路径，
    先检查待传输内容，再通过不改变 index 的方式只更新 working tree。
 3. 对重叠的文本路径，在临时文件中以 merge-base 内容、当前 base working file 和任务结果执行三方
    合并。将相同路径名视为可合并证据，而不是冲突本身。

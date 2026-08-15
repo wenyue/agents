@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "id": "shared-rule",
+  "lifecycle": "ordinary-artifact",
+  "semantic_type": "rule",
+  "scope": "shared",
+  "candidate_contract": {"format": "markdown", "relative_path": "diagnostic-attribution.md"},
+  "request": "request.md",
+  "evidence_contexts": [
+    {"id": "compiler", "path": "evidence/compiler.md"},
+    {"id": "configuration", "path": "evidence/configuration.md"}
+  ],
+  "initial_state": {
+    "candidate": "absent",
+    "policy_owner": "new shared Rule",
+    "required_signal_identity": "same observable signal in current and control runs"
+  },
+  "acceptance_cases": [
+    {
+      "id": "current-change",
+      "risk": "applicability",
+      "input": {"current_signal": "E17", "control_signal": null, "control_is_change_absent": true},
+      "expected": {"classification": "current-change", "action": "report-supported"}
+    },
+    {
+      "id": "baseline",
+      "risk": "nearest-excluded",
+      "input": {"current_signal": "E17", "control_signal": "E17", "control_is_change_absent": true},
+      "expected": {"classification": "baseline", "action": "report-supported"}
+    },
+    {
+      "id": "unresolved-control",
+      "risk": "boundary",
+      "input": {"current_signal": "E17", "control_signal": null, "control_is_change_absent": false},
+      "expected": {"classification": "unresolved", "action": "report-unverified"}
+    },
+    {
+      "id": "different-signal",
+      "risk": "conflict",
+      "input": {"current_signal": "E17", "control_signal": "E18", "control_is_change_absent": true},
+      "expected": {"classification": "unresolved", "action": "report-both-signals"}
+    }
+  ]
+}

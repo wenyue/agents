@@ -68,13 +68,6 @@ def markdown_structure(text: str) -> tuple[str, ...]:
     return tuple(structure)
 
 
-def fenced_blocks(text: str) -> tuple[str, ...]:
-    return tuple(
-        match.group(0)
-        for match in re.finditer(r'^```[^\n]*\n.*?^```$', text, flags=re.MULTILINE | re.DOTALL)
-    )
-
-
 class PluginManifestTest(unittest.TestCase):
     def test_repository_agents_entry_matches_public_template_around_rule_rows(self):
         template = (
@@ -172,109 +165,29 @@ class PluginManifestTest(unittest.TestCase):
             },
             {
                 'SKILL.md',
-                'references/rule-authoring.md',
-                'references/skill-authoring.md',
+                'references/ordinary-artifact.md',
+                'references/generation-contract.md',
+                'references/rule.md',
+                'references/skill.md',
             },
         )
 
         skill = (skill_root / 'SKILL.md').read_text(encoding='utf-8')
-        translated_skill = (
-            REPO_ROOT / 'docs' / 'zh-CN' / 'skills' / 'write-rules-and-skills'
-            / 'SKILL.md'
-        ).read_text(encoding='utf-8')
         self.assertIn('name: write-rules-and-skills', skill)
-        self.assertIn(
-            '[`references/rule-authoring.md`](references/rule-authoring.md)',
-            skill,
-        )
-        self.assertIn(
-            '[`references/skill-authoring.md`](references/skill-authoring.md)',
-            skill,
-        )
-        for review_contract in (
-            'requires a fresh subagent review',
-            'return `PASS` or `FAIL`',
-            'Automatically fix a `FAIL` only when',
-            'send the complete revised candidate to a different fresh reviewer',
-            'Stop and report to the user',
-        ):
-            self.assertIn(review_contract, skill)
-        for translated_review_contract in (
-            '都必须由全新 subagent 审查',
-            '返回 `PASS` 或 `FAIL`',
-            '才自动修复 `FAIL`',
-            '交给另一个全新 reviewer',
-            '停止并报告用户',
-        ):
-            self.assertIn(translated_review_contract, translated_skill)
-
-        rule_authoring = (
-            skill_root / 'references' / 'rule-authoring.md'
-        ).read_text(encoding='utf-8')
-        skill_authoring = (
-            skill_root / 'references' / 'skill-authoring.md'
-        ).read_text(encoding='utf-8')
-        translated_rule_authoring = (
-            REPO_ROOT / 'docs' / 'zh-CN' / 'skills' / 'write-rules-and-skills'
-            / 'references' / 'rule-authoring.md'
-        ).read_text(encoding='utf-8')
-        translated_skill_authoring = (
-            REPO_ROOT / 'docs' / 'zh-CN' / 'skills' / 'write-rules-and-skills'
-            / 'references' / 'skill-authoring.md'
-        ).read_text(encoding='utf-8')
-        self.assertEqual(fenced_blocks(translated_skill), fenced_blocks(skill))
-        self.assertEqual(
-            fenced_blocks(translated_rule_authoring),
-            fenced_blocks(rule_authoring),
+        reference_links = set(
+            re.findall(r'\]\((references/[^)]+\.md)\)', skill)
         )
         self.assertEqual(
-            fenced_blocks(translated_skill_authoring),
-            fenced_blocks(skill_authoring),
+            reference_links,
+            {
+                'references/ordinary-artifact.md',
+                'references/generation-contract.md',
+                'references/rule.md',
+                'references/skill.md',
+            },
         )
-        self.assertEqual(
-            re.findall(r'^## (.+)$', rule_authoring, flags=re.MULTILINE),
-            [
-                'Pin the policy',
-                'Extend the evidence',
-                'Author the policy',
-                'Shape the Rule',
-                'Whole-Rule Gate',
-                'Prove the Rule',
-                'Review the Rule',
-            ],
-        )
-        self.assertEqual(
-            re.findall(r'^## (.+)$', skill_authoring, flags=re.MULTILINE),
-            [
-                'Pin the job',
-                'Extend the evidence',
-                'Author the job',
-                'Shape the Skill',
-                'Whole-Skill Gate',
-                'Prove the Skill',
-                'Review the Skill',
-            ],
-        )
-        self.assertEqual(
-            re.findall(r'^## (.+)$', translated_rule_authoring, flags=re.MULTILINE),
-            ['固定政策', '扩展证据', '编写政策', '构造 Rule', '完整 Rule Gate', '证明 Rule', '审查 Rule'],
-        )
-        self.assertEqual(
-            re.findall(r'^## (.+)$', translated_skill_authoring, flags=re.MULTILINE),
-            ['固定任务', '扩展证据', '编写任务', '构造 Skill', '完整 Skill Gate', '证明 Skill', '审查 Skill'],
-        )
-        self.assertIn('field-to-value-to-evidence matrix', rule_authoring)
-        self.assertIn('condition-to-outcome matrix', rule_authoring)
-        self.assertIn('nearest false positive and false negative', rule_authoring)
-        self.assertIn('field-to-value-to-evidence', skill_authoring)
-        self.assertIn('branch-to-exit matrix', skill_authoring)
-        self.assertIn('coincident failure', skill_authoring)
-        self.assertIn('字段到值到证据的矩阵', translated_rule_authoring)
-        self.assertIn('条件到结果矩阵', translated_rule_authoring)
-        self.assertIn('最近的假阳性和假阴性', translated_rule_authoring)
-        self.assertIn('字段到值到证据的矩阵', translated_skill_authoring)
-        self.assertIn('分支到出口矩阵', translated_skill_authoring)
-        self.assertIn('同时发生失败', translated_skill_authoring)
+        for relative_path in reference_links:
+            self.assertTrue((skill_root / relative_path).is_file())
 
         custom = load_json('skills/registry.json')['custom']
         self.assertIn(

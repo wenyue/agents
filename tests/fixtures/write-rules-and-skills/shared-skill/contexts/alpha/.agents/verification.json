@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "required_checks": [
+    {"id": "unit", "command": ["python3", "tools/check.py", "unit"]},
+    {"id": "format", "command": ["python3", "tools/check.py", "format"]}
+  ]
+}

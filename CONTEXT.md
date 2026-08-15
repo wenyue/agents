@@ -25,9 +25,8 @@ identity and current digest are recorded in the SmartKit Ownership Manifest.
 _Avoid_: User-owned asset, inferred-by-name asset
 
 **SmartKit Ownership Manifest**:
-The target repository's `.agents/smartkit.lock.json`, which records resolved external sources,
-digest-bearing managed assets, and non-owned seeded documents. It is the only project setup
-ownership authority.
+A target repository record of resolved external sources, digest-bearing managed assets, and
+non-owned seeded documents.
 _Avoid_: External Skill lock, Project MCP lock, migration ledger
 
 **Configured MCP**:
@@ -56,3 +55,110 @@ _Avoid_: Global daily check, per-check throttle, session throttle
 A typed, non-interactive static check set interpreted after the Daily Project Check Gate. Plugin MCP
 declares it explicitly; Project MCP derives it from command paths and environment-variable names.
 _Avoid_: MCP-specific Hook, arbitrary check script
+
+### Authoring Evaluation
+
+**Ordinary Artifact**:
+A Rule or Skill used directly as policy or as a triggered job rather than as instructions for
+authoring another Rule or Skill.
+_Avoid_: Runtime artifact, generated target
+
+**Generation Contract**:
+A standalone instruction artifact that guides another Agent in authoring a complete future Rule or
+Skill. The future target determines whether Rule or Skill semantics apply; the contract itself uses
+static walkthrough, while a real target is reviewed later as an Ordinary Artifact.
+_Avoid_: Generated target, generator fixture
+
+**Qualification Campaign**:
+One bounded application of the Acceptance Standard across the representative canary classes needed
+to qualify the SmartKit authoring workflow.
+_Avoid_: Separate acceptance standard, full rewrite, canary cycle
+
+**Acceptance Standard**:
+The single quality contract every authored Rule, Skill, or Generation Contract must satisfy through
+evidence-backed authoring, machine validation, fresh semantic review, risk-matched acceptance, and
+explicit handoff.
+_Avoid_: Qualification-only gate, ordinary acceptance
+
+**Acceptance Portfolio**:
+The artifact-specific cases, evidence contexts, executable checks, static walkthroughs, and
+regression defects used to demonstrate that one candidate satisfies the Acceptance Standard.
+_Avoid_: Acceptance level, alternate standard
+
+**Canary Candidate**:
+One independently evaluated version of a representative Ordinary Artifact or Generation Contract
+in a Qualification Campaign.
+_Avoid_: Candidate bundle, whole-campaign version
+
+**Candidate Revision**:
+The complete current content state of one authored candidate. Validation, Review, and Acceptance
+evidence applies only while that state is unchanged; it does not require a copied tree.
+_Avoid_: Revision directory, inherited verdict
+
+**Frozen Canary**:
+A Canary Candidate whose own machine validation, semantic review, and representative acceptance
+have passed and whose evidence has not been invalidated.
+_Avoid_: Approved campaign, immutable file
+
+**Adoption Gate**:
+The all-or-none boundary that permits repository adoption only after every required Canary Candidate
+has passed its own gates.
+_Avoid_: Campaign restart, per-canary writeback
+
+**Correction Pass**:
+The single opportunity to apply every uniquely forced correction reported by a candidate's Review
+before a fresh Closure Reviewer evaluates the corrected Candidate Revision.
+_Avoid_: Fix loop, one-finding patch
+
+**Fresh Reviewer**:
+An Agent that did not author the Candidate Revision it evaluates. A generation contract and a real
+target created later default to different Fresh Reviewers, receive separate reviews, and do not
+inherit verdicts.
+_Avoid_: Author self-review, inherited reviewer
+
+**Candidate Review**:
+One bounded task in which a Fresh Reviewer performs Semantic Review first, then the candidate's
+Acceptance Portfolio, and returns a separate verdict for each gate.
+_Avoid_: Review Board, combined verdict
+
+**Closure Review**:
+The single fresh review after a Correction Pass that verifies every finding, affected obligation,
+and affected Acceptance case before the run either passes or stops.
+_Avoid_: Third authoring round, fix loop
+
+**Regression Corpus**:
+The maintained set of minimal, previously demonstrated authoring defects replayed in later
+Qualification Campaigns.
+_Avoid_: Exhaustive scenario matrix, ad hoc mutants
+
+**Review Packet**:
+The bounded evidence shared with the Fresh Reviewer for one candidate, excluding author reasoning,
+suspected defects, intended fixes, and expected verdicts.
+_Avoid_: Repository snapshot, author handoff
+
+**Defect Card**:
+One minimal Regression Corpus case containing a supported input, one injected semantic defect, and
+the review gate it should violate.
+_Avoid_: Full broken candidate, string assertion
+
+### Worktree Lifecycle
+
+**Task Worktree**:
+A named, isolated linked worktree whose branch and local state belong exclusively to one accepted
+implementation task.
+_Avoid_: Worktree, base checkout, shared worktree
+
+**Checkpoint Commit**:
+A provisional commit that preserves a recoverable implementation state within a Task Worktree and
+is not part of the promised final history.
+_Avoid_: Final commit, Task Commit
+
+**Task Commit**:
+The single delivery commit produced after all implementation and review-fix Checkpoint Commits for
+one completed, reviewed, and verified task have been consolidated.
+_Avoid_: Checkpoint Commit, squash commit
+
+**Already Delivered**:
+A terminal state in which the selected target is proven to contain the complete accepted task
+result, so no Task Commit or delivery mutation is needed.
+_Avoid_: Empty Task Commit, no diff

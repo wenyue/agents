@@ -1,270 +1,417 @@
-# SmartKit Rule and Skill Authoring Contract
+# SmartKit Rule and Skill Authoring and Qualification
 
 Status: ready-for-agent
 
 ## Problem Statement
 
-SmartKit needs one cross-project authoring workflow that helps an Agent fully understand a requested
-Rule or Skill before writing it, preserves every supported semantic obligation, avoids inventing
-policy, and produces a concise artifact that another Agent can apply without hidden context.
+SmartKit needs a reliable way to create and update Rules and Agent Skills without requiring the
+user to invoke a separate grilling workflow first. The original goal is to preserve the complete
+behavior of existing first-party artifacts while learning the strongest expression and Markdown
+information-design patterns visible in Matt Skills. The resulting documents should be concise,
+easy to scan, and easy for another Agent to execute without turning Matt's domain-specific behavior
+into SmartKit policy. The authoring Agent must understand the current behavior, owner boundaries,
+preserved semantics, project constraints, and validation seams before writing.
 
-The current authoring workflow mixes reusable SmartKit architecture with facts that belong to the
-active project. It has also accumulated proof machinery that attempts to turn natural-language
-policy into exhaustive machine assertions. During evaluation this produced repeated full rewrites,
-hundreds of author-defined scenarios, self-authored policy oracles, stale reviews, and long feedback
-loops without providing reliable semantic proof. Generated artifacts became longer because evidence,
-ownership metadata, and review records leaked into runtime prose.
+Later attempts improved semantic completeness but made validation too slow: reviews were
+serialized, each correction caused another complete reread, qualification copied whole revision
+trees, generated empty directories, and stored records that still did not reliably resume the
+gates. Those failures constrain the solution, but they are not the reason the authoring Skill is
+being redesigned.
 
-Repository tests compound the problem when they pin exact prose, line wrapping, or complete heading
-lists. Such assertions make harmless editing expensive while still failing to prove that a Rule or
-Skill preserves its intended behavior.
-
-SmartKit maintainers need a bounded authoring and validation contract. It must retain strict semantic
-review while separating machine-verifiable repository behavior from Agent-reviewed natural-language
-meaning. It must also keep project-specific facts in project-owned Rules, configuration, and owner
-surfaces rather than embedding them in a reusable Skill.
+The authoring contract also risked mixing project facts into a cross-project Skill, expanding
+runtime documents with review metadata, and using brittle Markdown or translation assertions as a
+substitute for semantic review. The result must preserve every supported behavior while producing
+concise Matt-like documents whose Markdown structure carries meaning. It must prove that ordinary
+Rules, ordinary Skills, scripted Skills, and generation contracts meet the same quality standard
+without exhaustive natural-language oracles, persistent qualification workspaces, or unbounded
+review loops.
 
 ## Solution
 
-Replace the current authoring workflow with a lean routed SmartKit Skill. The shared entry point owns
-understanding, Rule-or-Skill routing, semantic preservation, write authorization, validation order,
-fresh review, representative Acceptance, and terminal outcomes. Specialized references own only the
-different structures of Rule policy and Skill procedure.
+Provide one cross-project SmartKit entry point that routes each request along two dimensions: an
+ordinary artifact or a generation contract, and the semantic type of the ordinary artifact or
+future target. A generation contract is an instruction artifact rather than an ordinary Rule or
+Skill; its target type selects `rule.md` or `skill.md`. The main `SKILL.md` owns the shared
+readiness, evidence, semantic-ledger, candidate, validation, review, correction, and handoff
+workflow. Four disclosed references own the non-overlapping specialized requirements:
 
-Before writing, the Agent inspects the target artifact, applicable project Rules, current behavior,
-configuration, owner surfaces, tests, and distribution mechanisms. It creates a temporary semantic
-ledger containing one row per independently changeable obligation. The Agent stops only when missing
-evidence permits materially different policies, actions, owners, or exits; uniquely determined facts
-may be established from stable implementation, configuration, or tests.
+- `ordinary-artifact.md` covers directly used Shared and Project-local artifacts plus their
+  representative application;
+- `generation-contract.md` covers instructions that author future targets plus their static
+  walkthrough;
+- `rule.md` covers Rule semantics and Rule-specific cases; and
+- `skill.md` covers Skill semantics and Skill-specific cases.
 
-Runtime artifacts contain only the governing schema and instructions that change an Agent decision,
-action, or observable outcome. Evidence records, review metadata, provenance inventories, and
-verification results stay outside runtime prose. Reusable SmartKit architecture may be stated by the
-authoring Skill, while language policies, mirror relationships, concrete paths, project commands,
-ownership declarations, and other project facts remain owned by the active project.
+Each route loads one lifecycle reference and one semantic-type reference. Authoring and Acceptance
+requirements for one concern stay together in its owning reference. Project Rules and owner
+contracts supply project-specific facts; the reusable Skill supplies only SmartKit authoring
+mechanics.
 
-Machine validation checks structured and executable behavior: packaging schema, registered
-resources, generated relationships, filesystem effects, script results, and repository-supported
-tests. It does not claim to prove the meaning of natural-language policy. A fresh reviewer receives
-the accepted intent, semantic ledger, complete candidate, governing evidence, and validation results,
-then reviews the whole artifact and representative counterexamples. One uniquely forced correction
-may be applied automatically; a second failed review or any decision-required finding returns to the
-user.
+Use the Matt-informed `writing-for-agents` mechanics to carry transferable expression techniques:
+visible action order, steps-versus-reference separation, progressive disclosure, co-location,
+leading words, checkable completion criteria, positive instructions, pruning, and meaningful
+Markdown. Ordinary authoring does not select or compare Matt exemplars. Apply a technique only when
+it lowers context or cognitive load without weakening a preserved obligation. Align Rule and Skill
+authoring language and information architecture wherever the underlying concepts are genuinely
+parallel.
 
-Validate the workflow with exactly six representative canary classes: Shared Rule, project-local
-Rule, Rule-generation contract, ordinary Shared Skill, scripted Shared Skill, and Skill-generation
-contract. Each canary uses a small set of high-risk counterexamples. The two generation contracts
-must each author one complete target and have that target independently reviewed. All six temporary
-candidates must pass before any of them is adopted. The resulting repository change remains
-uncommitted for human review.
+Every authored candidate uses one Acceptance Standard: focused machine validation, a frozen
+Candidate Revision, one fresh reviewer who performs Semantic Review before the candidate's
+risk-matched Acceptance and returns separate verdicts, at most one evidence-forced Correction Pass,
+one different fresh Closure Reviewer, and an explicit handoff. Reviewer roles are scoped to one
+candidate: a generation contract and a real target created later are separate candidates, default
+to different fresh reviewers, receive separate verdicts, and do not inherit one another's evidence.
+
+Qualification uses the same standard with a risk-matched Acceptance Portfolio. Candidate state
+lives in the active checkout or one necessary Task Worktree. It creates no persistent
+qualification workspace, revision tree, or report. Six independent version-controlled cases live
+under `tests/fixtures/write-rules-and-skills/`; Project-local cases may include a small project, but
+generated candidates, verdicts, and mutable run state remain temporary. Generation-contract cases
+review the guidance statically and do not generate a fake target. A target created later in a real
+project enters the ordinary-artifact route before adoption.
 
 ## User Stories
 
-1. As a SmartKit user, I want an Agent to understand my requested outcome before writing, so that it
-   does not implement an attractive but incorrect interpretation.
-2. As a SmartKit user, I want unresolved choices surfaced only when they can materially change the
-   result, so that I am not asked redundant questions.
-3. As a SmartKit user, I want an already authorized and uniquely supported plan to continue without
-   another confirmation, so that the workflow remains efficient.
-4. As a project maintainer, I want existing Rule and Skill semantics preserved during rewrites, so
-   that clearer wording does not silently change behavior.
-5. As a project maintainer, I want each independently changeable obligation recorded once, so that
-   omissions and unauthorized retirements are reviewable.
-6. As a project maintainer, I want conditions, exceptions, owners, and exits separated only when
-   they can change independently, so that the ledger remains useful without becoming a sentence-level
-   matrix.
-7. As a project maintainer, I want unsupported policies and thresholds rejected, so that an Agent
-   cannot invent precision merely to make a document appear testable.
-8. As a project maintainer, I want SmartKit-wide authoring architecture separated from active-project
-   facts, so that the same Skill works correctly in different repositories.
-9. As a project maintainer, I want the authoring Agent to read my applicable project Rules and owner
-   surfaces, so that local policy remains authoritative.
-10. As a project maintainer, I want missing project facts derived only from stable evidence, so that
-    undocumented but deterministic behavior does not cause unnecessary blocking.
-11. As a project maintainer, I want ambiguous ownership or generation relationships to stop before
-    writes, so that the Agent does not mutate the wrong source.
-12. As a Rule author, I want the workflow to distinguish persistent policy from triggered procedure,
-    so that a Rule does not become an imperative runbook.
-13. As a Skill author, I want the workflow to model actor, inputs, preconditions, actions, recovery,
-    stops, failures, completion, and handoff, so that every executable branch has an outcome.
-14. As an author of policy plus procedure, I want the workflow to create separately owned Rule and
-    Skill artifacts, so that one document does not mix incompatible responsibilities.
-15. As a Rule author, I want Rule-specific applicability, precedence, exceptions, and condition
-    boundaries reviewed, so that the policy resolves supported cases consistently.
-16. As a Skill author, I want coincident failures and stop conditions prioritized, so that the same
-    state cannot produce two terminal outcomes.
-17. As a maintainer, I want evidence and review metadata kept out of runtime prose, so that Rules and
-    Skills stay concise and cheap for Agents to consume.
-18. As a maintainer, I want every additional runtime line to affect a decision, action, or outcome,
-    so that template-shaped metadata does not inflate artifacts.
-19. As a maintainer, I want generated target schemas complete, so that a generation contract cannot
-    replace required runtime meaning with a pointer back to the authoring workflow.
-20. As a maintainer, I want generation to stop when evidence permits materially different target
-    policies or procedures, so that target authors do not guess.
-21. As a maintainer, I want machine validation limited to objectively executable or structured
-    behavior, so that green tests do not masquerade as semantic proof.
-22. As a maintainer, I want a fresh reviewer with no author reasoning history, so that review tries
-    to falsify the complete candidate rather than confirm the intended edit.
-23. As a maintainer, I want the reviewer to compare the candidate directly with source evidence, so
-    that a ledger cannot repair missing runtime meaning.
-24. As a maintainer, I want one uniquely forced correction allowed after a failed review, so that
-    mechanical defects can be resolved without an open-ended loop.
-25. As a maintainer, I want a second failed review to stop and report all blockers, so that authoring
-    cannot run indefinitely.
-26. As a maintainer, I want decision-required findings returned immediately, so that automated fixes
-    do not create new policy or authority.
-27. As a test maintainer, I want repository tests to assert schemas, resources, registrations,
-    generation, filesystem effects, and exits, so that they protect observable contracts.
-28. As a test maintainer, I want ordinary prose, line wrapping, and complete heading sequences kept
-    out of string snapshots, so that harmless editorial changes do not break tests.
-29. As a reviewer, I want natural-language quality proven through whole-artifact review and canary
-    Acceptance, so that semantic defects receive counterexamples instead of substring checks.
-30. As a SmartKit maintainer, I want one representative Shared Rule canary, so that reusable policy
-    authoring is exercised without a repository-specific shortcut.
-31. As a SmartKit maintainer, I want one project-local Rule canary, so that active-project ownership
-    and policy can be preserved without entering the reusable contract.
-32. As a SmartKit maintainer, I want one Rule-generation canary to produce a complete target Rule, so
-    that generation quality is tested beyond Markdown structure.
-33. As a SmartKit maintainer, I want one ordinary Shared Skill canary, so that a concise conditional
-    workflow can be authored and reviewed.
-34. As a SmartKit maintainer, I want one scripted Skill canary, so that prose remains aligned with
-    immutable executable behavior and real exit codes.
-35. As a SmartKit maintainer, I want one Skill-generation canary to produce a complete target Skill,
-    so that branch and exit semantics are tested in a representative target.
-36. As a SmartKit maintainer, I want two to four high-risk counterexamples per canary, so that
-    verification stays bounded while targeting likely false positives and omissions.
-37. As a SmartKit maintainer, I want semantic-omission, unsupported-policy, over-broad-applicability,
-    evidence-metadata, and conflicting-exit mutants rejected, so that the reviewer demonstrates useful
-    fault detection.
-38. As a SmartKit maintainer, I want all six temporary candidates accepted before repository adoption,
-    so that the repository never contains a partially migrated authoring model.
-39. As a SmartKit maintainer, I want candidate size compared with its baseline, so that unexplained
-    document growth is treated as a quality defect.
-40. As a SmartKit maintainer, I want the final six-canary result left uncommitted, so that I can
-    perform a human review before any publication decision.
+1. As a maintainer, I want an Agent to understand the accepted outcome before writing, so that implementation does not begin from a guessed interpretation.
+2. As a maintainer, I want the Agent to inspect current behavior, owners, dependencies, and validation seams, so that a rewrite remains connected to the real system.
+3. As a maintainer, I want the Agent to ask only when evidence still permits materially different results, so that routine authoring is autonomous without inventing intent.
+4. As an authoring Agent, I want stable implementation, configuration, and tests to resolve environmental facts, so that missing prose does not create unnecessary blockers.
+5. As a maintainer, I want every supported semantic obligation preserved, so that rewriting does not silently change behavior.
+6. As an authoring Agent, I want one independently changeable obligation per semantic-ledger row, so that omissions and unsupported changes are reviewable.
+7. As an authoring Agent, I want every ledger row to have one owner and disposition before writing, so that policy and procedure do not drift between artifacts.
+8. As a reviewer, I want every changed or retired obligation backed by current evidence or explicit approval, so that cleanup cannot remove live behavior.
+9. As a reviewer, I want unsupported thresholds, predicates, commands, recoveries, and exits rejected, so that precision is never invented to make a document look complete.
+10. As an authoring Agent, I want persistent policy routed to a Rule, so that policy remains continuously applicable without an invented workflow.
+11. As an authoring Agent, I want a trigger-started job routed to a Skill, so that its actions and observable exits are executable.
+12. As a maintainer, I want mixed policy and procedure split into separately owned Rule and Skill artifacts, so that each has one meaning and one owner.
+13. As a Rule author, I want class, owner, strength, scope, applicability, precedence, exceptions, boundaries, and outcomes resolved, so that the policy yields one result for supported facts.
+14. As a Rule reviewer, I want nearest included and excluded cases exercised, so that hidden false positives and false negatives are exposed.
+15. As a Rule reviewer, I want overlapping Rules and exceptions to have deterministic outcomes, so that delivery order never becomes an implicit conflict resolver.
+16. As a Skill author, I want actor, trigger, inputs, preconditions, start, actions, outcome, owner, boundaries, validation, resources, and handoff resolved, so that another Agent can execute the job without invention.
+17. As a Skill reviewer, I want completion, stop, failure, and recovery exits complete and prioritized, so that coincident conditions never produce two actions or no action.
+18. As a Skill author, I want scripts only for work that is simultaneously repeated, fragile, and deterministic, so that simple prose is not replaced by unnecessary machinery.
+19. As a Skill author, I want every owned script's dependencies, inputs, outputs, failures, recovery, and safe tests defined, so that executable work has a complete contract.
+20. As a runtime Agent, I want resources referenced only when the job consumes them, so that Skill packages stay small and navigable.
+21. As a generation-contract author, I want complete target packaging, policy or job, schema, owner split, and write target defined, so that generation cannot stop at a placeholder.
+22. As a generated-target user, I want the target to contain its complete runtime semantics, so that it does not depend on an authoring pointer.
+23. As a generation-contract author, I want generation to stop when target evidence permits materially different outputs, so that target facts are never guessed.
+24. As a cross-project Skill user, I want reusable SmartKit mechanics separated from project facts, so that the Skill works in any SmartKit-based repository.
+25. As a project maintainer, I want language, mirror, source-authority, distribution, command, and host facts owned by project Rules or configuration, so that the reusable Skill does not encode one repository.
+26. As a project Agent, I want to load applicable local authorities at runtime, so that cross-project authoring respects the current repository.
+27. As a runtime Agent, I want final Rules and Skills to contain only schema-required or behavior-changing instructions, so that review evidence and provenance do not bloat runtime context.
+28. As a maintainer, I want Matt-like information hierarchy and meaningful Markdown, so that concise documents remain easy for Agents and humans to navigate.
+29. As a reviewer, I want Markdown forms used only when they change interpretation or execution, so that formatting does not become decorative structure.
+30. As a test author, I want machine validation limited to structured or executable facts, so that passing tests do not falsely claim natural-language correctness.
+31. As a test author, I want ordinary sentences, translated wording, physical wrapping, and complete heading lists excluded from snapshots, so that harmless prose changes do not break tests.
+32. As an authoring Agent, I want focused checks run before semantic review, so that deterministic defects are rejected cheaply.
+33. As a maintainer, I want complete repository verification run once at Adoption, so that candidate work does not repeatedly pay the full-suite cost.
+34. As a reviewer, I want line, word, and byte changes compared with the baseline, so that unsupported document growth is visible without a rigid size threshold.
+35. As a reviewer, I want a Candidate Revision to mean one complete current content state, so that evidence validity is clear without copied revision directories.
+36. As a maintainer, I want candidate state represented by the active checkout or one necessary Task Worktree, so that Git remains the change owner.
+37. As a maintainer, I want no persistent qualification workspace or report by default, so that validation does not create duplicate state.
+38. As a maintainer, I want generated candidates, mutable project copies, Git state, and Acceptance sandboxes kept out of committed fixtures, so that qualification leaves no stale working state.
+39. As a reviewer, I want candidate writes frozen during Candidate Review, so that both verdicts apply to the same content.
+40. As a reviewer, I want Review and Acceptance evidence discarded if the frozen candidate changes, so that stale verdicts cannot be reused.
+41. As a maintainer, I want one fresh reviewer to perform Semantic Review first and then the candidate's Acceptance in one bounded task, so that independence does not require duplicate context loading.
+42. As a maintainer, I want Semantic Review and Acceptance to produce separate verdicts, so that semantic completeness and representative behavior remain distinct gates.
+43. As a reviewer, I want a bounded Review Packet without author reasoning, suspected defects, intended fixes, or expected verdicts, so that review remains independent.
+44. As a reviewer, I want two to four high-risk supported counterexamples rather than exhaustive prose matrices, so that review remains adversarial and bounded.
+45. As a Rule user, I want Representative Acceptance to cover applicable, excluded, boundary, and conflict cases, so that policy behavior is demonstrated.
+46. As a Skill user, I want Representative Acceptance to cover the main path and highest-risk non-completion paths, so that the job's exits are demonstrated.
+47. As a maintainer, I want real public entry points used where available, so that Acceptance exercises observable behavior instead of an author-written oracle.
+48. As a maintainer, I want unavailable execution reported as untested rather than machine-passed, so that walkthrough evidence is not overstated.
+49. As an authoring Agent, I want findings from both candidate gates aggregated before correction, so that one pass can address the whole defect set.
+50. As a maintainer, I want any decision-required finding to stop automatic correction, so that the Agent cannot choose new policy or authority.
+51. As a maintainer, I want all uniquely forced findings corrected in one Correction Pass, so that review cannot degrade into one-finding patches.
+52. As a maintainer, I want a different fresh Closure Reviewer after correction, so that the author and first reviewers do not certify their own fixes.
+53. As a Closure Reviewer, I want every finding, affected obligation, exit, and Acceptance case rechecked, so that closure proves more than textual replacement.
+54. As a maintainer, I want Closure failure to stop the run, so that validation cannot enter a third automatic correction loop.
+55. As a maintainer, I want a user decision not to reset the same run's automatic review budget, so that repeated authorization cannot create an unbounded cycle.
+56. As a maintainer, I want a later explicit authoring run to evaluate the resulting candidate anew, so that a resolved decision can still be implemented safely.
+57. As a generation-contract reviewer, I want the contract checked through supported ambiguous and boundary inputs, so that another Agent can follow it without inventing target facts, steps, or exits.
+58. As a generation-contract reviewer, I want contract qualification to remain a static walkthrough, so that fake projects and author-written targets do not become semantic oracles.
+59. As a generated-target user, I want a target created later in a real project treated as a new ordinary candidate, so that contract approval cannot approve the target by proxy.
+60. As a generated-target user, I want the target to receive its own fresh reviewer and separate verdicts, so that contract assumptions do not replace target evidence.
+61. As a generated-target user, I want the target to pass its normal machine, Semantic Review, Representative Acceptance, and handoff gates before adoption, so that every real artifact uses the same Acceptance Standard.
+62. As a project maintainer, I want the canonical runtime artifact accepted before its reference mirror is modified, so that a mirror cannot become the semantic oracle.
+63. As a project maintainer, I want mirrors reviewed in one independent bounded batch, so that translation fidelity does not lengthen every canonical revision.
+64. As a project maintainer, I want mirror failures to block Adoption without invalidating unchanged canonical evidence, so that only affected gates rerun.
+65. As a qualification maintainer, I want one representative Shared Rule, Project-local Rule, Rule-generation contract, Shared Skill, Project-local Skill, and Skill-generation contract, so that all authoring classes are covered.
+66. As a qualification maintainer, I want the ordinary Shared Skill and Skill-generation contract piloted first, so that the two critical orchestration paths prove the redesign before broader work.
+67. As a qualification maintainer, I want the remaining canaries to start automatically after both Pilot candidates pass, so that a successful bounded Pilot does not add a manual scheduling gate.
+68. As a qualification maintainer, I want each canary independently frozen and invalidated only by changed dependencies, so that one failure does not restart unrelated work.
+69. As a qualification maintainer, I want a minimal Regression Corpus of demonstrated defects, so that future regressions are caught without exhaustive mutation testing.
+70. As a reviewer, I want semantic omission, unsupported precision, broadened applicability, authoring-metadata leakage, and conflicting exits represented as focused Defect Cards, so that the known failure classes remain testable.
+71. As a maintainer, I want Defect Cards counted within each candidate's bounded high-risk cases, so that regression testing does not create another evaluation layer.
+72. As a maintainer, I want all required canaries and mirrors to pass before all-or-none Adoption, so that the repository never receives a half-qualified standard.
+73. As a maintainer, I want full project tests, adapter checks, and diff integrity run at Adoption, so that distribution and repository boundaries are verified together.
+74. As a maintainer, I want final changes left unstaged and uncommitted, so that I can inspect them before any publication.
+75. As a maintainer, I want Matt, external, vendored, third-party, and unauthorized owners excluded, so that qualification cannot rewrite dependencies it does not own.
+76. As a maintainer, I want only the named canaries changed during qualification, so that a validation exercise does not become a full repository rewrite.
+77. As a maintainer, I want custom digests, evidence-closure archives, dual-author campaigns, 343-row prose matrices, and routine mutation testing excluded, so that evaluation cost remains proportional to risk.
+78. As a maintainer, I want the final handoff to report exact commands, exits, verdicts, corrections, size changes, and untested surfaces, so that no persistent report file is needed.
+79. As a maintainer, I want Matt-informed writing principles encoded in shared authoring mechanics, so that ordinary Rule and Skill work benefits from them without selecting or comparing external exemplars.
+80. As an authoring Agent, I want transferable style patterns separated from artifact semantics, so that a polished rewrite cannot silently change behavior.
+81. As a runtime Agent, I want action order, decision points, and completion criteria visible at the level where I need them, so that I do not search through unrelated reference material.
+82. As a runtime Agent, I want branch-specific detail progressively disclosed behind precise pointers, so that the main path remains legible without hiding required instructions.
+83. As a maintainer, I want duplicated meaning, decorative Markdown, no-op advice, and discoverable environment facts pruned from runtime prose, so that concise documents spend attention only on live obligations.
+84. As a Rule and Skill author, I want parallel concepts expressed with aligned terminology and structure, so that switching artifact types does not impose an avoidable new mental model.
+85. As a reviewer, I want expression quality judged through whole-artifact navigation and execution rather than prose snapshots, so that Matt-like clarity remains verifiable without freezing wording.
+86. As a qualification maintainer, I want six independent reusable cases versioned under `tests/fixtures/write-rules-and-skills/`, so that each artifact class is reproducible without preserving run state.
+87. As a generation-contract reviewer, I want static walkthrough cases for unclear intent, owner, target location, evidence conflict, and preservation risk, so that guidance completeness is tested without a fake target.
+88. As a Project-local artifact reviewer, I want a small self-contained project only when repository facts affect behavior, so that local semantics are real without turning every case into a microproject.
+89. As a Shared Rule reviewer, I want the same policy checked against at least two independent traceable contexts, so that a single-project policy cannot be mislabeled as shared.
+90. As a Shared Skill reviewer, I want the same job checked against at least two independent traceable contexts, so that one project's paths or commands cannot be hidden inside shared instructions.
 
 ## Implementation Decisions
 
-- Keep one cross-project SmartKit authoring entry point that routes by semantics to a Rule-specific
-  or Skill-specific reference. Read both references only when the accepted result genuinely needs two
-  separately owned artifacts.
-- Treat SmartKit authoring concepts as reusable architecture. Obtain active-project schema,
-  ownership, source authority, generation relationships, distribution surfaces, and validation from
-  applicable project Rules, configuration, owner contracts, and stable evidence.
-- Do not encode language policy, localization policy, repository paths, repository commands,
-  project-specific ownership, external-source classifications, or host invocation syntax in the
-  reusable authoring contract.
-- Use six ordered stages: understand current intent and mechanism; build the semantic preservation
-  boundary; resolve or stop on material uncertainty; author the smallest complete candidate; run
-  project-supported machine validation; perform fresh semantic Review followed by representative
-  Acceptance.
-- For new artifacts, record requirements; for updates, record preservation. One row represents one
-  independently changeable semantic obligation. Separate rows when the predicate, exception, owner,
-  action, recovery, or exit can change independently. Do not split mere wording choices.
-- Keep the ledger, evidence notes, validation output, review record, and Acceptance record outside the
-  runtime artifact.
-- Include a runtime statement only when it belongs to the governing artifact schema or changes an
-  Agent decision, action, or observable outcome and cannot be uniquely derived from a reliably loaded
-  owner surface.
-- Let the Rule reference own policy fields, applicability, precedence, exceptions, boundaries,
-  condition-to-outcome reasoning, and generated-Rule completeness.
-- Let the Skill reference own actor, inputs, preconditions, start, ordered and conditional actions,
-  recovery, stop, failure, completion, handoff, resources, branch-to-exit reasoning, and generated-
-  Skill completeness.
-- Preserve the current target's required packaging schema by applying the active SmartKit and host
-  mechanics. Do not duplicate change-prone schema enumerations or host-specific invocation syntax in
-  the authoring prose.
-- Machine Proof may validate only facts independently derivable from structured inputs or executable
-  behavior. It must not simulate an Agent's interpretation of natural-language policy through
-  keyword checks, section mappings, copied expectations, or author-written policy oracles.
-- Require one fresh reviewer after machine validation. The reviewer receives the accepted outcome,
-  semantic ledger, complete candidate, relevant governing evidence, and exact validation results,
-  but not the author's reasoning, suspected defects, or expected verdict.
-- Permit one automatic correction only when accepted intent and verified evidence force exactly one
-  in-scope change without adding policy, authority, behavior, or side effects. Rerun affected
-  validation and use another fresh reviewer. Stop on any decision-required finding or a second failed
-  review.
-- Do not require a custom artifact digest, exhaustive sentence-level scenario matrix, dual-author
-  comparison, or mutation suite for routine authoring. Candidate changes after Review invalidate that
-  Review and require another validation and Review pass.
-- Reserve dual-author comparison, large evidence closures, exhaustive matrices, and broader mutation
-  campaigns for explicit high-risk evaluation of the authoring workflow, not ordinary Rule or Skill
-  production.
-- Add project-owned testing policy that prohibits ordinary natural-language sentence, line-wrap, and
-  complete-heading snapshots. Exact text assertions remain valid only when the text is itself a
-  structured external protocol value.
-- Evaluate exactly six canary classes in temporary candidate space. Each uses two to four high-risk
-  counterexamples. Generation canaries additionally create and independently review one complete
-  generated target.
-- Adopt the six canaries as one repository change only after every candidate passes its required
-  machine validation, semantic Review, and representative Acceptance.
-- Report line, word, and byte counts against each baseline. Growth without a distinct supported
-  semantic obligation is a blocking quality defect; no fixed numeric size threshold is introduced.
-- Leave the completed change unstaged and uncommitted for maintainer review.
+### Authoring Ownership and Routing
+
+- One model-invoked SmartKit Skill owns the shared entry point and routes by semantic result rather
+  than current filename.
+- The router loads exactly one lifecycle reference (`ordinary-artifact.md` or
+  `generation-contract.md`) and one semantic-type reference (`rule.md` or `skill.md`). For an
+  ordinary artifact, its own type selects the semantic reference; for a generation contract, the
+  future target type selects it.
+- `ordinary-artifact.md` owns Shared versus Project-local classification and actual-use Acceptance.
+  `generation-contract.md` owns generation evidence, ambiguity stops, static walkthrough, and the
+  later handoff of a real target to ordinary validation.
+- `rule.md` and `skill.md` each combine that type's authoring requirements with its type-specific
+  Acceptance cases. Do not create generation-specific leaf references until real obligations cannot
+  be expressed by the two selected references.
+- Policy plus procedure becomes two separately owned artifacts.
+- The shared contract is cross-project within the SmartKit architecture. It discovers and obeys
+  active project Rules, host mechanics, configuration, and owner contracts rather than copying
+  their facts.
+- Project language, mirror, source-authority, distribution, concrete command, and host-syntax facts
+  remain project-owned and do not appear in the reusable Skill.
+- Runtime artifacts contain only schema-required or behavior-changing instructions that cannot be
+  derived from a reliably loaded owner.
+- Working evidence, provenance, semantic ledgers, validation results, and review records stay
+  outside runtime prose.
+
+### Understanding and Candidate Construction
+
+- Implementation Readiness is required before the first candidate write and covers outcome,
+  preserved semantics, non-goals, owner, authorized surfaces, dependencies, risks, validation
+  seams, and material unknowns.
+- The Agent asks only when evidence still permits materially different policies, actions, owners,
+  write targets, exits, authority, or side effects.
+- The semantic ledger uses one independently changeable obligation per row and resolves one owner
+  plus one preserve, change, add, move, or retire disposition.
+- A candidate is synthesized from the whole ledger. The old artifact is omission evidence, not the
+  new outline.
+- Supported decisions and safety boundaries are preserved; stale, duplicated, contradictory,
+  transitional, and misplaced content is removed.
+- Markdown is semantic structure. Headings, lists, tables, emphasis, blocks, and links are used only
+  when they improve discovery, interpretation, ordering, or execution.
+- Concision is optimized only after semantic completeness, executability, and one unambiguous
+  interpretation pass.
+
+### Expression and Information Design
+
+- Current first-party behavior, accepted intent, project authorities, and real owner surfaces remain
+  the semantic sources of truth. Matt-informed mechanics shape expression but never supply artifact
+  semantics.
+- Encode stable expression techniques once in shared writing or authoring guidance. Ordinary
+  authoring applies that guidance without discovering, selecting, or comparing Matt exemplars, and
+  never copies domain behavior, repository facts, commands, or ownership assumptions.
+- Separate ordered steps from consulted reference. Keep the main path and its completion criteria
+  visible; disclose branch-only reference behind a pointer whose wording states when to load it.
+- Co-locate a concept's definition, rules, and caveats. Use headings, lists, tables, emphasis,
+  blocks, and links only when they expose hierarchy, sequence, comparison, state, or routing.
+- Prefer a stable leading term over repeated explanations, and prefer positive target behavior over
+  negation when both express the same boundary.
+- Remove duplicated meaning, no-op instructions, stale sediment, and cheap environment lookups.
+  Retain a lookup only when finding it at runtime is unreliable or materially expensive.
+- Align terminology, phase names, heading intent, and sentence shape across Rule and Skill guidance
+  where meanings overlap. Preserve artifact-specific structure where policy and procedure differ.
+- Treat unchanged or reduced size as the normal expectation. Growth requires a distinct supported
+  semantic obligation, not additional authoring metadata or explanatory ceremony.
+
+### Rule and Skill Completeness
+
+- A Rule resolves its class, owner, strength, scope, applicability, precedence, exceptions,
+  boundaries, and outcomes. Observable cases reject the nearest false positive and false negative.
+- A Skill resolves its actor, trigger, inputs, preconditions, start, actions, outcome, owner,
+  boundaries, completion, stop, failure, recovery, validation, resources, and handoff.
+- Every Skill path has exactly one prioritized exit; completion cannot bypass required validation,
+  cleanup, preservation, or handoff.
+- An owned script is introduced only when the work is repeated, fragile, and deterministic, and
+  its complete executable contract is stated.
+- A generation contract defines complete target packaging, policy or job, schema, owner split, and
+  write target. It stops rather than guessing when target evidence remains ambiguous.
+
+### Unified Acceptance Standard
+
+- The Acceptance Standard consists of evidence-backed authoring, focused machine validation, fresh
+  Semantic Review, Representative Acceptance, and explicit handoff.
+- Every Ordinary Artifact, Generation Contract, and authoring-workflow candidate uses the same
+  gates. Acceptance Portfolios vary by artifact risk but cannot replace or weaken a gate.
+- Machine validation proves only structured or executable facts. Natural-language semantics are
+  proved by whole-artifact review and representative use.
+- Candidate Revision means the complete current content state. Semantic changes invalidate every
+  machine, Review, and Acceptance result that depends on the old state.
+- Candidate writes freeze while Candidate Review runs. Mutation discards its verdicts and stops the
+  run without automatic restart.
+- One fresh reviewer receives one bounded Review Packet, performs Semantic Review first, then runs
+  the artifact-specific Acceptance only after Semantic Review passes, and returns separate verdicts.
+- Each candidate receives its own fresh reviewer. Independent Candidate Reviews may run in
+  parallel, but their packets, revisions, counterexamples, findings, and verdicts remain separate.
+- Findings from both gates are aggregated before action. Any decision-required finding stops;
+  otherwise all uniquely forced findings are fixed once.
+- A different fresh Closure Reviewer receives the corrected candidate, first-round findings,
+  revalidation evidence, and affected cases. Closure has one attempt and cannot start another
+  automatic correction.
+- A user decision ends the current automatic run. A later explicit authoring run may evaluate the
+  resulting candidate from the beginning.
+- Reviewer unavailability, candidate mutation, machine failure, decision-required findings, and
+  Closure failure each have explicit stop and handoff behavior.
+
+### Generation Contracts
+
+- A generation contract is an instruction artifact, not a generated target. It defines how another
+  Agent discovers target evidence, resolves packaging and ownership, preserves existing semantics,
+  writes the complete target, stops on material ambiguity, validates the result, and hands it off.
+- Qualification reviews that guidance statically against two to four supported high-risk inputs.
+  The walkthrough fails when another Agent would need to invent a target fact, condition, step,
+  owner, path, recovery, or exit.
+- Contract qualification does not create a target or require a fake project. Deterministic scripts
+  or renderers owned by the contract still use their normal machine tests and real public entry
+  points.
+- When the contract later produces a target in a real project, that target becomes a new ordinary
+  Rule or Skill candidate. It runs the normal Acceptance Standard with a fresh reviewer, defaults to
+  a reviewer different from the contract reviewer, and cannot inherit the contract's verdicts.
+- The contract completes when its own machine validation, Semantic Review, static Acceptance, and
+  handoff pass. It does not claim that an uncreated future target has passed.
+
+### Qualification and Adoption
+
+- Qualification is a task-specific campaign, not a second Skill or a different quality standard.
+- Qualification creates no persistent workspace, copied revision tree, custom digest, or report.
+- Candidate state uses the active checkout; one Task Worktree is used only when dirty state,
+  concurrent writes, or all-or-none isolation genuinely requires it.
+- Review Packets are assembled just in time. Temporary mutable case copies are removed after
+  handoff.
+- Committed evaluation cases are stable test inputs, not a qualification workspace or retained
+  Candidate Revision. They contain no generated answers, verdicts, run reports, or Acceptance
+  sandboxes.
+- Six representative artifact classes cover Shared and Project-local Rules, Shared and
+  Project-local Skills, and both generation-contract types.
+- The Pilot uses one ordinary Shared Skill and one Skill-generation contract. The remaining four
+  canaries start automatically after both Pilot candidates pass Semantic Review and Acceptance.
+- Independent canaries may run in parallel, freeze separately, and invalidate only when their
+  content or governing dependencies change.
+- Five focused Defect Card classes exercise semantic omission, unsupported precision, broadened
+  applicability, authoring-record leakage, and conflicting exits.
+- Defect Cards remain inside the two-to-four-case portfolio and are promoted only when they detect a
+  real, durable regression.
+- Canonical runtime candidates are accepted before project reference mirrors are updated.
+- Mirror review is a separate bounded batch. Mirror failure blocks Adoption but does not invalidate
+  unchanged canonical evidence.
+- Adoption is all-or-none after every canary, Defect Card, applicable mirror, size comparison, and
+  repository verification passes.
+- Publication, installation, commit, push, and pull-request creation remain separate owner actions.
 
 ## Testing Decisions
 
-- Use one highest-level behavioral seam: the authoring contract receives an accepted outcome and
-  current evidence, produces a candidate, sends it through fresh semantic Review, and exercises it in
-  representative canary contexts.
-- Machine tests assert structured behavior only: registration and reference reachability, valid
-  packaging schema, owned-resource existence, generated relationships, filesystem effects, script
-  behavior, state transitions, and process exits.
-- Do not use sentence-presence tests, physical line wrapping, translated prose, or complete heading
-  lists as proof of natural-language quality. Review such prose as a whole artifact against accepted
-  intent and project evidence.
-- Retain minimal routing checks that demonstrate the shared entry point can select Rule authoring,
-  Skill authoring, or two separately owned artifacts.
-- Validate the Shared Rule canary with high-risk cases around applicability, unsupported precision,
-  exceptions, and project precedence.
-- Validate the project-local Rule canary with high-risk cases around owner-edit selection, generated
-  versus canonical sources, project-specific evidence, and unowned writes.
-- Validate the Rule-generation contract by having a fresh target author create one complete Rule from
-  controlled evidence, followed by an independent reviewer applying representative included,
-  excluded, ambiguous, and boundary cases.
-- Validate the ordinary Shared Skill canary with normal completion, missing prerequisite, routed
-  dependency, recoverable failure, and scope-expanding failure as applicable to its accepted job.
-- Validate the scripted Skill canary through its real public invocation and focused executable tests.
-  Confirm that prose does not invent categories, fallbacks, commands, or exits absent from the owned
-  implementation.
-- Validate the Skill-generation contract by having a fresh target author create one complete Skill,
-  followed by an independent reviewer walking its main path, one stop, one failure, one recovery, and
-  at least one coincident condition.
-- Seed five focused defect classes across the canary set: omitted semantic obligation, unsupported
-  policy, broadened applicability, evidence-only runtime metadata, and missing or conflicting exit.
-  Each mutant must receive a failing semantic Review with a concrete counterexample.
-- Run at most two Review rounds per logical candidate. The first failure may trigger one uniquely
-  forced correction; the second failure stops the candidate.
-- Compare every accepted candidate's line, word, and byte counts with its baseline and require the
-  reviewer to explain any supported increase.
-- After all six temporary canaries pass, adopt them together and run the repository's complete test
-  suite, generated-adapter drift checks, and diff-integrity check.
-- Treat unavailable platform-specific execution as explicitly untested rather than passing. Report
-  exact commands, final exits, relevant failures, and remaining untested surfaces.
+- Prefer the highest existing seam: the real public entry point for executable behavior, the
+  project's supported validation commands for structured facts, and whole-artifact application for
+  natural-language semantics.
+- Candidate-focused machine validation covers changed schema, registration, resource reachability,
+  generated relationships, filesystem effects, script results, state transitions, and process
+  exits.
+- The complete repository suite, Agent adapter drift, MCP adapter drift, and diff integrity run
+  once at Adoption and after changes to the Acceptance Standard itself.
+- Tests may assert schemas, formal identifiers, resource and registration relationships, generated
+  outputs, filesystem effects, state transitions, exit behavior, and declared repository
+  boundaries.
+- Tests must not snapshot ordinary prose, translated wording, physical line wrapping, complete
+  heading lists, or author-written semantic outcome tables.
+- English canonical semantics are reviewed first under the project's current language policy.
+  Reference mirrors are checked afterward for one-to-one order, Markdown structure, paths,
+  commands, identifiers, code blocks, and behavior; they never repair the canonical source.
+- Rule Acceptance covers included and excluded applicability, affected boundaries, exceptions,
+  precedence, and conflicts.
+- Skill Acceptance covers normal completion and the highest-risk applicable stop, failure,
+  recovery, handoff, and coincident-exit paths.
+- Scripted Skills are exercised through their real public entry. Supported platforms that cannot be
+  run are reported as untested.
+- Generation-contract Acceptance statically walks the complete guidance against the highest-risk
+  supported ambiguity, ownership, placement, conflict, preservation, and exit cases. It does not
+  generate or grade a fake target.
+- A real target created by a generation contract later enters the ordinary Rule or Skill portfolio
+  and receives a fresh Candidate Review before adoption.
+- Shared Rule Acceptance uses at least two independent traceable evidence contexts. The same policy
+  must remain valid across both while the portfolio covers relevant applicability, exclusion,
+  boundary, exception, precedence, and local-conflict behavior.
+- Shared Skill Acceptance uses at least two independent traceable evidence contexts. The same job
+  must remain stable while project-local facts and applicable non-completion cases vary. Owned
+  executable resources still use their real public entry points.
+- Project-local Rule and Skill cases may include a small self-contained project when local Rules,
+  configuration, files, or commands affect the result.
+- `tests/fixtures/write-rules-and-skills/` stores six independent case definitions with requests,
+  evidence, initial state, structured Acceptance cases, and only the small project inputs a case
+  needs. It stores no generated candidate, verdict, report, mutable run state, or exact expected
+  prose.
+- Every ordinary candidate uses two to four highest-risk supported cases. Exhaustive
+  natural-language matrices are prohibited.
+- Each candidate compares line, word, and byte size to its baseline. Growth is acceptable only when
+  a distinct supported obligation requires it; there is no fixed numeric limit.
+- The redesigned orchestration is first tested with an ordinary Shared Skill and a
+  Skill-generation contract. This covers ordinary application, non-completion exits, generation
+  evidence, ambiguity stops, static contract walkthrough, and the future-target handoff boundary.
+- A good semantic test exposes a concrete case in which the same supported facts would otherwise
+  produce two outcomes, no outcome, an invented step, or an unsupported owner. It does not merely
+  find a matching sentence.
+- Semantic Review uses the candidate's accepted evidence as the sole semantic oracle and evaluates
+  the observable result of the active writing mechanics: information hierarchy, visible action
+  order, progressive disclosure, co-location, completion criteria, terminology alignment, positive
+  phrasing, pruning, and Markdown purpose. It does not require similarity to an external exemplar.
+- Representative Acceptance requires a fresh Agent to locate the artifact's applicability or
+  trigger, main path or outcome, owner boundaries, and relevant exits without author explanation.
+  Required branch material may live behind a precise pointer; unexplained searching or invented
+  navigation is a failure.
+- Style findings must name an observable reading or execution cost and a supported correction.
+  Personal wording preference alone cannot fail a candidate.
 
 ## Out of Scope
 
-- Rewriting every first-party Rule and Skill in the repository.
-- Modifying Matt-authored, external, vendored, or otherwise unapproved artifacts.
-- Encoding the current repository's language, localization, ownership, path, command, or distribution
-  facts in the reusable authoring Skill.
-- Treating project documentation mirrors as runtime sources or using them to repair missing runtime
-  semantics.
-- Proving natural-language meaning with substring checks, heading snapshots, copied matrices,
-  hard-coded outcome allowlists, or author-written policy interpreters.
-- Requiring exhaustive sentence-level scenarios, custom bundle hashing, or two independent authors
-  for every ordinary Rule or Skill change.
-- Automatically fixing a decision-required finding or continuing after a second failed review.
-- Writing back only a subset of the six accepted canaries.
-- Committing, publishing a release, or expanding from the six canaries to a repository-wide rewrite.
+- Rewriting every first-party Rule or Skill as part of qualification.
+- Modifying Matt Skills, external Skills, vendored Skills, third-party artifacts, or unauthorized
+  owners.
+- Copying Matt wording, headings, commands, domain behavior, or repository assumptions as a
+  template, or treating Matt artifacts as semantic authorities.
+- Moving project-specific language, mirror, source-authority, command, or distribution facts into
+  the cross-project authoring Skill.
+- Creating a separate qualification Skill or a second Acceptance Standard.
+- Persisting a qualification workspace, revision tree, evidence archive, or qualification report.
+- Requiring custom candidate digests when the active project has no such protocol.
+- Using dual authors, eight candidate bundles, 343-row natural-language matrices, evidence-closure
+  archives, or routine mutation testing for ordinary authoring.
+- Turning Defect Cards or semantic expectations into brittle sentence or heading assertions.
+- Treating a fake generated target, prepared answer, or invented project as proof that a generation
+  contract is complete.
+- Automatically restarting review after candidate mutation, a user decision, Closure failure, or a
+  failed second run.
+- Committing, publishing, installing, pushing, opening a pull request, or expanding qualification
+  beyond the accepted canaries without separate authorization.
+- Adding compatibility aliases, migrations, fallbacks, or retired-contract behavior.
 
 ## Further Notes
 
-- Previous temporary evaluations remain useful only as defect examples. They demonstrated metadata
-  leakage, semantic narrowing, omitted owners and exits, stale reviews, self-authored oracles, and
-  excessive proof scope; their candidate prose is not an implementation source.
-- The repository currently contains an unaccepted authoring-contract rewrite. Implementation begins
-  by restoring that scope to its accepted baseline before synthesizing the new contract from this
-  specification.
-- The six canaries are an evaluation boundary, not a migration commitment for the remaining
-  repository artifacts. Human review decides whether later work should expand the new model.
+- The initiating requirement is better first-party Rule and Skill writing: preserve existing
+  semantics while learning Matt-like expression, information hierarchy, and meaningful Markdown.
+  The unified Acceptance Standard and bounded qualification design were introduced later to make
+  that outcome trustworthy and affordable.
+- The durable architecture decision is the unified Acceptance Standard with different
+  risk-matched Portfolios. Campaign-specific canaries, scheduling, Defect Cards, and Adoption scope
+  remain task decisions.
+- The earlier authoring-contract verdict predates the corrected Matt-expression requirement and is
+  not evidence that the current candidate satisfies this Spec. Runtime contract revision and
+  qualification remain deferred until the maintainer authorizes that next scope.
+- The previous persistent qualification directory was removed. No qualification report replaces
+  it.
+- Earlier Pilot attempts are defect evidence only. The static-contract, fixture-backed ordinary
+  Shared Skill and Skill-generation Pilot has not started.
+- Repository changes remain unstaged and uncommitted unless separately authorized.

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "owner": "api-generator",
+  "source": "schema/api.json",
+  "output": "src/generated/client.txt",
+  "verification": ["python3", "tools/check_generated.py"]
+}

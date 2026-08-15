@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "id": "rule-generation-contract",
+  "lifecycle": "generation-contract",
+  "semantic_type": "rule",
+  "scope": "cross-project",
+  "candidate_contract": {"format": "skill-package", "name": "write-record-retention-rule", "relative_path": "SKILL.md"},
+  "request": "request.md",
+  "evidence": [
+    "evidence/host-mechanics.md",
+    "evidence/target-inputs.md"
+  ],
+  "initial_state": {
+    "candidate": "absent",
+    "future_target": "not-created",
+    "target_generation": "forbidden-during-qualification"
+  },
+  "acceptance_cases": [
+    {
+      "id": "complete-target-evidence",
+      "risk": "main-path",
+      "input": {"owner": "project", "scope": "records", "write_location": ".agents/rules/20-record-retention.md", "existing_policy": null},
+      "expected": {"next_action": "author-contract-guidance"}
+    },
+    {
+      "id": "missing-owner",
+      "risk": "ownership",
+      "input": {"owner": null, "scope": "records", "write_location": ".agents/rules/20-record-retention.md"},
+      "expected": {"next_action": "stop-for-owner-evidence"}
+    },
+    {
+      "id": "ambiguous-location",
+      "risk": "placement",
+      "input": {"owner": "project", "scope": "records", "write_location": [".agents/rules/20-record-retention.md", "rules/retention.md"]},
+      "expected": {"next_action": "stop-for-location-decision"}
+    },
+    {
+      "id": "existing-policy-conflict",
+      "risk": "preservation",
+      "input": {"owner": "project", "scope": "records", "existing_policy": "retention differs from request"},
+      "expected": {"next_action": "stop-before-target-write"}
+    }
+  ]
+}

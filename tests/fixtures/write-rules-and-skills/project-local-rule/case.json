@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "project-local-rule",
+  "lifecycle": "ordinary-artifact",
+  "semantic_type": "rule",
+  "scope": "project-local",
+  "candidate_contract": {"format": "markdown", "relative_path": ".agents/rules/20-generated-api-assets.md"},
+  "request": "request.md",
+  "project_root": "project",
+  "evidence": [
+    "project/AGENTS.md",
+    "project/.agents/generated-assets.json",
+    "project/schema/api.json",
+    "project/tools/check_generated.py"
+  ],
+  "initial_state": {
+    "candidate": "absent",
+    "verification_command": ["python3", "tools/check_generated.py"],
+    "verification_exit": 0
+  },
+  "acceptance_cases": [
+    {
+      "id": "source-and-output-aligned",
+      "risk": "applicability",
+      "input": {"changed": ["schema/api.json", "src/generated/client.txt"], "verification_exit": 0},
+      "expected": {"policy": "applies", "result": "allowed"}
+    },
+    {
+      "id": "manual-output-edit",
+      "risk": "boundary",
+      "input": {"changed": ["src/generated/client.txt"], "verification_exit": 2},
+      "expected": {"policy": "applies", "result": "reject-manual-edit"}
+    },
+    {
+      "id": "unrelated-documentation",
+      "risk": "nearest-excluded",
+      "input": {"changed": ["docs/usage.md"], "verification_exit": 0},
+      "expected": {"policy": "inapplicable", "result": "no-generated-asset-requirement"}
+    },
+    {
+      "id": "conflicting-owner",
+      "risk": "conflict",
+      "input": {"changed": ["src/generated/client.txt"], "declared_owner": "another-tool"},
+      "expected": {"policy": "conflict", "result": "stop-for-owner-decision"}
+    }
+  ]
+}

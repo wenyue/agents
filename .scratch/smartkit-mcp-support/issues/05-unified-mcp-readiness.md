@@ -1,30 +1,34 @@
-# 05 — 统一 MCP Readiness 检查
+# 05 — Unified MCP Readiness Check
 
 Category: enhancement
 Status: resolved
-Blocked by: 01 — Plugin Playwright MCP 三端交付; 02 — Daily Project Check Gate; 04 — Project stdio MCP 与平台差异
+Blocked by: 01 — Plugin Playwright MCP Delivery Across Three Hosts; 02 — Daily Project Check Gate; 04 — Project stdio MCP and Platform Differences
 
 ## What to build
 
-在 Daily Project Check Gate 放行后，通过一个 runner 聚合现有 recommended tools、required
-values、Plugin MCP Readiness Profile 和 Project MCP Readiness Profile，并向用户交付一次可
-操作的诊断。
+After the Daily Project Check Gate allows execution, use one runner to aggregate existing
+recommended tools, required values, the Plugin MCP Readiness Profile, and the Project MCP Readiness
+Profile, then deliver one actionable diagnostic to the user.
 
-- [x] readiness profile 与对应 MCP declaration 共同拥有生命周期。
-- [x] 支持 command availability、allowlisted runtime minimum、workspace file 和环境变量存在性检查。
-- [x] runtime version 通过受信任 profile 选择，项目不能注入任意命令或 shell 脚本。
-- [x] Playwright 检查 Node 最低版本和 npx，且不检查 npm cache 或启动 MCP。
-- [x] Flutter Inspector 只检查项目 executable，不要求 debug session 在线。
-- [x] Sentry 与 OtakuRoom HTTP MCP 不执行网络、OAuth、端口或服务健康探测。
-- [x] 所有 findings 聚合成一次宿主原生提示，并沿用现有 consent 边界。
-- [x] 无效 readiness 产生非阻塞诊断，且当天不会自动重试。
-- [x] 所有 detector 类型、平台过滤和安全边界具有外部行为测试。
+- [x] A readiness profile and its corresponding MCP declaration share a lifecycle.
+- [x] Support checks for command availability, allowlisted runtime minimums, workspace files, and
+  environment-variable presence.
+- [x] Runtime version checks are selected through a trusted profile; projects cannot inject
+  arbitrary commands or shell scripts.
+- [x] Playwright checks the minimum Node version and `npx` without inspecting the npm cache or
+  starting MCP.
+- [x] Flutter Inspector checks only the project executable and does not require a live debug session.
+- [x] Sentry and OtakuRoom HTTP MCP perform no network, OAuth, port, or service-health probes.
+- [x] All findings are aggregated into one host-native prompt and preserve the existing consent boundary.
+- [x] Invalid readiness produces a non-blocking diagnostic and is not retried automatically that day.
+- [x] Every detector type, platform filter, and safety boundary has external behavior tests.
 
 ## Comments
 
-- 只有所有 blocker 完成后本 ticket 才进入 frontier。
-- 2026-08-10：Daily runner 聚合 tool/required-value、Plugin MCP 与 Project MCP；
-  readiness 仅支持 command、Node minimum、workspace path 与 env-name 四类静态检查。
-- 2026-08-10：补齐平台过滤、拒绝 shell/非 allowlist runtime、聚合及一次性 gate 测试；
-  `python3 -m unittest tests.test_recommended_tools tests.test_sync_mcp_adapters` 通过
-  （38 tests）。
+- This ticket enters the frontier only after all blockers are complete.
+- 2026-08-10: The daily runner aggregates tool/required-value, Plugin MCP, and Project MCP checks;
+  readiness supports only four static check types: command, Node minimum, workspace path, and
+  environment-variable name.
+- 2026-08-10: Added platform filtering, rejection of shell and non-allowlisted runtimes,
+  aggregation, and once-per-day gate tests;
+  `python3 -m unittest tests.test_recommended_tools tests.test_sync_mcp_adapters` passed (38 tests).

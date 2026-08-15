@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "source": "data/source.json",
+  "output": "data/catalog.json",
+  "public_entry": ["python3", "tools/catalog.py"],
+  "exits": {"current": 0, "failure": 2, "stale": 3}
+}
