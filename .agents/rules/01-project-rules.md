@@ -2,8 +2,12 @@
 
 Strength: `Mandatory`
 
-Scope: Plugin asset ownership, documentation boundaries, target-installation contracts, contract
-evolution, and test contracts for this repository.
+Scope: Plugin and project capability ownership, documentation, target installation, contract
+evolution, and test policy.
+
+Keep one canonical owner for every capability and treat generated, delivery, documentation, and
+test surfaces according to the boundaries below. `AGENTS.md` owns this Rule's applicability; the
+SmartKit Rule configuration owns precedence.
 
 ## Capability Ownership
 
@@ -19,11 +23,13 @@ evolution, and test contracts for this repository.
 - Plugin MCP is owned by `mcp/registry.json`; `.mcp.json`, `mcp/cursor.json`, and
   `mcp/copilot.json` are generated adapters owned by `scripts/sync_mcp_adapters.py`, not vendored
   MCP implementations.
-- Project Rules are project-owned sources under `.agents/rules/`; setup discovers and preserves
-  them.
-- Project Skills are project-owned directories under `.agents/skills/` or external
-  `source`/optional `ref`/`include` declarations; setup preserves project sources and records
-  external provenance in `.agents/smartkit.lock.json`.
+- Setup preserves Project Rules it discovers as user-owned canonical inputs under
+  `.agents/rules/`. Catalog-generated Rule targets remain setup-managed under Installation
+  Ownership.
+- Setup preserves Project Skill sources it discovers as user-owned canonical inputs under
+  `.agents/skills/` or through external `source`/optional `ref`/`include` declarations, and records
+  external provenance in `.agents/smartkit.lock.json`. Catalog-generated and configured external
+  installed surfaces remain setup-managed under Installation Ownership.
 - Project Agents are project-owned sources under `.agents/agents/` with typed `agents`
   declarations; setup preserves sources and records only generated host adapters.
 - Project MCP is typed `mcp` configuration rendered into host-native entries; the ownership
@@ -54,13 +60,17 @@ evolution, and test contracts for this repository.
   validation internals, and implementation details in their owning project rules or tooling.
 - Treat `docs/zh-CN/` as Simplified-Chinese documentation. It is not a runtime source, plugin
   entry point, setup input, or target-installation asset.
+- Treat the corresponding English first-party Rule and Skill sources as canonical. Complete their
+  authoring, semantic review, and representative Acceptance before updating `docs/zh-CN/`.
 - Keep every Chinese translation one-to-one with its corresponding English source. Preserve the
   source order, Markdown structure, commands, identifiers, code blocks, and behavioral meaning;
   do not add translation-only explanations or omit source content.
+- Review translation fidelity independently after the canonical source passes. A translation
+  failure blocks adoption but does not invalidate unchanged canonical evidence.
 - Treat `.agents/rules/` as the source of truth for this repository's development rules. Keep
   `.agents/` limited to `plugins/` and `rules/`; it is not a generated project snapshot.
 
-## Installation and Tests
+## Installation Ownership
 
 - Preserve `.agents/` as the installation root in public setup prompts, templates, manifests,
   scripts, and documentation for target repositories.
@@ -71,14 +81,42 @@ evolution, and test contracts for this repository.
   Agent wrappers, MCP fields, other wrappers, and configuration. Derive removal from the difference
   between the previous manifest and current desired state; do not retain historical names in the
   catalog.
-- On first adoption, own only missing or semantically equal assets. On later runs, verify every
-  recorded digest before planning. Never overwrite an unowned conflict or a modified owned asset.
-- Unit tests may assert structured configuration, schemas, filesystem effects, state transitions,
-  exit behavior, and documented repository-boundary facts. Review prose, prompts, and Hook wording
-  semantically in addition to automated checks.
+- On first adoption, own only a missing asset or one whose current deterministic digest equals the
+  desired digest. On later runs, verify every recorded digest before planning. Never overwrite an
+  unowned conflict or a modified owned asset.
+
+## Tests and Evaluation
+
+- Unit tests may assert structured configuration, schemas, formal identifiers, resource and
+  registration relationships, generated outputs, filesystem effects, state transitions, exit
+  behavior, and documented repository-boundary facts.
+- Do not make ordinary natural-language sentences, physical line wrapping, translated wording, or
+  complete heading lists into test snapshots. Exact text assertions require the text itself to be a
+  structured external protocol value. Review prose, prompts, and Hook wording through whole-artifact
+  semantic review and representative Acceptance instead.
+- Judge first-party Rule and Skill prose by semantic fidelity, navigability, purposeful Markdown,
+  and executable outcomes. Do not require similarity to an external exemplar or use an external
+  artifact as the semantic oracle.
+- Treat committed `write-rules-and-skills` evaluation cases as test inputs, not plugin capabilities,
+  distribution assets, generated answers, or qualification run state. They require no Chinese
+  documentation mirror.
+- Keep each evaluation case self-contained with its request, evidence, initial state, structured
+  Acceptance cases, and only the small project inputs its class requires. Keep generated candidates,
+  mutable state, Git metadata, verdicts, reports, and Acceptance sandboxes out of the fixture source.
+- Keep generation-contract evaluation cases static: provide guidance inputs and supported
+  walkthrough cases, not a generated target or fake project. Keep Shared Rule and Shared Skill cases
+  backed by at least two independent traceable contexts. A Project-local case may use a small
+  self-contained project when repository facts affect behavior.
 
 ## Contract Evolution
 
+- When changing the SmartKit Rule and Skill Acceptance Standard, qualify the candidate against the
+  previously accepted Standard plus the current accepted task specification. Keep
+  campaign-specific canaries, scheduling, evidence, and adoption scope in that task specification;
+  ADRs remain decision records rather than runtime policy owners.
+- Treat a material change to either governing source as invalidating every prior semantic Review or
+  Representative Acceptance verdict that depended on the old requirement. Structured proof remains
+  valid only when the changed requirement cannot affect what it proves.
 - Implement and validate only the repository's current contract. When a path, identifier, schema,
   command, configuration field, or behavior is removed, remove its implementation, documentation,
   tests, and handling in the same change.

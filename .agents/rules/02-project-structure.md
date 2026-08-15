@@ -2,7 +2,10 @@
 
 Strength: `Advisory`
 
-Scope: Top-level plugin, documentation, local-rule, and target-installation ownership boundaries.
+Scope: Top-level placement, distribution flow, dependency direction, and script/test ownership.
+
+Place repository assets in the areas below and preserve the declared dependency direction.
+`AGENTS.md` owns this Rule's applicability; the SmartKit Rule configuration owns precedence.
 
 ## Repository Areas
 
@@ -23,14 +26,19 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   defaults, in `.agents/smartkit.lock.json`.
 - `setup-assets/blueprints/` and `setup-assets/templates/` contain generation and rendering inputs,
   while `setup-assets/catalog/` owns asset selection and project-configuration contracts.
-- `docs/` contains design material and `docs/zh-CN/` contains Simplified-Chinese documentation.
-  Documentation is outside runtime loading and target installation.
+- `docs/agents/` contains repository context reached from `AGENTS.md`; keep other design material
+  under `docs/` and Simplified-Chinese documentation under `docs/zh-CN/`.
 - `.agents/rules/` owns this repository's development instructions, and `.agents/plugins/` owns its
   local marketplace configuration. No other `.agents/` content belongs in this repository.
 - `AGENTS.md` is the entry point for discovering `.agents/rules/`; `README.md` is public plugin
   onboarding and describes the setup boundary.
 - `vendor/external-skills.lock.json` and `licenses/` record all external plugin Skill snapshots;
   the generic updater exclusively owns the lock-declared root Skill directories.
+- `tests/fixtures/write-rules-and-skills/` owns six independent authoring-evaluation case inputs:
+  Shared Rule, Project-local Rule, Rule-generation contract, Shared Skill, Project-local Skill, and
+  Skill-generation contract. A Project-local case may include a small self-contained project.
+  Nothing under this fixture root is a plugin runtime source, discovery input, distribution asset,
+  generated candidate, or expected prose answer.
 
 ## Distribution Flow
 
@@ -66,6 +74,9 @@ Scope: Top-level plugin, documentation, local-rule, and target-installation owne
   executables under `runtime/recommended-tools/`.
 - Keep repository contract tests under `tests/`; tests may import support scripts from their owning
   plugin Skill directories.
+- Keep generated candidates, Git state, mutable working files, verdicts, reports, and sandboxes
+  outside the `write-rules-and-skills` fixture root. Copy a fixture project only when an executable
+  Project-local case needs mutable state.
 
 ## Boundaries
 

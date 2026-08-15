@@ -2,8 +2,11 @@
 
 Strength: `Mandatory`
 
-Scope: Repository runtime requirements, supported verification commands, and public-agent sync
-tooling boundaries.
+Scope: Repository runtime, authorized mutation tools, required verification, setup control plane,
+and public adapter synchronization.
+
+Use only the runtime, mutation, and verification surfaces declared here. `AGENTS.md` owns this
+Rule's applicability; the SmartKit Rule configuration owns precedence.
 
 ## Runtime
 
@@ -14,7 +17,7 @@ tooling boundaries.
   commands, runtime services, ports, credentials, and health checks as unavailable until repository
   evidence declares them.
 
-## Plugin Version
+## Managed Plugin Version
 
 - Treat root `VERSION` as the only manually maintained plugin version. After changing it, run
   `python scripts/sync_plugin_version.py` and review the generated manifest, marketplace, and catalog
@@ -26,8 +29,10 @@ tooling boundaries.
 
 - Use `python scripts/update_external_skills.py --check` for read-only registry, upstream, lock,
   license, and installed-file drift detection.
-- Only a repository maintainer may run `python scripts/update_external_skills.py --update`, with
-  optional `--source owner/repository`. Review all Skill, lock, and license changes afterward.
+- Run `python scripts/update_external_skills.py --update`, with optional
+  `--source owner/repository`, only when repository evidence establishes maintainer authority.
+  Without that evidence, treat the update as unauthorized. Review all Skill, lock, and license
+  changes afterward.
 - The updater is transactional, uses ambient GitHub credentials, and changes only registry-declared
   external Skill roots, `vendor/external-skills.lock.json`, and license snapshots.
 
@@ -47,7 +52,7 @@ tooling boundaries.
 - Use `python scripts/sync_agent_adapters.py --check` for read-only adapter drift detection. Host
   adapters inherit the host's selected model and retain only host-native metadata.
 
-## Verification Commands
+## Required Verification
 
 Use these repository-supported checks:
 
@@ -63,11 +68,13 @@ completed change set; together they form the required verification.
 
 ## Project Setup Tooling
 
-- `skills/setup-project-agents/scripts/workflow.py`, reached through the paired shell wrappers, is
-  the public `start`/`finish`/`cancel` control plane. The pinned
+- `skills/setup-project-agents/scripts/workflow.py`, reached through
+  `setup_project_agents.sh` or `setup_project_agents.ps1`, is the public
+  `start`/`finish`/`cancel` control plane. The pinned
   `setup_project_agents.py` prepare/apply/check phases are internal workflow operations.
-- Start creates and owns the private session, reads `setup-assets/catalog/assets.json`, fetches
-  canonical `master`, captures Rules, Skills, Agents, and MCP intent, snapshots external Skills,
+- Start creates and owns the private session, reads `setup-assets/catalog/assets.json`, attempts to
+  fetch canonical `master`, and uses the validated installed plugin source only when that source is
+  unavailable. It then captures Rules, Skills, Agents, and MCP intent, snapshots external Skills,
   and creates the request. Finish preserves project Rules, Skills, and Agent sources, renders
   declared Agent and MCP adapters, reconciles setup-managed content, checks convergence,
   summarizes, and cleans up. Cancel safely cleans up an unfinished workflow-owned session.
@@ -75,8 +82,8 @@ completed change set; together they form the required verification.
   fields, and configuration with deterministic digests. Setup updates or deletes only entries
   authorized by the previous manifest; a modified owned asset or conflicting first-adoption target
   stops before writes.
-- `check` reports desired-state drift without writes. Neither command is a formatter, fixer, or
-  replacement for this repository's test command.
+- `check` reports desired-state drift without writes. The setup control plane is not a formatter,
+  fixer, or replacement for this repository's test command.
 - Keep this repository's local `.agents/` directory limited to its `plugins/` marketplace
   configuration and `rules/` development instructions.
 
