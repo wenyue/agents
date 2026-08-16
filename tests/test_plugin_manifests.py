@@ -121,7 +121,7 @@ class PluginManifestTest(unittest.TestCase):
                 for path in (REPO_ROOT / root_name).rglob('*.md')
             )
         for name in (
-            'create-worktree', 'refactor-code', 'rename-code', 'report-session-usage',
+            'create-worktree', 'refactor-code', 'rename-code', 'diagnose-agent-session',
             'finish-worktree', 'write-code-comment', 'write-rules-and-skills',
         ):
             source_paths.update(
@@ -279,7 +279,7 @@ class PluginManifestTest(unittest.TestCase):
         }
         custom = {
             'setup-project-agents', 'create-worktree', 'refactor-code', 'rename-code',
-            'report-session-usage', 'finish-worktree', 'write-code-comment',
+            'diagnose-agent-session', 'finish-worktree', 'write-code-comment',
             'write-rules-and-skills',
         }
         self.assertEqual(plugin_skills, { *custom, *MATT_PROMOTED})

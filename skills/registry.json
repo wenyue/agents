@@ -4,7 +4,7 @@
     {"id": "smartkit/create-worktree", "path": "create-worktree"},
     {"id": "smartkit/refactor-code", "path": "refactor-code"},
     {"id": "smartkit/rename-code", "path": "rename-code"},
-    {"id": "smartkit/report-session-usage", "path": "report-session-usage"},
+    {"id": "smartkit/diagnose-agent-session", "path": "diagnose-agent-session"},
     {"id": "smartkit/finish-worktree", "path": "finish-worktree"},
     {"id": "smartkit/write-code-comment", "path": "write-code-comment"},
     {"id": "smartkit/write-rules-and-skills", "path": "write-rules-and-skills"}
