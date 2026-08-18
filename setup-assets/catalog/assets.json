@@ -17,7 +17,6 @@
       "kind": "blueprint",
       "source": "setup-assets/blueprints/rules/00-project-tools.md",
       "target": ".agents/rules/00-project-tools.md",
-      "mode": "generate",
       "metadata": {
         "section": "project",
         "read_when": "Project tooling, MCP, runtime, or verification",
@@ -35,7 +34,6 @@
       "kind": "blueprint",
       "source": "setup-assets/blueprints/rules/01-project-rules.md",
       "target": ".agents/rules/01-project-rules.md",
-      "mode": "generate",
       "metadata": {
         "section": "project",
         "read_when": "Project APIs, generated files, lint, or domain conventions",
@@ -53,7 +51,6 @@
       "kind": "blueprint",
       "source": "setup-assets/blueprints/rules/02-project-structure.md",
       "target": ".agents/rules/02-project-structure.md",
-      "mode": "generate",
       "metadata": {
         "section": "project",
         "read_when": "Making structure, module, or dependency-boundary decisions",
@@ -70,50 +67,25 @@
       "id": "blueprint-change-set-verification",
       "kind": "blueprint",
       "source": "setup-assets/blueprints/skills/change-set-verification/SKILL.md",
-      "target": ".agents/skills/change-set-verification/SKILL.md",
-      "mode": "generate"
+      "target": ".agents/skills/change-set-verification/SKILL.md"
     },
     {
       "id": "blueprint-worktree-environment-setup",
       "kind": "blueprint",
       "source": "setup-assets/blueprints/skills/worktree-environment-setup/SKILL.md",
-      "target": ".agents/skills/worktree-environment-setup/SKILL.md",
-      "mode": "generate"
-    },
-    {
-      "id": "blueprint-matt-issue-tracker",
-      "kind": "blueprint",
-      "source": "skills/setup-matt-pocock-skills/issue-tracker-local.md",
-      "target": "docs/agents/issue-tracker.md",
-      "mode": "generate"
-    },
-    {
-      "id": "blueprint-matt-triage-labels",
-      "kind": "blueprint",
-      "source": "skills/setup-matt-pocock-skills/triage-labels.md",
-      "target": "docs/agents/triage-labels.md",
-      "mode": "generate"
-    },
-    {
-      "id": "blueprint-matt-domain",
-      "kind": "blueprint",
-      "source": "skills/setup-matt-pocock-skills/domain.md",
-      "target": "docs/agents/domain.md",
-      "mode": "generate"
+      "target": ".agents/skills/worktree-environment-setup/SKILL.md"
     },
     {
       "id": "entry-agents",
       "kind": "template",
       "source": "setup-assets/templates/entry-files/AGENTS.md",
-      "target": "AGENTS.md",
-      "mode": "render"
+      "target": "AGENTS.md"
     },
     {
       "id": "config-agents",
       "kind": "template",
       "source": "setup-assets/templates/harness-config/agents.config.json",
-      "target": ".agents/config.json",
-      "mode": "render"
+      "target": ".agents/config.json"
     },
     {
       "id": "config-codex",
@@ -122,8 +94,7 @@
       "target": ".codex/config.toml",
       "harnesses": [
         "codex"
-      ],
-      "mode": "render"
+      ]
     },
     {
       "id": "config-codex-rules",
@@ -132,8 +103,7 @@
       "target": ".codex/rules/setup-project-agents.rules",
       "harnesses": [
         "codex"
-      ],
-      "mode": "render"
+      ]
     },
     {
       "id": "plugin-agents-codex",
@@ -142,8 +112,7 @@
       "target": ".codex/agents",
       "harnesses": [
         "codex"
-      ],
-      "mode": "copy"
+      ]
     },
     {
       "id": "config-cursor-cli",
@@ -152,8 +121,7 @@
       "target": ".cursor/cli.json",
       "harnesses": [
         "cursor"
-      ],
-      "mode": "render"
+      ]
     },
     {
       "id": "wrapper-rule-cursor",
@@ -162,8 +130,7 @@
       "target": ".cursor/rules/{rule-name}.mdc",
       "harnesses": [
         "cursor"
-      ],
-      "mode": "render"
+      ]
     },
     {
       "id": "wrapper-rule-copilot",
@@ -172,8 +139,7 @@
       "target": ".github/instructions/{rule-name}.instructions.md",
       "harnesses": [
         "copilot"
-      ],
-      "mode": "render"
+      ]
     }
   ]
 }

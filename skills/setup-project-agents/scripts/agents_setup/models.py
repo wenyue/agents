@@ -94,7 +94,6 @@ class AssetSpec:
     source: PurePosixPath
     target: PurePosixPath | None
     harnesses: tuple[Harness, ...]
-    mode: str = 'copy'
     control_plane: bool = False
     metadata: Mapping[str, object] = field(default_factory=dict)
     skill_id: str | None = None

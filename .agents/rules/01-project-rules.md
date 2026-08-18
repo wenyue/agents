@@ -34,6 +34,9 @@ SmartKit Rule configuration owns precedence.
   declarations; setup preserves sources and records only generated host adapters.
 - Project MCP is typed `mcp` configuration rendered into host-native entries; the ownership
   manifest records only rendered leaf fields, never sibling entries or secret values.
+- Matt repository context is owned exclusively by `setup-matt-pocock-skills`. Keep its
+  `docs/agents/` files and `## Agent skills` entry block outside the setup-project catalog,
+  generation request, renderer ownership, and ownership manifest.
 - Keep recommended-tool Hook executables in `runtime/recommended-tools/` without a `SKILL.md`, and
   keep their authoritative tool declarations in `policies/recommended-tools/`. MCP readiness stays
   beside its Plugin or Project MCP declaration and is interpreted by the same runtime only after
@@ -42,7 +45,8 @@ SmartKit Rule configuration owns precedence.
 - Keep shared blueprints and host templates under `setup-assets/`. Treat
   `setup-assets/catalog/assets.json` as the owner of target asset inclusion, Rule and Skill
   blueprints, Codex Plugin Agent default delivery, wrapper routing, renderer metadata, and managed
-  root-configuration declarations.
+  root-configuration declarations. The catalog does not proxy another setup Skill's project
+  outputs.
 - Keep deterministic setup, source validation, rendering, planning, and transactional application
   in `skills/setup-project-agents/scripts/`. Target-specific policy belongs to the target
   repository's generated or user-owned content.
@@ -77,8 +81,12 @@ SmartKit Rule configuration owns precedence.
 - Treat catalog-selected sources, generated outputs, Harness wrappers, and configured external
   Skill directories as setup-managed content. Preserve discovered project Rules and Skills,
   configured Agent sources, and non-template structured fields.
+- Treat `AGENTS.md` as a compositional project entry file. Setup may replace only the section
+  headed `## Project rules`, ending at the next level-one or level-two Markdown heading; preserve
+  every surrounding section and keep the file outside whole-file ownership.
 - Use `.agents/smartkit.lock.json` as the sole project ownership authority for managed Rules, Skills,
-  Agent wrappers, MCP fields, other wrappers, and configuration. Derive removal from the difference
+  Agent wrappers, MCP fields, other wrappers, and configuration. The `## Project rules` section in
+  `AGENTS.md` is the only compositional entry-file exception. Derive removal from the difference
   between the previous manifest and current desired state; do not retain historical names in the
   catalog.
 - On first adoption, own only a missing asset or one whose current deterministic digest equals the

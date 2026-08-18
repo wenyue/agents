@@ -301,11 +301,7 @@ class SetupCatalogTest(unittest.TestCase):
         }
 
         self.assertNotIn('.agents/skills/setup-project-agents', targets)
-        matt_blueprints = {
-            'skills/setup-matt-pocock-skills/issue-tracker-local.md',
-            'skills/setup-matt-pocock-skills/triage-labels.md',
-            'skills/setup-matt-pocock-skills/domain.md',
-        }
+        self.assertFalse(any(target.startswith('docs/agents/') for target in targets))
         for asset in catalog.assets:
             with self.subTest(asset=asset.id):
                 if asset.id == 'control-plane':
@@ -313,9 +309,6 @@ class SetupCatalogTest(unittest.TestCase):
                     self.assertEqual(asset.source.as_posix(), 'skills/setup-project-agents')
                     self.assertTrue(asset.control_plane)
                     self.assertIsNone(asset.target)
-                elif asset.source.as_posix() in matt_blueprints:
-                    self.assertEqual(asset.kind, 'blueprint')
-                    self.assertTrue(asset.target.as_posix().startswith('docs/agents/'))
                 elif asset.kind == 'agent':
                     self.assertEqual(
                         asset.source.as_posix(),
@@ -329,7 +322,6 @@ class SetupCatalogTest(unittest.TestCase):
                         tuple(harness.value for harness in asset.harnesses),
                         ('codex',),
                     )
-                    self.assertEqual(asset.mode, 'copy')
                 elif asset.kind in {'rule', 'skill', 'blueprint', 'template', 'wrapper'}:
                     self.assertTrue(asset.source.as_posix().startswith('setup-assets/'))
 
@@ -339,7 +331,7 @@ class SetupCatalogTest(unittest.TestCase):
                 for asset in catalog.assets
                 if asset.source.as_posix().startswith('skills/setup-matt-pocock-skills/')
             },
-            matt_blueprints,
+            set(),
         )
 
     def test_project_config_loads_current_project_selections(self):
@@ -399,7 +391,6 @@ class SetupCatalogTest(unittest.TestCase):
             'source': 'agents/codex',
             'target': '.codex/agents',
             'harnesses': ['codex'],
-            'mode': 'copy',
         }
         self.assertEqual(parse_asset(valid).target.as_posix(), valid['target'])
 
@@ -410,13 +401,15 @@ class SetupCatalogTest(unittest.TestCase):
             {'target': '.codex/agents/change-set-verifier.toml'},
             {'harnesses': ['cursor']},
             {'harnesses': ['codex', 'cursor']},
-            {'mode': 'render'},
         )
         for override in invalid:
             with self.subTest(override=override):
                 candidate = {**valid, **override}
                 with self.assertRaisesRegex(ContractError, 'plugin Agent asset'):
                     parse_asset(candidate)
+
+        with self.assertRaisesRegex(ContractError, 'unknown asset fields: mode'):
+            parse_asset({**valid, 'mode': 'copy'})
 
     def test_control_plane_resolves_custom_skill_id_through_registry_mapping(self):
         asset = {
@@ -521,7 +514,7 @@ class SetupCatalogTest(unittest.TestCase):
 
         blueprint = {
             'id': 'project-rule', 'kind': 'blueprint', 'source': 'blueprints/rule.md',
-            'target': '.agents/rules/project.md', 'mode': 'generate',
+            'target': '.agents/rules/project.md',
             'metadata': {
                 'section': 'project', 'read_when': 'Project work', 'strength': 'Default',
                 'cursor': {'alwaysApply': True}, 'github': {'applyTo': '**'},
@@ -534,7 +527,7 @@ class SetupCatalogTest(unittest.TestCase):
         with self.assertRaises(ContractError):
             parse_asset({
                 'id': 'skill-blueprint', 'kind': 'blueprint', 'source': 'blueprints/skill.md',
-                'target': '.agents/skills/skill/SKILL.md', 'mode': 'generate',
+                'target': '.agents/skills/skill/SKILL.md',
                 'metadata': {'section': 'project'},
             })
 

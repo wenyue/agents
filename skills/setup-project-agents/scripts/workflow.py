@@ -22,6 +22,14 @@ _SESSION_MARKER = '.workflow-session'
 _SESSION_MARKER_CONTENT = b'setup-project-agents-workflow-v1\n'
 _WORKFLOW_CONTEXT = 'workflow.json'
 _COMMIT = re.compile(r'^[0-9a-fA-F]{40}$')
+_MATT_CONTEXT_PATHS = (
+    Path('docs/agents/issue-tracker.md'),
+    Path('docs/agents/triage-labels.md'),
+    Path('docs/agents/domain.md'),
+)
+_MATT_ENTRY_PATHS = (Path('AGENTS.md'), Path('CLAUDE.md'))
+_MARKDOWN_HEADING = re.compile(r'^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*$')
+_MARKDOWN_FENCE = re.compile(r'^ {0,3}(`{3,}|~{3,})')
 
 
 class WorkflowError(ValueError):
@@ -144,11 +152,83 @@ def _emit(document: Mapping[str, object]) -> None:
     print(json.dumps(document, sort_keys=True))
 
 
+def _agent_skills_section(content: str) -> str | None:
+    body: list[str] | None = None
+    fence_character: str | None = None
+    fence_length = 0
+    for line in content.splitlines():
+        fence = _MARKDOWN_FENCE.match(line)
+        if fence is not None:
+            marker = fence.group(1)
+            remainder = line[fence.end():]
+            if fence_character is None:
+                if marker[0] != '`' or '`' not in remainder:
+                    fence_character = marker[0]
+                    fence_length = len(marker)
+            elif (
+                marker[0] == fence_character
+                and len(marker) >= fence_length
+                and not remainder.strip()
+            ):
+                fence_character = None
+                fence_length = 0
+            if body is not None:
+                body.append(line)
+            continue
+        if fence_character is not None:
+            if body is not None:
+                body.append(line)
+            continue
+        heading = _MARKDOWN_HEADING.match(line)
+        if heading is not None:
+            level = len(heading.group(1))
+            title = re.sub(r'[ \t]+#+[ \t]*$', '', heading.group(2)).strip()
+            if body is not None and level <= 2:
+                return '\n'.join(body)
+            if level == 2 and title == 'Agent skills':
+                body = []
+                continue
+        if body is not None:
+            body.append(line)
+    return '\n'.join(body) if body is not None else None
+
+
+def _require_matt_context(target: Path) -> None:
+    context_paths = tuple(target / relative for relative in _MATT_CONTEXT_PATHS)
+    if any(_is_link_like(path) or not path.is_file() for path in context_paths):
+        raise WorkflowError(
+            'Matt repository setup is incomplete; explicitly invoke '
+            'setup-matt-pocock-skills before setup-project-agents'
+        )
+    references = tuple(relative.as_posix() for relative in _MATT_CONTEXT_PATHS)
+    for relative in _MATT_ENTRY_PATHS:
+        path = target / relative
+        if _is_link_like(path) or not path.is_file():
+            continue
+        try:
+            content = path.read_text(encoding='utf-8')
+        except (OSError, UnicodeDecodeError):
+            continue
+        section = _agent_skills_section(content)
+        if section is not None and all(reference in section for reference in references):
+            return
+    raise WorkflowError(
+        'Matt repository setup is incomplete; explicitly invoke '
+        'setup-matt-pocock-skills before setup-project-agents'
+    )
+
+
 def _start(args: argparse.Namespace) -> int:
+    target = Path(args.target).absolute()
+    try:
+        _require_matt_context(target)
+    except (OSError, WorkflowError) as error:
+        print(f'ERROR: {error}', file=sys.stderr)
+        return 2
     session = _create_session()
     try:
         forwarded = [
-            'prepare', '--target', str(Path(args.target).absolute()),
+            'prepare', '--target', str(target),
             '--session', str(session),
         ]
         result = bootstrap.main(forwarded)

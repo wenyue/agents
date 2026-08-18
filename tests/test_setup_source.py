@@ -259,7 +259,6 @@ class SetupSourceTest(unittest.TestCase):
                 'source': 'agents/codex',
                 'target': '.codex/agents',
                 'harnesses': ['codex'],
-                'mode': 'copy',
             })
             catalog_path.write_text(json.dumps(catalog), encoding='utf-8')
             agent_source = source / 'agents/codex'

@@ -221,7 +221,6 @@ class SetupExternalSkillTest(unittest.TestCase):
                     'source': 'example/repository',
                     'source_path': 'plugins/example/skills/external-check',
                 }],
-                'seeded': [],
             }), encoding='utf-8')
 
             skill = work / 'plugins/example/skills/external-check/SKILL.md'

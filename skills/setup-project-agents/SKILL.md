@@ -34,13 +34,24 @@ Agents are installed with SmartKit and are outside this project workflow. Codex 
 not load Plugin Agent adapters, so setup installs catalog-declared Codex adapters as managed default
 assets. These adapters remain Plugin Agents and never enter `.agents/config.json`.
 
+Matt repository context is a separate project-owned prerequisite. This workflow neither generates
+nor owns `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`,
+`docs/agents/domain.md`, or the `## Agent skills` block that points to them.
+
 ## Workflow
 
-1. From the target repository root, inspect all four capability inputs. Apply any user-requested
+1. From the target repository root, verify that Matt repository setup is complete: the three
+   `docs/agents/` context files exist and either `AGENTS.md` or `CLAUDE.md` contains the matching
+   `## Agent skills` block. If any part is missing, stop before `start` and tell the user to
+   explicitly invoke `setup-matt-pocock-skills` in this repository. Do not reproduce that Skill's
+   questions or choose an issue tracker on its behalf. Resume by invoking `setup-project-agents`
+   again only after Matt setup reports completion.
+
+2. Inspect all four capability inputs. Apply any user-requested
    canonical-input changes before starting. This step is complete when Rules, Skills, Agents, and
    MCP each represent the accepted project intent.
 
-2. Identify the loaded Skill directory as `SETUP_PROJECT_AGENTS_ROOT`, then start the public
+3. Identify the loaded Skill directory as `SETUP_PROJECT_AGENTS_ROOT`, then start the public
    workflow:
 
    ```sh
@@ -53,26 +64,32 @@ assets. These adapters remain Plugin Agents and never enter `.agents/config.json
    `source_root` paths. This step is complete when one private session exists and the target
    repository remains unchanged by start.
 
-3. Read the request and confirm it captured the accepted Rules, Skills, Agents, and MCP intent. If
+4. Read the request and confirm it captured the accepted Rules, Skills, Agents, and MCP intent. If
    any captured choice is wrong, cancel the session, correct the canonical project input, and start
    again. Keep the request unchanged after start.
 
-4. Fulfil every `generation_requests` entry under `GENERATED/<target>`, preserving the complete
+5. Fulfil every `generation_requests` entry under `GENERATED/<target>`, preserving the complete
    target path. Resolve each request's blueprint from `source_root` and use the matching authoring
    contract:
 
-   - apply the Rule branch of `write-rules-and-skills` to Rule targets;
-   - apply the Skill branch of `write-rules-and-skills` to Skill targets; and
-   - read `setup-matt-pocock-skills` from `source_root` and execute its contract within this workflow
-     for the requested `docs/agents/` targets; do not invoke it as a separate Skill.
+   - apply the Rule branch of `write-rules-and-skills` to Rule targets; and
+   - apply the Skill branch of `write-rules-and-skills` to Skill targets.
+
+   The request contains exactly five generated targets:
+
+   - `.agents/rules/00-project-tools.md`
+   - `.agents/rules/01-project-rules.md`
+   - `.agents/rules/02-project-structure.md`
+   - `.agents/skills/change-set-verification/SKILL.md`
+   - `.agents/skills/worktree-environment-setup/SKILL.md`
+
+   Matt context is never a generation request.
 
    Use the current repository as evidence and preserve complete project-owned content unless the
-   user requests reconfiguration. For Matt context, default an absent tracker to Local Markdown,
-   preserve an existing triage mapping, and use a single domain context unless repository evidence
-   establishes materially separate contexts. This step is complete when the generated directory
-   contains exactly the requested targets and no undeclared path.
+   user requests reconfiguration. This step is complete when the generated directory contains
+   exactly the requested targets and no undeclared path.
 
-5. Pass the Review Gate, then finish the same session:
+6. Pass the Review Gate, then finish the same session:
 
    ```sh
    sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" finish \
@@ -82,7 +99,7 @@ assets. These adapters remain Plugin Agents and never enter `.agents/config.json
    On Windows, invoke `setup_project_agents.ps1`. Invoke `finish` once. Completion requires a zero
    exit and JSON containing `phase: finish` and `check: clean`.
 
-6. If work must stop after `start` and before `finish`, cancel the session:
+7. If work must stop after `start` and before `finish`, cancel the session:
 
    ```sh
    sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" cancel \
@@ -94,17 +111,17 @@ assets. These adapters remain Plugin Agents and never enter `.agents/config.json
 ## Review Gate
 
 - [ ] Rules, Skills, Agents, and MCP all match the accepted project intent.
+- [ ] Matt repository setup completed before `start` and remains project-owned.
 - [ ] Every configured Agent points to a complete matching project-owned source.
 - [ ] Every generated Rule and Skill follows its authoring contract and current repository evidence.
-- [ ] Matt context matches the accepted tracker, triage, and domain decisions.
 - [ ] The request is unchanged and every requested target exists under the generated root.
 - [ ] Generated project content contains no credential or secret.
 
 ## Stop Conditions
 
 Stop and report the exact error when `start`, `finish`, or `cancel` fails. After a `finish` failure,
-discard that session and restart after resolving the cause. Stop before `finish` when a tracker,
-domain-layout, capability declaration, ownership conflict, or generated output remains unresolved.
+discard that session and restart after resolving the cause. Stop before `finish` when a capability
+declaration, ownership conflict, or generated output remains unresolved.
 Use only the public `start`, `finish`, and `cancel` commands; the workflow owns selection,
 rendering, deletion, validation, transaction, checking, and session cleanup.
 

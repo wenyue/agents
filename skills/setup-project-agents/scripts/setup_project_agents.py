@@ -37,9 +37,6 @@ _BLUEPRINT_TARGETS = (
     PurePosixPath('.agents/rules/02-project-structure.md'),
     PurePosixPath('.agents/skills/change-set-verification/SKILL.md'),
     PurePosixPath('.agents/skills/worktree-environment-setup/SKILL.md'),
-    PurePosixPath('docs/agents/issue-tracker.md'),
-    PurePosixPath('docs/agents/triage-labels.md'),
-    PurePosixPath('docs/agents/domain.md'),
 )
 _HARNESSES = tuple(Harness)
 
@@ -373,7 +370,9 @@ def _generated_root(session: Path) -> Path:
         elif not path.is_dir():
             raise SetupError('generated output contains a non-file entry')
     if files != expected:
-        raise SetupError('generated outputs must contain exactly the eight requested files')
+        raise SetupError(
+            f'generated outputs must contain exactly {len(_BLUEPRINT_TARGETS)} requested files'
+        )
     return root
 
 

@@ -907,7 +907,6 @@ class SetupRendererTest(unittest.TestCase):
                         PurePosixPath('blueprints/shared.md'),
                         target_path,
                         (Harness.CODEX,),
-                        'generate',
                     ),
                 ),
             )
@@ -995,10 +994,10 @@ class SetupRendererTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'unknown project config fields: version'):
                 load_project_config(config_path, catalog=self.catalog)
 
-    def test_malformed_ownership_sources_and_seeded_assets_are_rejected(self):
+    def test_malformed_ownership_sources_and_unknown_fields_are_rejected(self):
         malformed_values = (
-            {'sources': [123], 'seeded': []},
-            {'sources': [], 'seeded': ['garbage']},
+            {'sources': [123]},
+            {'sources': [], 'unknown': []},
         )
         for malformed in malformed_values:
             with self.subTest(malformed=malformed), tempfile.TemporaryDirectory() as temp_dir:
@@ -1009,7 +1008,7 @@ class SetupRendererTest(unittest.TestCase):
                 manifest.write_text(json.dumps({
                     'sources': malformed['sources'],
                     'assets': [],
-                    'seeded': malformed['seeded'],
+                    **({'unknown': malformed['unknown']} if 'unknown' in malformed else {}),
                 }), encoding='utf-8')
 
                 with self.assertRaisesRegex(RenderError, 'ownership manifest'):
@@ -1359,6 +1358,39 @@ class SetupRendererTest(unittest.TestCase):
                 rendered.preserved_paths,
             )
             validate_rendered_state(rendered)
+
+    def test_project_rules_block_preserves_matt_agent_skills_and_is_not_owned(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / 'target'
+            target.mkdir()
+            entry = target / 'AGENTS.md'
+            entry.write_text(
+                '# Repository\n\n```md\n```oops\n## Project rules\n```\n\n'
+                '## Agent skills\n\n'
+                'GitHub Issues. See `docs/agents/issue-tracker.md`.\n',
+                encoding='utf-8',
+            )
+            generated = self.generated_tree(root)
+
+            first = self.render(target, generated)
+            agents = first.files_by_path['AGENTS.md'].decode()
+            self.assertIn('## Agent skills', agents)
+            self.assertEqual(agents.count('## Project rules'), 2)
+            manifest = json.loads(first.files_by_path['.agents/smartkit.lock.json'])
+            self.assertFalse(any(
+                asset['path'] == 'AGENTS.md' for asset in manifest['assets']
+            ))
+
+            self.materialize(target, first.files)
+            entry.write_text(
+                entry.read_text(encoding='utf-8').replace('GitHub Issues', 'Local issues'),
+                encoding='utf-8',
+            )
+            second = self.render(target, generated)
+            updated = second.files_by_path['AGENTS.md'].decode()
+            self.assertIn('Local issues', updated)
+            self.assertEqual(updated.count('## Project rules'), 2)
 
     def test_generated_blueprint_skills_are_not_rediscovered_as_project_owned(self):
         with tempfile.TemporaryDirectory() as temp_dir:

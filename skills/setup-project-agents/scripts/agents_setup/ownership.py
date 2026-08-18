@@ -13,11 +13,6 @@ from .structured import StructuredConfigError, format_for_path, parse_document
 
 
 OWNERSHIP_PATH = PurePosixPath('.agents/smartkit.lock.json')
-SEEDED_PATHS = frozenset({
-    PurePosixPath('docs/agents/domain.md'),
-    PurePosixPath('docs/agents/issue-tracker.md'),
-    PurePosixPath('docs/agents/triage-labels.md'),
-})
 _ASSET_FIELDS = frozenset({'kind', 'role', 'path', 'key', 'digest', 'source', 'source_path'})
 _ASSET_KINDS = frozenset({'file', 'tree', 'field'})
 _SOURCE_FIELDS = frozenset({
@@ -25,7 +20,6 @@ _SOURCE_FIELDS = frozenset({
 })
 _LICENSE_FIELDS = frozenset({'spdx', 'path', 'sha256'})
 _SOURCE_SKILL_FIELDS = frozenset({'id', 'path'})
-_SEEDED_FIELDS = frozenset({'path', 'digest'})
 
 
 class OwnershipError(ValueError):
@@ -281,25 +275,12 @@ def _parse_source(raw: object, index: int) -> Mapping[str, object]:
     }
 
 
-def _parse_seeded(raw: object, index: int) -> tuple[PurePosixPath, str]:
-    if not isinstance(raw, Mapping) or set(raw) != _SEEDED_FIELDS:
-        raise OwnershipError(f'SmartKit ownership manifest seeded asset {index} is invalid')
-    try:
-        path = safe_relative(raw.get('path'), 'ownership seeded path')
-    except ContractError as error:
-        raise OwnershipError(str(error)) from error
-    digest = raw.get('digest')
-    if path not in SEEDED_PATHS or not _is_digest(digest):
-        raise OwnershipError(f'SmartKit ownership manifest seeded asset {index} is invalid')
-    return path, digest
-
-
 def _parse_ownership_document(document: object) -> OwnershipState:
-    if not isinstance(document, Mapping) or set(document) != {'sources', 'assets', 'seeded'}:
+    if not isinstance(document, Mapping) or set(document) != {'sources', 'assets'}:
         raise OwnershipError('SmartKit ownership manifest is invalid')
     if not isinstance(document.get('sources'), list):
         raise OwnershipError('SmartKit ownership manifest is invalid')
-    if not isinstance(document.get('assets'), list) or not isinstance(document.get('seeded'), list):
+    if not isinstance(document.get('assets'), list):
         raise OwnershipError('SmartKit ownership manifest is invalid')
     sources = tuple(_parse_source(item, index) for index, item in enumerate(document['sources']))
     source_ids = [item['id'] for item in sources]
@@ -321,10 +302,6 @@ def _parse_ownership_document(document: object) -> OwnershipState:
     }
     if declared_provenance != actual_provenance:
         raise OwnershipError('SmartKit ownership manifest Skill provenance is invalid')
-    seeded = tuple(_parse_seeded(item, index) for index, item in enumerate(document['seeded']))
-    seeded_paths = [item[0] for item in seeded]
-    if len(seeded_paths) != len(set(seeded_paths)):
-        raise OwnershipError('SmartKit ownership manifest has duplicate seeded assets')
     return OwnershipState(sources, assets)
 
 
@@ -374,6 +351,7 @@ def _desired_assets(
     trees: Sequence[PurePosixPath],
     external_sources: Mapping[str, tuple[str, PurePosixPath]],
     structured_paths: frozenset[PurePosixPath],
+    unmanaged_paths: frozenset[PurePosixPath],
 ) -> tuple[OwnedAsset, ...]:
     tree_set = tuple(sorted(set(trees), key=lambda item: item.as_posix()))
     assets: list[OwnedAsset] = []
@@ -387,7 +365,7 @@ def _desired_assets(
     for path, content in sorted(files.items(), key=lambda item: item[0].as_posix()):
         if (
             path == OWNERSHIP_PATH
-            or path in SEEDED_PATHS
+            or path in unmanaged_paths
             or path in structured_paths
             or any(root == path or root in path.parents for root in tree_set)
         ):
@@ -411,24 +389,19 @@ def reconcile_ownership(
     sources: Sequence[Mapping[str, object]] = (),
     external_sources: Mapping[str, tuple[str, PurePosixPath]] | None = None,
     structured_paths: Sequence[PurePosixPath] = (),
+    unmanaged_paths: Sequence[PurePosixPath] = (),
     previous: OwnershipState | None = None,
 ) -> OwnershipResult:
     previous = previous if previous is not None else load_ownership(target_root)
     verify_ownership(target_root, previous)
     files = {item.path: item.content for item in desired_files}
-    for path in SEEDED_PATHS.intersection(files):
-        target = _target(target_root, path)
-        if not target.exists():
-            continue
-        if target.is_symlink() or not target.is_file():
-            raise OwnershipError(f'seeded project file is unsafe: {path.as_posix()}')
-        files[path] = target.read_bytes()
     desired_assets = _desired_assets(
         files,
         desired_fields,
         managed_trees,
         external_sources or {},
         frozenset(structured_paths) | frozenset(item.path for item in desired_fields),
+        frozenset(unmanaged_paths),
     )
     previous_by_id = {
         item.identity: item for item in previous.assets
@@ -470,14 +443,9 @@ def reconcile_ownership(
         if asset.source_path is not None:
             item['source_path'] = asset.source_path.as_posix()
         manifest_assets.append(item)
-    seeded = [
-        {'path': path.as_posix(), 'digest': _digest(files[path])}
-        for path in sorted(SEEDED_PATHS.intersection(files), key=lambda item: item.as_posix())
-    ]
     next_document = {
         'sources': [dict(item) for item in sources],
         'assets': manifest_assets,
-        'seeded': seeded,
     }
     _parse_ownership_document(next_document)
     manifest = (json.dumps(

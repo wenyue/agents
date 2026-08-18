@@ -226,6 +226,26 @@ class SetupWorkflowTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f'# generated {path.name}\n', encoding='utf-8')
 
+    @staticmethod
+    def write_matt_context(target: Path, entry_name: str = 'AGENTS.md') -> None:
+        references = (
+            'docs/agents/issue-tracker.md',
+            'docs/agents/triage-labels.md',
+            'docs/agents/domain.md',
+        )
+        for relative in references:
+            path = target / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f'# {path.stem}\n', encoding='utf-8')
+        entry = target / entry_name
+        entry.parent.mkdir(parents=True, exist_ok=True)
+        entry.write_text(
+            '## Agent skills\n\n' + '\n'.join(
+                f'See `{reference}`.' for reference in references
+            ) + '\n',
+            encoding='utf-8',
+        )
+
     def test_start_rejects_removed_platform_option(self):
         with redirect_stderr(StringIO()):
             result = workflow.main([
@@ -234,12 +254,66 @@ class SetupWorkflowTest(unittest.TestCase):
 
         self.assertEqual(result, 2)
 
+    def test_start_requires_matt_context_before_creating_session(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / 'target'
+            target.mkdir()
+            error = StringIO()
+            with (
+                mock.patch.object(workflow, '_create_session') as create_session,
+                redirect_stderr(error),
+            ):
+                self.assertEqual(
+                    workflow.main(['start', '--target', str(target)]), 2
+                )
+
+            create_session.assert_not_called()
+            self.assertIn('explicitly invoke setup-matt-pocock-skills', error.getvalue())
+
+    def test_matt_context_entry_may_be_in_claude(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / 'target'
+            self.write_matt_context(target, 'CLAUDE.md')
+
+            workflow._require_matt_context(target)
+            self.assertFalse((target / 'AGENTS.md').exists())
+
+    def test_matt_context_requires_references_inside_a_real_agent_skills_section(self):
+        malformed_entries = (
+            '```md\n## Agent skills\n```\n\n'
+            'See `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, '
+            'and `docs/agents/domain.md`.\n',
+            '```md\n```oops\n## Agent skills\n'
+            'See `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, '
+            'and `docs/agents/domain.md`.\n```\n',
+            '## Agent skills\n\nNo configured context.\n\n## General\n\n'
+            'See `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, '
+            'and `docs/agents/domain.md`.\n',
+        )
+        for content in malformed_entries:
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as temp_dir:
+                target = Path(temp_dir) / 'target'
+                self.write_matt_context(target)
+                (target / 'AGENTS.md').write_text(content, encoding='utf-8')
+
+                with self.assertRaisesRegex(workflow.WorkflowError, 'setup is incomplete'):
+                    workflow._require_matt_context(target)
+
+    def test_unreadable_agents_does_not_mask_valid_claude_matt_entry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / 'target'
+            self.write_matt_context(target, 'CLAUDE.md')
+            (target / 'AGENTS.md').write_bytes(b'\xff')
+
+            workflow._require_matt_context(target)
+
     def test_start_and_finish_own_session_apply_check_summary_and_cleanup(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             origin = self.make_origin(root)
             target = root / 'target'
             target.mkdir()
+            self.write_matt_context(target)
             local_rule = target / '.agents/rules/40-local-testing.md'
             local_rule.parent.mkdir(parents=True)
             local_rule.write_text(
@@ -306,7 +380,7 @@ class SetupWorkflowTest(unittest.TestCase):
             ownership_path = target / '.agents/smartkit.lock.json'
             self.assertTrue(ownership_path.is_file())
             ownership = json.loads(ownership_path.read_text(encoding='utf-8'))
-            self.assertEqual(set(ownership), {'sources', 'assets', 'seeded'})
+            self.assertEqual(set(ownership), {'sources', 'assets'})
             self.assertEqual(ownership['sources'], [])
             project_rule = next(
                 item
@@ -327,6 +401,7 @@ class SetupWorkflowTest(unittest.TestCase):
             root = Path(temp_dir)
             origin = self.make_origin(root)
             target = root / 'target'
+            self.write_matt_context(target)
             codex = target / '.codex/agents/change-set-verifier.toml'
             cursor = target / '.cursor/agents/change-set-verifier.md'
             copilot = target / '.github/agents/change-set-verifier.agent.md'
@@ -375,6 +450,7 @@ class SetupWorkflowTest(unittest.TestCase):
             origin = self.make_origin(root)
             target = root / 'target'
             target.mkdir()
+            self.write_matt_context(target)
             output = StringIO()
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
                 with redirect_stdout(output):
@@ -401,11 +477,9 @@ class SetupWorkflowTest(unittest.TestCase):
             origin = self.make_origin(root)
             target = root / 'target'
             target.mkdir()
+            self.write_matt_context(target)
             run_git(target, 'init', '--quiet')
-            (target / '.gitignore').write_text(
-                '.agents/\ndocs/agents/\n',
-                encoding='utf-8',
-            )
+            (target / '.gitignore').write_text('.agents/\n', encoding='utf-8')
             session_output = StringIO()
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
                 with redirect_stdout(session_output):
@@ -423,7 +497,6 @@ class SetupWorkflowTest(unittest.TestCase):
             for relative in (
                 '.agents/rules/00-project-tools.md',
                 '.agents/skills/change-set-verification/SKILL.md',
-                'docs/agents/issue-tracker.md',
             ):
                 self.assertTrue((target / relative).is_file())
                 ignored = subprocess.run(
@@ -431,6 +504,13 @@ class SetupWorkflowTest(unittest.TestCase):
                     check=False,
                 )
                 self.assertEqual(ignored.returncode, 0)
+            self.assertTrue((target / 'docs/agents').is_dir())
+            ownership = json.loads(
+                (target / '.agents/smartkit.lock.json').read_text(encoding='utf-8')
+            )
+            self.assertFalse(any(
+                asset['path'].startswith('docs/agents/') for asset in ownership['assets']
+            ))
             self.assertFalse(session.exists())
 
     def test_finish_reports_actionable_undeclared_generated_directory_error(
@@ -441,6 +521,7 @@ class SetupWorkflowTest(unittest.TestCase):
             origin = self.make_origin(root)
             target = root / 'target'
             target.mkdir()
+            self.write_matt_context(target)
             output = StringIO()
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
                 with redirect_stdout(output):
@@ -485,6 +566,7 @@ class SetupWorkflowTest(unittest.TestCase):
             other = root / 'other'
             target.mkdir()
             other.mkdir()
+            self.write_matt_context(target)
             output = StringIO()
             with mock.patch.object(bootstrap, 'CANONICAL_REPOSITORY', origin.as_uri()):
                 with redirect_stdout(output):
@@ -506,13 +588,16 @@ class SetupWorkflowTest(unittest.TestCase):
 
             self.assertIn('session request changed after start', error.getvalue())
             self.assertFalse(session.exists())
-            self.assertEqual(tuple(target.rglob('*')), ())
+            self.assertTrue((target / 'docs/agents/issue-tracker.md').is_file())
+            self.assertTrue((target / 'AGENTS.md').is_file())
+            self.assertFalse((target / '.agents').exists())
             self.assertEqual(tuple(other.rglob('*')), ())
 
     def test_start_failure_cleans_the_owned_session(self):
         session = workflow._create_session()
         target = Path(tempfile.mkdtemp(prefix='setup-workflow-target-'))
         try:
+            self.write_matt_context(target)
             with (
                 mock.patch.object(workflow, '_create_session', return_value=session),
                 mock.patch.object(bootstrap, 'main', return_value=1),
@@ -552,6 +637,7 @@ class SetupWorkflowTest(unittest.TestCase):
             root = Path(temp_dir)
             target = root / 'target'
             target.mkdir()
+            self.write_matt_context(target)
             output = StringIO()
             warning = StringIO()
             missing = (root / 'missing.git').as_uri()

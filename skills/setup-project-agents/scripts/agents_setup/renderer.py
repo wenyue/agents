@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -126,6 +127,10 @@ _MCP_NATIVE = {
     Harness.CURSOR: (PurePosixPath('.cursor/mcp.json'), 'mcpServers'),
     Harness.COPILOT: (PurePosixPath('.vscode/mcp.json'), 'servers'),
 }
+_ENTRY_AGENTS = PurePosixPath('AGENTS.md')
+_PROJECT_RULES_TITLE = 'Project rules'
+_MARKDOWN_HEADING = re.compile(r'^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*$')
+_MARKDOWN_FENCE = re.compile(r'^ {0,3}(`{3,}|~{3,})')
 
 
 def _is_transient(path: Path) -> bool:
@@ -173,6 +178,82 @@ def _render_text(template: str, values: Mapping[str, object]) -> bytes:
         rendered = str(value).lower() if isinstance(value, bool) else str(value)
         template = template.replace('{{' + key + '}}', rendered)
     return template.encode()
+
+
+def _level_two_section_bounds(content: str, title: str) -> tuple[int, int] | None:
+    headings: list[tuple[int, int, str]] = []
+    fence_character: str | None = None
+    fence_length = 0
+    offset = 0
+    for raw_line in content.splitlines(keepends=True):
+        line = raw_line.rstrip('\r\n')
+        fence = _MARKDOWN_FENCE.match(line)
+        if fence is not None:
+            marker = fence.group(1)
+            remainder = line[fence.end():]
+            if fence_character is None:
+                if marker[0] != '`' or '`' not in remainder:
+                    fence_character = marker[0]
+                    fence_length = len(marker)
+            elif (
+                marker[0] == fence_character
+                and len(marker) >= fence_length
+                and not remainder.strip()
+            ):
+                fence_character = None
+                fence_length = 0
+        elif fence_character is None:
+            heading = _MARKDOWN_HEADING.match(line)
+            if heading is not None:
+                level = len(heading.group(1))
+                heading_title = re.sub(
+                    r'[ \t]+#+[ \t]*$', '', heading.group(2)
+                ).strip()
+                headings.append((offset, level, heading_title))
+        offset += len(raw_line)
+    matches = [index for index, item in enumerate(headings) if item[1:] == (2, title)]
+    if len(matches) > 1:
+        raise RenderError(f'project AGENTS.md has duplicate ## {title} sections')
+    if not matches:
+        return None
+    match = matches[0]
+    start = headings[match][0]
+    end = next(
+        (item[0] for item in headings[match + 1:] if item[1] <= 2),
+        len(content),
+    )
+    return start, end
+
+
+def _render_entry_agents(target_root: Path, block: bytes) -> bytes:
+    try:
+        rendered = block.decode('utf-8')
+    except UnicodeDecodeError as error:
+        raise RenderError('entry AGENTS template is not valid UTF-8') from error
+    rendered_bounds = _level_two_section_bounds(rendered, _PROJECT_RULES_TITLE)
+    if rendered_bounds is None or rendered[:rendered_bounds[0]].strip() or rendered[rendered_bounds[1]:].strip():
+        raise RenderError('entry AGENTS template must contain only one Project rules section')
+    try:
+        target = confined_target(target_root, _ENTRY_AGENTS)
+    except ProjectError as error:
+        raise RenderError(str(error)) from error
+    if not target.exists():
+        return rendered.rstrip().encode('utf-8') + b'\n'
+    if target.is_symlink() or not target.is_file():
+        raise RenderError('project AGENTS.md is unsafe')
+    try:
+        current = target.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError) as error:
+        raise RenderError('project AGENTS.md is not readable UTF-8') from error
+    bounds = _level_two_section_bounds(current, _PROJECT_RULES_TITLE)
+    if bounds is None:
+        prefix = current.rstrip()
+        separator = '\n\n' if prefix else ''
+        return (prefix + separator + rendered.rstrip() + '\n').encode('utf-8')
+    start, end = bounds
+    suffix = current[end:]
+    separator = '\n\n' if suffix else '\n'
+    return (current[:start] + rendered.rstrip() + separator + suffix).encode('utf-8')
 
 
 def _quoted(value: str) -> str:
@@ -577,6 +658,7 @@ def render_desired_state(
                 content = _render_text(content.decode(), {
                     'project_rule_rows': _rule_rows(catalog, config, 'project', project_rules),
                 })
+                content = _render_entry_agents(target_root, content)
             _copy_file(files, asset.target, content)
             continue
         if asset.kind == 'wrapper':
@@ -677,6 +759,7 @@ def render_desired_state(
             sources=sources,
             external_sources=external_assets,
             structured_paths=tuple(native_documents),
+            unmanaged_paths=(_ENTRY_AGENTS,),
             previous=previous_ownership,
         )
     except OwnershipError as error:

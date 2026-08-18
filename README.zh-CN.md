@@ -64,13 +64,14 @@ SmartKit 的 Codex Agent adapter 安装到 `.codex/agents/`。该 adapter 仍归
 
 ## 为每个项目执行设置
 
-进入目标仓库后，请 Agent 使用 `setup-project-agents` 完成初始化。初始化流程每次都会配置 Codex、
-Cursor 和 Copilot，并在 `docs/agents/issue-tracker.md`、`docs/agents/triage-labels.md` 和
-`docs/agents/domain.md` 中创建 Matt 仓库上下文。
+进入目标仓库后，请 Agent 使用 `setup-project-agents` 配置 Codex、Cursor 和 Copilot。它会在创建
+setup session 前检查 Matt repository context。如果 context 尚未完成，它会停止并要求维护者显式调用
+`setup-matt-pocock-skills`。该 Skill 会询问使用哪种 issue tracker，并拥有 `docs/agents/` 及其
+`## Agent skills` 入口区块。Matt setup 完成后，再次调用 `setup-project-agents` 继续。
 
-新项目默认使用 `.scratch/` 下的 Local Markdown issue tracker，不受 Git remote 影响。Setup 会保留
-完整的现有 tracker 配置。项目需要将工作发布到远端时，应明确要求使用 GitHub、GitLab 或其他
-tracker。
+两个工作流可以独立升级：project setup 只检查 Matt setup 是否完成；它不复制、不生成 Matt context
+文件，也不记录其所有权。在 `AGENTS.md` 中，它只更新 Project Rules 区块，并保留 Matt 的 Agent
+Skills 区块及其他项目自有内容。
 
 新仓库由一名维护者运行 setup、审查结果并提交受管项目快照。其他开发者通过 clone 或 pull 获取，
 无需逐人运行 setup。只有项目需要采用新版 setup 受管快照契约时，才再次运行

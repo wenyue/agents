@@ -26,8 +26,9 @@ Place repository assets in the areas below and preserve the declared dependency 
   defaults, in `.agents/smartkit.lock.json`.
 - `setup-assets/blueprints/` and `setup-assets/templates/` contain generation and rendering inputs,
   while `setup-assets/catalog/` owns asset selection and project-configuration contracts.
-- `docs/agents/` contains repository context reached from `AGENTS.md`; keep other design material
-  under `docs/` and Simplified-Chinese documentation under `docs/zh-CN/`.
+- `docs/agents/` contains project-owned repository context produced by
+  `setup-matt-pocock-skills` and reached from its `AGENTS.md` or `CLAUDE.md` entry block; keep other
+  design material under `docs/` and Simplified-Chinese documentation under `docs/zh-CN/`.
 - `.agents/rules/` owns this repository's development instructions, and `.agents/plugins/` owns its
   local marketplace configuration. No other `.agents/` content belongs in this repository.
 - `AGENTS.md` is the entry point for discovering `.agents/rules/`; `README.md` is public plugin
@@ -59,10 +60,10 @@ Place repository assets in the areas below and preserve the declared dependency 
   the Python standard library.
 - The setup control plane may read `setup-assets/`; plugin Hooks alone read `runtime/` and
   `policies/`. None of those areas may depend on plugin-discovered Skills.
-- `setup-project-agents` may read the vendored `setup-matt-pocock-skills` instructions and seed
-  templates only to author the Matt repository-context outputs declared by setup. Plugin Hooks must
-  not depend on vendored Skills, and all other vendored Skills remain independent read-only plugin
-  capabilities.
+- `setup-project-agents` may verify the project-owned Matt repository-context prerequisite. It does
+  not read Matt seed templates or author Matt outputs; `setup-matt-pocock-skills` owns that work.
+  Plugin Hooks must not depend on vendored Skills, and all vendored Skills remain independent
+  read-only plugin capabilities.
 - Plugin manifests expose `skills/`, Cursor and Copilot Plugin Agent adapters, Plugin MCP adapters,
   host Hook entry points, and Cursor-native Rule adapters. Codex Plugin Agent adapters enter target
   repositories only through catalog-managed setup. Manifests do not expose `setup-assets/`, private

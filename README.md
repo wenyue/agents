@@ -67,13 +67,16 @@ All three hosts support Windows and Linux.
 
 ## Set up each project
 
-In the target repository, ask the Agent to use `setup-project-agents` to initialize the project.
-Setup always configures Codex, Cursor, and Copilot and also creates the Matt repository context in
-`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and `docs/agents/domain.md`.
+In the target repository, ask the Agent to use `setup-project-agents` to configure Codex, Cursor,
+and Copilot. It checks the Matt repository context before opening a setup session. If that context
+is incomplete, it stops and asks the maintainer to explicitly invoke `setup-matt-pocock-skills`.
+That Skill asks which issue tracker to use and owns `docs/agents/` plus its `## Agent skills` entry
+block. After Matt setup completes, invoke `setup-project-agents` again to continue.
 
-New projects default to a Local Markdown issue tracker under `.scratch/`, regardless of their Git
-remote. Setup preserves a complete existing tracker configuration. Ask explicitly for GitHub,
-GitLab, or another tracker when that project should publish work remotely.
+The workflows can be upgraded independently: project setup only checks that Matt setup completed;
+it does not copy, generate, or record ownership for Matt's context files. In `AGENTS.md`, it updates
+only its Project Rules section and preserves Matt's Agent Skills section and other project-owned
+content.
 
 One maintainer runs setup for a new repository, reviews the result, and commits the managed project
 snapshot. Other developers receive it through clone or pull and do not run setup individually. Run

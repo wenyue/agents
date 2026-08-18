@@ -75,10 +75,13 @@ class PluginManifestTest(unittest.TestCase):
         ).read_text(encoding='utf-8')
         entry = (REPO_ROOT / 'AGENTS.md').read_text(encoding='utf-8')
         prefix, suffix = template.split('{{project_rule_rows}}')
+        start = entry.index('## Project rules')
+        end = entry.index('## Agent skills', start)
+        project_rules = entry[start:end].rstrip() + '\n'
 
-        self.assertTrue(entry.startswith(prefix))
-        self.assertTrue(entry.endswith(suffix))
-        rule_rows = entry[len(prefix) : len(entry) - len(suffix)]
+        self.assertTrue(project_rules.startswith(prefix))
+        self.assertTrue(project_rules.endswith(suffix))
+        rule_rows = project_rules[len(prefix) : len(project_rules) - len(suffix)]
         self.assertRegex(rule_rows, r'^(?:\|.*\|\n?)+$')
 
     def test_repository_local_rules_use_only_the_project_numbering_contract(self):

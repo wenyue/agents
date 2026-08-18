@@ -47,7 +47,7 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     | {f'LPT{number}' for number in range(1, 10)}
 )
 _ASSET_FIELDS = frozenset({
-    'id', 'kind', 'source', 'skill', 'target', 'harnesses', 'mode',
+    'id', 'kind', 'source', 'skill', 'target', 'harnesses',
     'control_plane', 'metadata',
 })
 _CATALOG_FIELDS = frozenset({'plugin', 'assets'})
@@ -69,17 +69,6 @@ _CURSOR_AGENT_FIELDS = frozenset({'model', 'readonly'})
 _COPILOT_AGENT_FIELDS = frozenset({'model', 'disable_model_invocation'})
 _ENVIRONMENT_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 _RUNTIME_VERSION = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+$')
-_MATT_BLUEPRINTS = {
-    PurePosixPath('docs/agents/issue-tracker.md'): PurePosixPath(
-        'skills/setup-matt-pocock-skills/issue-tracker-local.md'
-    ),
-    PurePosixPath('docs/agents/triage-labels.md'): PurePosixPath(
-        'skills/setup-matt-pocock-skills/triage-labels.md'
-    ),
-    PurePosixPath('docs/agents/domain.md'): PurePosixPath(
-        'skills/setup-matt-pocock-skills/domain.md'
-    ),
-}
 
 
 def safe_relative(value: str, label: str) -> PurePosixPath:
@@ -473,7 +462,6 @@ def parse_asset(
         raise ContractError('asset target must be a relative path')
     target = safe_relative(target_value, 'asset target') if target_value is not None else None
     harnesses = _harnesses(asset.get('harnesses'), 'asset harnesses', tuple(Harness))
-    mode = _name(asset.get('mode', 'copy'), 'asset mode')
     control_plane = asset.get('control_plane', False)
     if type(control_plane) is not bool:
         raise ContractError('asset control_plane must be a boolean')
@@ -489,14 +477,13 @@ def parse_asset(
             or source != PurePosixPath('agents/codex')
             or target != PurePosixPath('.codex/agents')
             or harnesses != (Harness.CODEX,)
-            or mode != 'copy'
         ):
             raise ContractError(
                 'a plugin Agent asset must copy agents/codex to .codex/agents '
                 'for the codex harness'
             )
     return AssetSpec(
-        asset_id, kind, source, target, harnesses, mode, control_plane,
+        asset_id, kind, source, target, harnesses, control_plane,
         _metadata(asset.get('metadata'), kind, target), skill_id,
     )
 
@@ -564,12 +551,6 @@ def load_catalog(source_root: Path) -> Catalog:
         if asset.source.parts[:1] == ('setup-assets',):
             continue
         if asset.kind == 'agent':
-            continue
-        if (
-            asset.kind == 'blueprint'
-            and asset.target is not None
-            and _MATT_BLUEPRINTS.get(asset.target) == asset.source
-        ):
             continue
         raise ContractError(
             f'catalog asset source is outside an allowed ownership root: {asset.source}'
