@@ -1,0 +1,3 @@
+interface:
+  display_name: "Write Code Comment"
+  short_description: "Explain non-obvious intent in code comments"

@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +24,34 @@ def load_case(case_id):
     return json.loads((FIXTURE_ROOT / case_id / "case.json").read_text(encoding="utf-8"))
 
 
+def _is_python_3(command):
+    try:
+        result = subprocess.run(
+            [
+                command,
+                "-c",
+                "import sys; raise SystemExit(sys.version_info.major != 3)",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except OSError:
+        return False
+    return result.returncode == 0
+
+
+def resolve_python_command():
+    for command in ("python3", "python"):
+        if _is_python_3(command):
+            return command
+    raise RuntimeError("fixture checks require a Python 3 interpreter")
+
+
 def run_entry(root, argv):
+    if argv and argv[0] == "python3":
+        argv = [resolve_python_command(), *argv[1:]]
     return subprocess.run(
         argv,
         cwd=root,
@@ -35,6 +63,31 @@ def run_entry(root, argv):
 
 
 class WriteRulesAndSkillsFixtureTest(unittest.TestCase):
+    def test_fixture_python_entry_prefers_python3_then_verified_python(self):
+        with mock.patch(
+            f"{__name__}._is_python_3",
+            side_effect=[False, True],
+        ) as is_python_3:
+            self.assertEqual(resolve_python_command(), "python")
+
+        self.assertEqual(
+            [call.args[0] for call in is_python_3.call_args_list],
+            ["python3", "python"],
+        )
+
+    def test_fixture_python_entry_resolves_to_python_3(self):
+        command = resolve_python_command()
+        result = subprocess.run(
+            [command, "-c", "import sys; print(sys.version_info.major)"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.strip(), "3")
+
     def test_fixture_inventory_and_structured_contract(self):
         self.assertEqual(
             {path.name for path in FIXTURE_ROOT.iterdir() if path.is_dir()},

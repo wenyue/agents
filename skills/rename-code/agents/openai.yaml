@@ -1,0 +1,3 @@
+interface:
+  display_name: "Rename Code"
+  short_description: "Rename code and update every real reference"

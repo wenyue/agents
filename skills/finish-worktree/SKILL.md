@@ -1,33 +1,39 @@
 ---
 name: finish-worktree
-description: Use when implementation checkpoints in a Task Worktree are ready for final review, consolidation into one Task Commit, and a local, pull-request, retained, review, or discard outcome.
+description: Finish a standalone Task Worktree or an accepted Ticket Batch. Verify formal-review evidence, consolidate checkpoints into Task Commits, stage per-ticket commits on a Batch Worktree, and deliver or retain the exact reviewed history safely.
 ---
 
 # Finish Worktree
 
-Complete one Task Worktree lifecycle while preserving checkpoint recovery and pre-existing base
-state. Own target synchronization, final review, Task Commit consolidation, outcome selection,
-authorization, execution, verification, recovery, and lifecycle cleanup; leave implementation and
-initial worktree setup to their owning workflows.
+Complete a standalone Task Worktree or Ticket Batch lifecycle while preserving checkpoint recovery
+and pre-existing base state. Own review-evidence validation, Task Commit consolidation, batch
+staging, outcome selection, authorization, delivery, verification, recovery, and lifecycle cleanup;
+leave implementation, formal review, and initial worktree setup to their owning workflows.
 
 ## Establish Completion Context
 
-1. Require a Task Worktree qualified by `create-worktree`, on one named task branch with a
-   non-detached `HEAD`. Confirm implementation, its initial review, and relevant verification are
-   complete.
-2. Require a clean worktree whose task work is entirely represented by Checkpoint Commits. Return
-   staged, unstaged, or untracked task work to implementation; stop when any path has ambiguous
-   ownership.
-3. Discover the intended base checkout and branch, Git common directory, creation owner, and the
-   candidate delivery target for each permitted outcome. Record the task `HEAD`, merge base, complete
-   checkpoint range and paths, target state, upstream state, and publication state.
-4. Stop before consolidation when any Checkpoint Commit is already published. Preserve published
-   history and route later review fixes through the repository's pull-request update workflow.
-5. Snapshot the base branch, `HEAD`, index tree, staged changes, unstaged changes, and untracked
-   paths before offering an outcome.
+1. Require worktrees qualified by `create-worktree`, each on one named branch with a non-detached
+   `HEAD`. Select exactly one accepted mode: finish one standalone task, stage one completed ticket
+   on its Batch Worktree, or finish one fully staged Ticket Batch.
+2. Require every selected worktree to be clean and its work entirely represented by commits. A
+   standalone task or staged ticket supplies Checkpoint Commits; a finished batch supplies an
+   ordered per-ticket Task Commit range and any batch-review checkpoints. Stop when a path or commit
+   has ambiguous ownership.
+3. Discover the intended base checkout and branch, Git common directory, every creation owner, and
+   the exact target for the selected mode. Record the worktree `HEAD`, merge base, complete commit
+   range and paths, target state, upstream state, ticket mapping, and publication state. Record the
+   owning implementation workflow's supplied review and verification evidence, including its claimed
+   fixed point, commit, tree, acceptance sources, result, and findings. Ticket staging supplies
+   self-review evidence instead because it does not deliver accepted behavior.
+4. Stop before rewriting when a selected Checkpoint Commit is already published. Preserve published
+   history and route later review fixes through the repository's pull-request update workflow. A
+   Ticket Batch may contain unpublished staged Task Commits but no published batch commit.
+5. Snapshot every affected checkout's branch, `HEAD`, index tree, staged changes, unstaged changes,
+   and untracked paths before offering or executing a result.
 
-Completion criterion: one unpublished, clean Task Worktree, its complete checkpoint history, every
-applicable outcome target, and one unchanged base checkout are proven from current evidence.
+Completion criterion: the selected standalone or batch mode, its complete owned history, every
+applicable target, supplied review evidence, and unchanged unrelated checkout state are identified
+from current evidence.
 
 ## Select One Outcome
 
@@ -46,6 +52,11 @@ For discard, read and execute only `references/discard.md`, verify its result, a
 skip target finalization and Task Commit checks below. After discard verification succeeds, delete
 each workflow-created recovery ref with an expected-old-value check. A cleanup failure retains the
 remaining refs and makes the outcome fail.
+An accepted `implement-tickets` run selects one of two internal batch outcomes instead of the four
+standalone outcomes. **Stage ticket in batch** appends one self-reviewed Task Commit to the Batch
+Worktree without delivering the ticket. **Finish ticket batch** locally delivers the reviewed
+ordered range while preserving every per-ticket Task Commit. These outcomes authorize no remote
+action.
 
 The selected outcome determines the exact delivery target. Resolve it before finalization, then
 read only the matching procedure for outcome-specific execution:
@@ -56,87 +67,100 @@ read only the matching procedure for outcome-specific execution:
 - return for review: [`references/return-for-review.md`](references/return-for-review.md)
 - explicit discard: [`references/discard.md`](references/discard.md)
 
-## Finalize One Task Commit
+## Finalize Reviewed History
 
-1. Refresh the selected target through the repository's authorized policy and record its exact
-   commit. Before changing the task branch, test whether the target already contains the complete
-   accepted task result through current ancestry or equivalent-change evidence plus the task's
-   required verification. When that proof passes, enter **Already Delivered** and skip target
-   synchronization, final consolidation, and Task Commit creation. An empty or inconclusive diff is
-   not proof; continue this workflow unless the accepted behavior is verified on the target.
-2. When the target is not an ancestor of the task `HEAD`, merge it into the task branch as a
-   Checkpoint Commit so each conflict is resolved once against the task's net result.
-3. On conflict, inspect the accepted task source, target changes, and conflicting paths before
-   choosing a resolver. When the evidence permits one behavior, invoke `resolving-merge-conflicts`
-   to resolve and complete the merge. When multiple behaviors remain reasonable, abort the merge,
-   restore the pre-merge task state, and ask the user to decide.
-4. Run affected verification and `code-review` against the synchronized target and clean task
-   `HEAD`. Commit each review-fix round separately as a Checkpoint Commit associated with its
-   findings, without bypassing commit hooks. Repeat verification and review until no blocking
-   finding remains. A changed target invalidates this evidence and returns to step 1.
-5. Derive the Task Commit message from the accepted issue, Spec, Ticket, or conversation and the
-   repository's convention. Ask only when those sources permit materially different meanings.
-6. Choose a unique, absent local recovery ref name, then run `scripts/consolidate_task_commit.py`
-   with the exact target commit, message file, and recovery ref name. Before rewriting history, the
-   script atomically creates that ref at the current checkpoint `HEAD`, uses the repository's normal
-   commit workflow, and atomically moves the task branch from its recorded old `HEAD` to one Task
-   Commit.
-7. Prove the Task Commit has the selected target as its sole parent, its tree is byte-identical to
-   the reviewed checkpoint `HEAD`, commit hooks succeeded, and the Task Worktree is clean. A target
-   movement before the selected outcome completes returns to step 1 and uses a new recovery ref.
+1. Refresh the selected target and record its exact commit. For a standalone task, detect **Already
+   Delivered** through ancestry or equivalent-change evidence plus required verification. For ticket
+   staging, require the Batch Worktree `HEAD` to equal the ticket's recorded base. For batch finish,
+   require the delivery target to equal the immutable batch base; target movement stops the batch.
+2. A standalone task may merge a moved target into its task branch as a Checkpoint Commit, but that
+   mutation invalidates its review evidence. Stop after synchronization and return the changed task
+   to its implementation workflow for verification and formal review. Batch staging and finish
+   permit no target merge or rebase: their recorded batch ancestry must remain linear so local
+   delivery can preserve the ordered per-ticket Task Commits by fast-forward.
+3. On an allowed standalone conflict, inspect the accepted source, target changes, and conflicting
+   paths before choosing a resolver. Invoke `resolving-merge-conflicts` only when evidence permits
+   one behavior; otherwise abort, restore the pre-merge task state, and ask the user to decide.
+   After a resolved conflict, retain the synchronization checkpoint and return to the implementation
+   workflow for verification and formal review. A batch conflict or ancestry mismatch stops with
+   all batch evidence retained.
+4. Never invoke formal `code-review`. For standalone delivery, require review evidence whose fixed
+   point equals the selected target, whose reviewed commit and tree equal the clean task `HEAD`,
+   whose acceptance sources match the accepted task, and whose report has no blocking finding. For
+   ticket staging, require focused and repository verification plus the worker's self-review. For
+   batch finish, require full verification and whole-batch review evidence from the immutable batch
+   base through batch `HEAD`, using the complete Spec and every frozen ticket, with no blocking
+   finding; both results must identify the current batch `HEAD` and tree. Missing, stale, or
+   mismatched evidence returns to the owning implementation workflow.
+5. Derive each Task Commit message from its accepted source and repository convention. One staged
+   ticket uses its ticket; standalone work uses its issue, Spec, Ticket, or conversation; optional
+   whole-batch review fixes use the Ticket Batch and findings. Ask only when those sources permit
+   materially different meanings.
+6. For standalone work or ticket staging, create a unique recovery ref and run
+   `scripts/consolidate_task_commit.py` against the exact selected target. During batch finish,
+   preserve the ordered per-ticket Task Commits; only review-fix Checkpoint Commits, when present,
+   are consolidated into one optional Batch Review Commit on top of that range.
+7. Prove every created Task Commit has the expected sole parent, its tree matches the corresponding
+   reviewed or self-reviewed checkpoint `HEAD`, commit hooks succeeded, and each worktree is clean.
+   Consolidation may replace reviewed checkpoint commit identities only through this byte-identical
+   tree proof; the review and verification remain current for the new Task or Batch Review Commit
+   because its tree is unchanged. Recheck the immutable batch base and ordered ticket mapping before
+   batch delivery.
 
-Completion criterion: one clean, reviewed, verified, unpublished Task Commit represents the entire
-task and every recovery ref needed to restore its Checkpoint Commits remains available, or the
-selected target is proven Already Delivered without creating an empty commit.
+Completion criterion: standalone work has one Task Commit whose tree matches current formal-review
+evidence or Already Delivered proof; ticket staging has one verified per-ticket Task Commit appended
+to the Batch Worktree with recovery retained; or batch finish has one ordered range matching current
+whole-batch review evidence that preserves every per-ticket Task Commit and contains at most one
+Batch Review Commit.
 
 ## Complete Already Delivered
 
-Use the already-selected outcome without manufacturing a Task Commit:
+Complete this terminal branch without creating a Task Commit:
 
-- **Merge locally:** Verify the local base still points to the proven target, treat integration as
-  complete, and perform only cleanup authorized by the merge-local outcome.
-- **Create a pull request:** Report that the resolved pull-request base has no task diff, do not push
-  or create an empty pull request, and retain the task branch and worktree for follow-up.
-- **Keep for later:** Preserve the task branch and worktree exactly as recorded.
-- **Return for review:** Report that the base has no task diff, leave its working tree and index
-  unchanged, and retain the task branch and worktree as review evidence.
+- Apply the matching standalone procedure's **Already Delivered** exit without manufacturing a
+  Task Commit.
 
-Recheck the proven target immediately before completion. A moved target invalidates Already
-Delivered and returns to finalization. Report the proof, skipped mutations, preserved task state,
-and any authorized cleanup. After the outcome is verified, delete each workflow-created recovery
-ref with an expected-old-value check; a cleanup failure retains the remaining refs and makes the
-outcome fail. Then stop without entering Task Commit execution below.
+Recheck the proven target immediately before completion; a moved target invalidates the proof and
+returns to finalization. After the procedure verifies its outcome, delete each workflow-created
+recovery ref with an expected-old-value check. A cleanup failure retains the remaining refs and
+makes the outcome fail. Then stop without entering Task Commit execution below.
 
 ## Execute and Verify
 
-1. Recheck the Task Commit, selected target, base snapshot, and relevant remote state immediately
-   before the selected procedure mutates state. Re-finalize when the target moved; request direction
-   when the outcome is no longer safe or unambiguous.
-2. Execute only the selected procedure and its required verification. The selection authorizes its
-   named operations and exact resolved targets, not broader repository, filesystem, or remote work.
-3. Verify the resulting branch, worktree, checkout, index, local-change, and remote state against
-   both the selected outcome and the original snapshots.
-4. After successful outcome verification, delete each workflow-created recovery ref with an
-   expected-old-value check. Preserve every recovery ref on failure.
+1. For a standalone outcome, execute only its selected procedure and outcome-specific final
+   rechecks, mutations, verification, recovery, and handoff.
+2. For ticket staging, recheck the finalized commit, base, worktrees, mapping, evidence, and
+   recovery ref; fast-forward the Batch Worktree; prove it advanced by exactly the tree-matching
+   Task Commit; then perform only owner-authorized ticket cleanup, transfer its recovery ref to the
+   batch, return the Task Commit, and leave the ticket claimed.
+3. For batch finish, recheck the immutable base, reviewed `HEAD` and tree, mapping, evidence,
+   unchanged target, recovery refs, and snapshots. Stop on changed evidence or overlapping
+   base-local work; otherwise fast-forward the target without squashing or a merge commit, run full
+   target verification, prove the reviewed ordered range and unrelated local state, return the
+   ticket list, and perform only owner-authorized cleanup.
+4. After standalone or batch delivery succeeds, delete each workflow-created recovery ref with an
+   expected-old-value check and perform only authorized cleanup. Ticket staging retains and reports
+   its recovery ref; preserve every ref and owned worktree on failure.
 
-Completion criterion: the selected outcome and recovery cleanup are proven complete, or all task
-and recovery evidence is retained with the exact failed operation and next decision reported.
+Completion criterion: the standalone outcome, ticket staging handoff, or reviewed batch delivery is
+proven complete; otherwise all task, batch, tracker, and recovery evidence is retained with the
+exact failed operation and next decision reported.
 
 ## Safety and Recovery
 
-- Preserve all pre-existing base-local changes. Resolve a shared pathname only when the result is
-  unambiguous, task-scoped, and verifiable.
 - Create recovery data before rewriting task history or changing base working files. Restore only
-  state owned by a failed operation; retain the Task Worktree and recovery data when verification
-  fails.
-- Use no pull, stash, hard reset, clean, force push, or merge commit on the base branch. Rewrite only
-  an unpublished task branch through the consolidation workflow.
-- Delegate cleanup of a host-created worktree to that host. Remove a Git-created worktree or task
-  branch only when the selected procedure permits cleanup and exact ownership is proven.
+  state owned by a failed operation; retain every Task or Batch Worktree and recovery ref when its
+  verification or handoff fails.
+- Use no pull, stash, hard reset, clean, force push, rebase, or merge commit on a base or batch
+  branch. Rewrite only unpublished checkpoint history through the consolidation workflow; preserve
+  staged per-ticket Task Commits while validating and delivering the reviewed batch.
+- Delegate cleanup of a host-created worktree to that host. Remove a Git-created ticket or Batch
+  Worktree and branch only when its selected procedure permits cleanup and exact ownership is proven.
 
 ## Result
 
-Report the selected outcome and authorization, synchronized target, checkpoint range, review and
-verification evidence, Task Commit and message source, conflict decisions, base mutations,
-preserved local state, recovery refs, remote result, and every retained or removed worktree and
-branch.
+Report the applicable fields for the selected mode: outcome and authorization; standalone or
+immutable batch base; checkpoint and ordered Task Commit ranges; ticket mapping; formal-review or
+self-review evidence and verification; optional Batch Review Commit; conflict decisions; target
+mutations; tracker handoff; preserved local state; recovery refs; remote result; and retained or
+removed Task and Batch Worktrees and branches.

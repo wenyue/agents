@@ -15,10 +15,15 @@ files listed above.
 
 ## Agent skills
 
-Load the context required by the current task or Skill.
+### Issue tracker
 
-| Read when | Context |
-| --- | --- |
-| Working with tracked work, specifications, tickets, or repository navigation | `docs/agents/issue-tracker.md` |
-| Assigning or interpreting Matt triage roles | `docs/agents/triage-labels.md` |
-| Using domain language or recording architecture decisions | `docs/agents/domain.md` |
+Issues and specifications are tracked in this repository's GitHub Issues. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five default canonical triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repository uses a single-context domain documentation layout. See `docs/agents/domain.md`.

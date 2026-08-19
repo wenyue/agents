@@ -1,17 +1,19 @@
 # 返回供审查
 
-在不推进 base 分支或改变其 index 的情况下，将 Task Commit 的净结果放入 base working tree。
+在不推进 base 分支或改变其 index 的情况下，将 Task Commit 的净结果放入 base working tree。当
+task 为 **Already Delivered** 时，重新检查 base 仍没有 task diff，保持其 working tree 和 index
+不变，保留 task branch 和 worktree 作为 review evidence，报告 proof 和保留的 state，然后停止。
 
 1. 记录 base `HEAD`、index tree、staged 变更、unstaged 变更和 untracked 路径。在仓库外备份每个
    任务路径，并在 manifest 中记录原始文件类型和原本不存在的路径。
 2. 从 Task Commit 的唯一 parent 与其 tree 之间的完整 diff 推导任务结果。对于没有 base 本地变更的任务路径，
-   先检查待传输内容，再通过不改变 index 的方式只更新 working tree。
+   先检查 transfer，再通过不改变 index 的方式只更新 working tree。
 3. 对重叠的文本路径，在临时文件中以 merge-base 内容、当前 base working file 和任务结果执行三方
    合并。将相同路径名视为可合并证据，而不是冲突本身。
 4. 只解决无歧义、属于任务范围且可验证的合并。遇到 delete/modify 冲突、复杂 rename、二进制冲突、
-   互斥行为、归属不明的生成输出或任何无法验证的结果时停止。只有项目提供确定性 generator 且其变更
+   互斥行为、有歧义的 generated output 或任何无法验证的结果时停止。只有项目提供确定性 generator 且其变更
    已被单独授权时，才从源头重新生成文件。
-5. 在 base checkout 中只运行已知不会修改文件的检查。没有足够的检查可用时，报告这一限制，不得
+5. 在 base checkout 中只运行已知 non-mutating checks。没有足够的检查可用时，报告这一限制，不得
    改为运行 formatter、generator 或 fixer。
 6. 证明已记录的 base `HEAD` 和 index tree 未改变、原有 staged 状态得到保留、合并后的文件同时包含
    兼容的本地工作和任务工作，并且返回的任务变更是 unstaged 或 untracked。

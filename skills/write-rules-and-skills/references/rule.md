@@ -41,8 +41,8 @@ Select only the highest-risk relevant cases:
 - an affected threshold, range, overlap, exception, or owner boundary; and
 - a precedence or conflict combination when another Rule can change the result.
 
-With `ordinary-artifact.md`, give the loaded Rule and task to an isolated Acceptance Runner at the
-real policy seam. Require an observable decision or action; explaining what the Rule says is not
-application. With `generation-contract.md`, the fresh reviewer statically verifies that the
-guidance obtains the required evidence and chooses one action or stop for the same input classes.
-Do not start a Runner or create a target for contract Acceptance.
+With `ordinary-artifact.md`, apply the common Acceptance Runner protocol at the real policy seam and
+require an observable decision or action; explaining what the Rule says is not application. With
+`generation-contract.md`, the fresh reviewer statically verifies that the guidance obtains the
+required evidence and chooses one action or stop for the same input classes. Do not start a Runner
+or create a target for contract Acceptance.

@@ -36,6 +36,11 @@ MATT_PROMOTED = {
     'writing-for-agents': 'skills/productivity/writing-for-agents',
 }
 
+EXPLICIT_MODEL_INVOKED_CUSTOM_SKILLS = {
+    'implement-tickets',
+    'setup-project-agents',
+}
+
 
 def load_json(relative_path: str) -> dict:
     value = json.loads((REPO_ROOT / relative_path).read_text(encoding='utf-8'))
@@ -125,7 +130,8 @@ class PluginManifestTest(unittest.TestCase):
             )
         for name in (
             'create-worktree', 'refactor-code', 'rename-code', 'diagnose-agent-session',
-            'finish-worktree', 'write-code-comment', 'write-rules-and-skills',
+            'finish-worktree', 'implement-tickets', 'write-code-comment',
+            'write-rules-and-skills',
         ):
             source_paths.update(
                 path.relative_to(REPO_ROOT)
@@ -168,10 +174,14 @@ class PluginManifestTest(unittest.TestCase):
             },
             {
                 'SKILL.md',
+                'agents/openai.yaml',
                 'references/ordinary-artifact.md',
                 'references/generation-contract.md',
                 'references/rule.md',
                 'references/skill.md',
+                'references/pruning-agent.md',
+                'references/semantic-review.md',
+                'references/acceptance-runner.md',
             },
         )
 
@@ -187,6 +197,9 @@ class PluginManifestTest(unittest.TestCase):
                 'references/generation-contract.md',
                 'references/rule.md',
                 'references/skill.md',
+                'references/pruning-agent.md',
+                'references/semantic-review.md',
+                'references/acceptance-runner.md',
             },
         )
         for relative_path in reference_links:
@@ -200,6 +213,36 @@ class PluginManifestTest(unittest.TestCase):
             },
             custom,
         )
+
+    def test_custom_skills_keep_invocation_metadata_aligned(self):
+        custom = load_json('skills/registry.json')['custom']
+        for item in custom:
+            with self.subTest(skill=item['id']):
+                skill_root = REPO_ROOT / 'skills' / item['path']
+                skill = (skill_root / 'SKILL.md').read_text(encoding='utf-8')
+                frontmatter = skill.split('---', 2)[1]
+                metadata_path = skill_root / 'agents' / 'openai.yaml'
+
+                self.assertTrue(metadata_path.is_file())
+                metadata = metadata_path.read_text(encoding='utf-8')
+                self.assertRegex(metadata, r'(?m)^interface:\s*$')
+                self.assertRegex(metadata, r'(?m)^\s+display_name:\s+.+$')
+                self.assertRegex(metadata, r'(?m)^\s+short_description:\s+.+$')
+                self.assertNotIn('disable-model-invocation: false', frontmatter)
+
+                if item['path'] in EXPLICIT_MODEL_INVOKED_CUSTOM_SKILLS:
+                    self.assertIn('allow_implicit_invocation: true', metadata)
+
+                model_invocation_disabled = (
+                    'disable-model-invocation: true' in frontmatter
+                )
+                implicit_invocation_allowed = (
+                    'allow_implicit_invocation: false' not in metadata
+                )
+                self.assertEqual(
+                    model_invocation_disabled,
+                    not implicit_invocation_allowed,
+                )
 
     def test_repository_root_is_the_only_plugin_root(self):
         version = (REPO_ROOT / 'VERSION').read_text(encoding='utf-8').strip()
@@ -282,7 +325,7 @@ class PluginManifestTest(unittest.TestCase):
         }
         custom = {
             'setup-project-agents', 'create-worktree', 'refactor-code', 'rename-code',
-            'diagnose-agent-session', 'finish-worktree', 'write-code-comment',
+            'diagnose-agent-session', 'finish-worktree', 'implement-tickets', 'write-code-comment',
             'write-rules-and-skills',
         }
         self.assertEqual(plugin_skills, { *custom, *MATT_PROMOTED})

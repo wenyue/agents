@@ -2,13 +2,15 @@
 
 SmartKit permits an Agent to create recoverable Checkpoint Commits only in a Task Worktree whose
 isolation and task ownership were proven by `create-worktree`; other checkouts still require
-separate commit authorization. After implementation and review fixes, `finish-worktree` first
-synchronizes the delivery target, resolves only evidence-determined conflicts, and repeats
-verification and review before consolidating the entire unpublished checkpoint history into one
-hook-validated Task Commit with an identical tree. This deliberately separates recoverable internal
-history from concise delivery history without force-rewriting published review commits. When the
-selected target is proven to contain the complete accepted task result, the lifecycle instead ends
-as Already Delivered and creates no empty Task Commit.
+separate commit authorization. After the owning implementation workflow completes review and review
+fixes, `finish-worktree` verifies that the review evidence matches the exact target, reviewed tree,
+and acceptance source before consolidating the entire unpublished checkpoint history into one
+hook-validated Task Commit with an identical tree. When target synchronization changes the reviewed
+content, `finish-worktree` returns the task to its implementation workflow for verification and
+review instead of delivering it. This deliberately separates recoverable internal history from
+concise delivery history without duplicating review or force-rewriting published review commits.
+When the selected target is proven to contain the complete accepted task result, the lifecycle
+instead ends as Already Delivered and creates no empty Task Commit.
 
 ## Consequences
 

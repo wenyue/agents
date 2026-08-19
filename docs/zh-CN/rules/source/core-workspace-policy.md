@@ -22,9 +22,16 @@
   checkout 既有状态时，应用 `create-worktree`。由其负责 linked-worktree 的选择、就绪和 Task
   Worktree 资格认定。
 - 在合格的 Task Worktree 中，实施工作流可以无需单独授权，通过仓库正常 commit hook 创建仅含任务
-  改动的 Checkpoint Commit。
-- 实施及其初次 review 完成时，应用 `finish-worktree`。由其负责目标同步、最终 review、收束为一个
-  Task Commit、结果选择、准确授权、执行、验证、恢复和生命周期清理。
+  改动的 Checkpoint Commit。在合格的 Batch Worktree 中，其 controller 可以通过相同 hooks 追加
+  frozen tickets 的 Task Commits，并创建 batch-review Checkpoint Commits。
+- implementation workflow 准备收束或交付时，应用 `finish-worktree`。由 implementation workflow
+  负责正式 review；交付前由 `finish-worktree` 验证其 evidence 与精确 fixed point、reviewed tree
+  和 acceptance sources 匹配，记录了针对同一 reviewed tree 的 successful verification，并且不
+  包含 blocking finding。对于单项任务，由 `finish-worktree` 负责 target synchronization、收束为
+  一个 Task Commit、结果选择、准确授权、执行、验证、恢复和生命周期清理。对于已接受的 Ticket
+  Batch，由其将每个 ticket 的 Task Commit 暂存到 Batch Worktree；所有 tickets 暂存完成后，再由其
+  交付已经 review 的有序 range、恢复并清理。target synchronization 改变 reviewed content 时，
+  交回 implementation workflow review，而不是交付。
 
 ## 远程操作
 

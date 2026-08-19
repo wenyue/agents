@@ -116,6 +116,7 @@ class SetupWorkflowTest(unittest.TestCase):
                 stderr=subprocess.PIPE,
                 text=True,
                 env=environment,
+                cwd=executable_root,
             )
 
             self.assertEqual(completed.returncode, 2)

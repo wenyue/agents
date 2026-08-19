@@ -1,6 +1,7 @@
 # 保留备用
 
-保留已完成的 Task Commit，不进行集成、发布或清理。
+保留已完成的 Task Commit，不进行集成、发布或清理。当 task 为 **Already Delivered** 时，重新检查已
+证明 target，完全按记录保留 task branch 和 worktree，报告 proof 和保留的 state，然后停止。
 
 1. 不改变任何分支、checkout、index、worktree、文件系统或远程状态。
 2. 再次确认任务分支指向已记录的 Task Commit，且 worktree 仍然干净。

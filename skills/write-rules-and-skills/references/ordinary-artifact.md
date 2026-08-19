@@ -43,28 +43,14 @@ separate accepted evidence requires an explicit policy.
 
 ## Accept representative use
 
-Use the real policy-application seam or public job entry where available. The selected `rule.md` or
-`skill.md` supplies the type-specific cases.
-
-Give the selected cases to one isolated Acceptance Runner. Start every case from its declared frozen
-input and do not let one case's result become another case's input. Expose the candidate as runtime
-would, the representative tasks, and only their required context or tools. Keep expected results,
-the semantic ledger, diff, author reasoning, findings, and prior run output reviewer-only. The
-Runner must apply the artifact; an academic explanation or the reviewer's paper walkthrough is not
-Acceptance evidence.
+The selected `rule.md` or `skill.md` supplies the type-specific cases. Apply the common Acceptance
+Runner protocol selected by the parent Skill.
 
 - For a Project-local artifact, check its repository claims, owner boundary, real entry or
   enforcement point, and relevant local cases.
 - For a Shared artifact, use one representative traceable context plus direct evidence that the
   policy or job is independent of project-local facts. Add a second context only when that
   portability claim materially affects acceptance and the direct evidence cannot establish it.
-- Run owned deterministic resources through their public entry points. Report supported execution
-  that the environment cannot run as untested. A controlled walkthrough may explain an untested
-  executable surface but cannot replace isolated application of the Ordinary Artifact.
-
-Run each case once. Repeat an inconclusive or unstable case at most once with a new isolated Runner;
-divergent outcomes fail. When Readiness required a Behavior Control, compare its raw result with the
-matching candidate run, but do not expose either result to the other Runner.
 
 Acceptance passes only when the artifact keeps one meaning across its claimed scope, produces one
 supported result for each selected case, and requires no invented project fact, action, or exit.

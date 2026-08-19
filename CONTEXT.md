@@ -181,6 +181,16 @@ _Avoid_: Full broken candidate, string assertion
 
 ### Worktree Lifecycle
 
+**Ticket Batch**:
+A frozen dependency-ordered set of implementation tickets whose per-ticket Task Commits are
+accumulated, reviewed, and delivered as one scope.
+_Avoid_: Ticket queue, combined task, batch commit
+
+**Batch Worktree**:
+A named isolated linked worktree whose branch accumulates the ordered Task Commits for one Ticket
+Batch while the delivery target remains unchanged.
+_Avoid_: Ticket worktree, base checkout, shared worktree
+
 **Task Worktree**:
 A named, isolated linked worktree whose branch and local state belong exclusively to one accepted
 implementation task.
@@ -192,9 +202,14 @@ is not part of the promised final history.
 _Avoid_: Final commit, Task Commit
 
 **Task Commit**:
-The single delivery commit produced after all implementation and review-fix Checkpoint Commits for
-one completed, reviewed, and verified task have been consolidated.
+A single delivery-history commit that consolidates one accepted task's Checkpoint Commits. In a
+Ticket Batch it remains staged until the whole batch passes review and verification.
 _Avoid_: Checkpoint Commit, squash commit
+
+**Batch Review Commit**:
+The optional final Task Commit that consolidates fixes produced by the whole-batch review without
+rewriting the preceding per-ticket Task Commits.
+_Avoid_: Ticket Task Commit, amended ticket commit, review checkpoint
 
 **Already Delivered**:
 A terminal state in which the selected target is proven to contain the complete accepted task

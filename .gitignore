@@ -5,6 +5,7 @@ Thumbs.db
 .idea/
 .vscode/
 .superpowers/
+.scratch/
 .worktrees/
 *.log
 __pycache__/

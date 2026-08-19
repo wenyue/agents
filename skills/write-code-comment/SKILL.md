@@ -5,8 +5,8 @@ description: Use when adding, editing, or reviewing code comments or documentati
 
 # Write Code Comment
 
-Write a comment only when it carries information that the code, name, signature, type, or immediate
-control flow does not already express.
+Unless a project convention requires a comment, write one only when it carries information that the
+code, name, signature, type, or immediate control flow does not already express.
 
 ## Read Project Conventions
 
@@ -19,20 +19,29 @@ linter configuration, and generated-file ownership. Let the target project decid
 - whether a declaration should use a doc comment, docstring, annotation, or no comment;
 - required markers such as `TODO`, suppression directives, or API documentation tags.
 
-Project conventions override the defaults below.
+Project conventions override the non-obviousness heuristic and the defaults below. If a target
+appears generated and its ownership or permitted edit surface cannot be established, stop before
+modifying it and report the generator or owner evidence needed to continue.
 
 ## Decision Workflow
 
-1. Identify what a future reader would misunderstand, violate, or have to rediscover without the
-   comment.
-2. If the answer is nothing, leave the code uncommented and improve the name or structure when that
-   is the real problem.
-3. Choose the comment role: API contract, invariant, lifecycle, edge case, failure behavior,
+1. Determine whether the request authorizes edits or asks only for review. For review-only work,
+   inspect comments and relevant code, report actionable missing, misleading, redundant, or stale
+   comments, run only read-only checks, and make no file or structural change. Then report the
+   review result.
+2. For an authorized edit, identify what a future reader would misunderstand, violate, or have to
+   rediscover without the comment.
+3. If the answer is nothing and no project convention requires a comment, leave the code
+   uncommented. When the real problem is naming or structure, report that issue rather than changing
+   it unless the user separately authorized that work.
+4. Choose the comment role: API contract, invariant, lifecycle, edge case, failure behavior,
    rationale, external requirement, or local intent.
-4. Write the smallest statement that supplies the missing information.
-5. Apply the target language's syntax and the project's tone and formatting rules.
-6. Read the code and comment together. Remove any phrase that merely narrates the next line.
-7. Run the project's relevant formatter, documentation check, analyzer, or linter.
+5. Write the smallest statement that supplies the missing information.
+6. Apply the target language's syntax and the project's tone and formatting rules.
+7. Read the code and comment together. Remove any phrase that merely narrates the next line.
+8. Run every declared relevant formatter, documentation check, analyzer, or linter. If no relevant
+   check is declared, report the result as untested. If a required check is unavailable or fails,
+   report the unavailable or failed check and do not claim successful completion.
 
 ## High-Value Content
 
@@ -78,5 +87,7 @@ user's request requires it.
 
 ## Result
 
-Report where comments were added, changed, or deliberately omitted, what non-obvious information
-they preserve, and which project check validated them.
+For review-only work, report findings and omissions by location, or report that no actionable issue
+was found, together with every read-only check run or unavailable. For edits, report where comments
+were added, changed, or deliberately omitted and what information they preserve. In both branches,
+name each check and its result; distinguish validated, untested, and failed outcomes explicitly.

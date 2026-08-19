@@ -1,0 +1,3 @@
+interface:
+  display_name: "Diagnose Agent Session"
+  short_description: "Analyze agent-session activity and cost"

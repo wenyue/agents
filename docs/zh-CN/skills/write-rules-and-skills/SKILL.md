@@ -61,12 +61,33 @@ description: 在创建、重写或实质更新 SmartKit Rule、Agent Skill 或 R
 当一项未解决义务仍允许实质不同的结果时停止。
 
 根据账本综合生成完整候选工件。将现有工件用作遗漏检查的证据，而不是新结构的大纲。保留受支持的
-决定和安全边界；移除陈旧、重复、矛盾、过渡性或位置错误的内容。每项义务只在最窄的 owner 中
-出现一次。除非会改变运行，否则不要把工作证据、来源、验证记录和 reviewer 指令放进运行工件。
+决定和安全边界。每项义务只在最窄的 owner 中出现一次。除非会改变运行，否则不要把工作证据、
+来源、验证记录和 reviewer 指令放进运行工件。
 
 **Candidate Revision** 是活动项目或宿主所选工作区内的一份完整当前内容状态。它不是复制出来的
 修订目录，也不是强制报告。脱离前一版本和 diff 阅读它。只有在生命周期和语义类型要求都通过，
 且另一个 Agent 无需臆造条件、事实、步骤、owner 或出口即可使用该工件时，才能继续。
+
+## 对阻塞 finding 分类
+
+在 Pruning、Review 和 Closure 中统一使用以下分类：
+
+- `uniquely-forced`——当前证据只允许一种范围内修正，且不引入新政策、权限、行为、范围或副作用；
+- `decision-required`——仍存在多种实质修正，或需要新的意图、证据、权限、范围或外部动作。
+
+## 执行 Pruning Gate
+
+在机器验证前，完整读取 [`references/pruning-agent.md`](references/pruning-agent.md)，并让一个未参与
+候选编写的 fresh Pruning Agent 应用它。
+
+出现任何 `decision-required` finding 时停止。如果所有 finding 都是 `uniquely-forced`，在不添加
+行为的前提下通过一次 Pruning Pass 应用全部 finding，然后把修订后的候选和 finding 交回同一个
+Agent 做一次 closure check。Closure `PASS` 时继续；Closure `FAIL` 时停止，不执行第二次 Pruning
+Pass。将修剪后的候选与账本每一行重新对齐，并要求相对于基线的每项增长都映射到一项独立且有依据的
+义务。
+
+Pruning Agent 不写入候选文件，也不能在之后担任该候选的 Reviewer、Closure Reviewer 或 Acceptance
+Runner。fresh Pruning Agent 不可用时停止并报告。
 
 ## 验证并冻结
 
@@ -78,54 +99,41 @@ description: 在创建、重写或实质更新 SmartKit Rule、Agent Skill 或 R
 如果必需的机器检查失败，在语义关卡前停止。报告精确命令、最终退出状态、相关输出、未运行关卡和
 未验证表面。不要把走查称为机器 PASS。
 
-在有界 Review Packet 中记录成功命令、最终退出状态和未测试表面。如果存在基线，比较行数、词数
-和字节数；增长必须对应一项独立且有依据的义务，而不是符合某个数字限额。除非活动 owner 要求，
-不要创建持久验证报告。
+在有界 Review Packet 中记录成功命令、最终退出状态和未测试表面。除非活动 owner 要求，不要创建
+持久验证报告。
 
 review 前冻结候选写入。内容变化会创建新的 Candidate Revision，并使所有依赖它的机器验证、
 Review 和 Acceptance 结果失效。停止当前 review，而不是自动重启。
 
 ## 审查并验收
 
-把以下有界材料交给一个未参与候选编写的 fresh reviewer：
+完整读取 [`references/semantic-review.md`](references/semantic-review.md)，并让一个未参与候选编写的
+fresh reviewer 应用它。对于普通工件，还要在 reviewer 开始 Acceptance 前完整读取
+[`references/acceptance-runner.md`](references/acceptance-runner.md)。
 
-- 已接受结果和语义账本；
-- Readiness 要求 Behavior Control 时所选的任务及其原始结果；
-- 完整候选工件、自有资源以及加载或分发表面；
-- 治理证据和适用 reference；以及
-- 精确的机器验证结果和未测试表面。
+reviewer 先返回 Semantic Review `PASS` 或 `FAIL`。仅当该关卡通过后才开始 Acceptance。应用所选
+生命周期和语义类型的 portfolio：普通工件 Acceptance 使用一个隔离的 fresh Runner；生成契约
+Acceptance 由 reviewer 静态走查，不使用 Runner，也不生成目标。返回单独的 Acceptance `PASS` 或
+`FAIL`。
 
-排除 diff、作者推理、怀疑的缺陷、预期修复和预期结论。每个候选工件都使用自己的 fresh reviewer；
-独立候选的 review 可以并行进行，但不得共享证据或结论。
+对每个阻塞结果应用共享 finding 分类。
 
-reviewer 按顺序执行两个关卡：
-
-1. **Semantic Review** 完整阅读候选工件，并用两到四个风险最高且有证据支持的反例尝试证伪它。
-   返回 `PASS` 或 `FAIL`。
-2. **Acceptance** 仅在 Semantic Review 通过后开始。应用所选生命周期和语义类型的 portfolio：
-   普通工件 Acceptance 使用一个隔离的 fresh Runner；生成契约 Acceptance 由 reviewer 静态走查，
-   不使用 Runner，也不生成目标。它返回单独的 `PASS` 或 `FAIL`。
-
-每个阻塞 finding 都要指出关卡、证据、具体反例，以及以下一种分类：
-
-- `uniquely-forced`——当前证据只允许一种范围内修正，且不引入新政策、权限、行为、范围或副作用；
-- `decision-required`——仍存在多种实质修正，或需要新的意图、证据、权限、范围或外部动作。
-
-如果 fresh reviewer 不可用，停止并报告。生成契约与以后编写的真实目标是不同候选工件，默认由不同
-fresh reviewer 审查，并且彼此不继承证据或结论。
+每个候选工件都使用自己的 fresh reviewer；独立候选的 review 可以并行进行，但不得共享证据或结论。
+fresh reviewer 不可用时停止并报告。
 
 ## 修正一次并交接
 
 出现任何 `decision-required` finding 时，在修正前停止并询问缺失决定。如果所有 finding 都是
-`uniquely-forced`，在一次 Correction Pass 中一起修正，重跑所有失效的机器检查，并冻结新的
-Candidate Revision。
+`uniquely-forced`，在一次 Correction Pass 中一起修正，让修正后的 revision 通过 Pruning Gate，
+重跑所有失效的机器检查，并冻结新的 Candidate Revision。
 
 把修正后的 revision、首轮 finding、治理证据和精确复验结果交给另一个 fresh Closure Reviewer。
 它重新执行完整候选的 Semantic Review 和受影响的 Acceptance，并为受影响的普通工件 portfolio
 使用一个新的隔离 Runner。`PASS` 结束本轮；`FAIL` 则停止。不要自动开始下一轮修正。用户决定可以
 基于结果状态启动之后一次明确的 authoring run。
 
-成功要求机器验证、Semantic Review 和 Acceptance 对同一个 Candidate Revision 全部通过。报告
-候选工件的生命周期、语义类型、owner、保留内容与批准变更、受影响表面、大小比较、精确命令和退出
-状态、各关卡与修正结论，以及所有未解决或未测试表面。每次停止都要报告 blocker、已完成证据、未运行
-关卡和下一个 owner。发布、安装、commit、push 和其他外部动作交给各自 owner。
+成功要求 Pruning Gate、机器验证、Semantic Review 和 Acceptance 对同一个 Candidate Revision
+全部通过。报告候选工件的生命周期、语义类型、owner、保留内容与批准变更、受影响表面、大小比较、
+精确命令和退出状态、pruning、review、acceptance 与 correction 结论，以及所有未解决或未测试表面。
+每次停止都要报告 blocker、已完成证据、未运行关卡和下一个 owner。发布、安装、commit、push 和
+其他外部动作交给各自 owner。

@@ -1,52 +1,45 @@
-# Issue tracker: Local Markdown
+# Issue tracker: GitHub
 
-Issues and specs for this repository live as Markdown files under `.scratch/`. Do not create,
-read, update, label, comment on, or close GitHub issues for repository work.
+Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
 ## Conventions
 
-- Keep one effort per `.scratch/<effort-slug>/` directory.
-- Store its specification at `.scratch/<effort-slug>/spec.md`.
-- Store each implementation ticket at
-  `.scratch/<effort-slug>/issues/<NN>-<ticket-slug>.md`, numbered from `01` in dependency order.
-- Record `bug` or `enhancement` in a `Category:` line when a ticket needs triage classification.
-- Record exactly one canonical triage state in a `Status:` line; use the mapping in
-  `docs/agents/triage-labels.md`.
-- Append discussion and triage history under a `## Comments` heading in the same file.
+- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
+- **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
+- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
+- **Comment on an issue**: `gh issue comment <number> --body "..."`
+- **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
+- **Close**: `gh issue close <number> --comment "..."`
 
-## Operations
+Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
-- Publish a specification by writing `.scratch/<effort-slug>/spec.md` with
-  `Status: ready-for-agent` near the top.
-- Publish tickets as separate files under `.scratch/<effort-slug>/issues/`; do not combine them into
-  one ticket file.
-- Fetch a referenced specification or ticket by reading its repository-relative path. When the
-  user supplies only a ticket number, resolve it within the current effort directory.
-- List work by scanning `.scratch/*/issues/` and filtering the `Status:` and `Category:` fields.
-- Apply a triage outcome by replacing the ticket's `Status:` value and appending any required note
-  under `## Comments`.
-- Close rejected work by setting `Status: wontfix` and recording the reason under `## Comments`;
-  preserve the file as the decision record.
+## Pull requests as a triage surface
 
-## Ticket Format
+**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
 
-Use this metadata near the top of every ticket:
+When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
 
-```markdown
-Category: enhancement
-Status: ready-for-agent
-Blocked by: None
-```
+- **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
+- **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments` then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
+- **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
 
-`Blocked by:` lists the numbers of unfinished prerequisite tickets. A ticket is on the frontier
-when its status is `ready-for-agent` and every listed blocker is `resolved`.
+GitHub shares one number space across issues and PRs, so a bare `#42` may be either — resolve with `gh pr view 42` and fall back to `gh issue view 42`.
 
-## Wayfinding Operations
+## When a skill says "publish to the issue tracker"
 
-For `/wayfinder`, store the map at `.scratch/<effort-slug>/map.md` and each child decision at
-`.scratch/<effort-slug>/issues/<NN>-<slug>.md`.
+Create a GitHub issue.
 
-- Record `Type: research|prototype|grilling|task` on each child.
-- Claim a frontier child by changing its status from `ready-for-agent` to `claimed` before work.
-- Resolve it by appending the answer under `## Answer`, changing its status to `resolved`, and
-  adding a context pointer to the map's decisions-so-far.
+## When a skill says "fetch the relevant ticket"
+
+Run `gh issue view <number> --comments`.
+
+## Wayfinding operations
+
+Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
+
+- **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
+- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
+- **Blocking**: GitHub's **native issue dependencies** — the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only — the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
+- **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
+- **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
+- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.

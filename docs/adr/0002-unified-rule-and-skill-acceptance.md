@@ -18,9 +18,9 @@ the proof mechanism, not the product objective.
 
 ## Decision
 
-SmartKit uses one Acceptance Standard: evidence-driven authoring, machine validation, fresh
-Semantic Review, risk-matched Acceptance, and explicit handoff. Different artifacts use different
-Acceptance Portfolios, but no portfolio may replace or weaken a gate.
+SmartKit uses one Acceptance Standard: evidence-driven authoring, independent pruning, machine
+validation, fresh Semantic Review, risk-matched Acceptance, and explicit handoff. Different
+artifacts use different Acceptance Portfolios, but no portfolio may replace or weaken a gate.
 
 Shared writing and authoring guidance owns expression mechanics. Ordinary authoring and review do
 not select or compare external exemplars; they judge the candidate's observable information
@@ -34,8 +34,7 @@ separate verdicts. For an Ordinary Artifact, the reviewer judges observable work
 Acceptance Runner that receives only runtime-visible candidate content, the representative tasks,
 and the context or tools needed for those tasks. Every case starts from its frozen input and does
 not inherit another case's output. The Runner receives no ledger, expected result,
-diff, author reasoning, review finding, or prior case output. A corrected Candidate Revision goes
-to a different fresh Closure Reviewer.
+diff, author reasoning, review finding, or prior case output.
 
 When a proposed instruction exists only to change default Agent behavior and no observed failure
 establishes that need, authoring begins with one Behavior Control: the previously accepted artifact
@@ -43,16 +42,32 @@ for a rewrite or no candidate for a new artifact. The same case is rerun with th
 run per case is the default; one confirmation rerun is allowed only for an inconclusive or unstable
 result, and divergent results fail rather than permitting a favorable sample to be selected.
 
-A generation contract and a real target created later are separate candidates; they default to
-different fresh reviewers, receive separate reviews, and do not inherit one another's verdicts.
-Generation-contract Acceptance remains a static walkthrough and starts neither an Acceptance
-Runner nor target generation.
+Before machine validation, one fresh Pruning Agent that did not author the candidate reads the
+complete candidate without its predecessor, diff, author reasoning, intended edits, or expected
+verdict. It checks for stale or duplicated meaning, unnecessary caches of environment facts, no-op
+instructions, misplaced branch material, and removable wording or structure. It specifically
+challenges instructions that only restate an evidenced Agent or host default, repeat a reliably
+loaded broader owner, or follow uniquely from the candidate's trigger, inputs, steps, or adjacent
+context. Deletion must leave representative actions, choices, authority, safety boundaries, and
+exits unchanged; a default requires governing host evidence or an applicable Behavior Control.
+The Agent writes no candidate file and cannot later review or run Acceptance for that candidate. A
+candidate with only uniquely forced findings gets one author-owned Pruning Pass and one closure
+check by the same Agent; a decision-required finding or failed closure stops the run. Passing does
+not require a numeric size reduction, but every increase from an available baseline must map to a
+distinct supported obligation.
+
+A generation contract is qualified by statically walking its complete guidance against supported
+high-risk inputs and starts neither an Acceptance Runner nor target generation. A real target
+created later is a separate candidate: it defaults to a different fresh reviewer, inherits neither
+evidence nor verdicts, enters the Ordinary Artifact route, and independently passes the normal
+Acceptance Standard.
 
 Stop immediately when the first-round findings include `decision-required`; otherwise, one
-Correction Pass fixes all `uniquely-forced` findings. A different fresh Closure Reviewer gets one
-closure attempt: confirm that the findings are closed, recheck changed obligations and exits,
-falsify the complete artifact, and rerun affected Acceptance cases. Stop after another failure; a
-user decision does not automatically reset the correction or review budget for the same run.
+Correction Pass fixes all `uniquely-forced` findings and returns the corrected revision through the
+Pruning Gate and invalidated machine checks. A different fresh Closure Reviewer gets one closure
+attempt: confirm that the findings are closed, recheck changed obligations and exits, falsify the
+complete artifact, and rerun affected Acceptance cases. Stop after another failure; a user decision
+does not automatically reset the correction or review budget for the same run.
 
 A Qualification Campaign applies the same standard to multiple representative Canary Candidates;
 it does not define another quality tier. Candidates are corrected and frozen independently in the
@@ -76,11 +91,6 @@ artifact selects its own semantic type; a generation contract is an instruction 
 selects the type of its future target. Authoring and Acceptance requirements for one concern remain
 co-located in that concern's reference.
 
-A generation contract is qualified by statically walking its complete guidance against supported
-high-risk inputs. Qualification does not start an Acceptance Runner or generate a fake target. A
-target created later in a real project enters the ordinary-artifact route as a new candidate and
-must independently pass the normal Acceptance Standard before adoption.
-
 A shared artifact needs evidence that its policy or job is independent of project-local facts. One
 representative traceable context plus direct portability evidence is the default; a second context
 is required only when portability materially affects acceptance and direct evidence cannot resolve
@@ -90,10 +100,11 @@ configuration, files, or commands affect its behavior.
 ## Consequences
 
 Ordinary authoring and workflow qualification share the same quality language and termination
-conditions. One bounded Candidate Review avoids duplicate reviewer context loading; isolated
-an Acceptance Runner demonstrates use without receiving the answer. Risk-matched cases, conditional
-Behavior Control, one Correction Pass, and one Closure Review bound the added cost and prevent a
-serial fix loop. The project task contract owns a Qualification Campaign's specific canaries,
-scheduling, budget, Defect Cards, and write scope; they do not enter the cross-project
+conditions. One bounded Pruning Gate separates editorial reduction from semantic falsification;
+one bounded Candidate Review avoids duplicate reviewer context loading; an isolated Acceptance
+Runner demonstrates use without receiving the answer. Risk-matched cases, conditional Behavior
+Control, one Pruning Pass, one Correction Pass, and one Closure Review bound the added cost and
+prevent a serial fix loop. The project task contract owns a Qualification Campaign's specific
+canaries, scheduling, budget, Defect Cards, and write scope; they do not enter the cross-project
 `write-rules-and-skills` runtime Skill. Project Rules and tests own the location, integrity, and
 runtime isolation of committed evaluation inputs.

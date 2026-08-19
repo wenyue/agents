@@ -1,0 +1,3 @@
+interface:
+  display_name: "Refactor Code"
+  short_description: "Restructure code without changing behavior"

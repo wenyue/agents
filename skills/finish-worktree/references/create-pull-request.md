@@ -1,6 +1,9 @@
 # Create a Pull Request
 
 Publish the verified Task Commit without rewriting it, and retain its local worktree for follow-up.
+When the task is **Already Delivered**, recheck that the resolved pull-request base still has no
+task diff, retain the task branch and worktree, report the proof and skipped publication, and stop
+without pushing or creating an empty pull request.
 
 1. Resolve the exact remote, base branch, head branch, pull-request title, body, and draft state.
    Ask for any value that repository evidence and the accepted request do not determine.

@@ -65,15 +65,37 @@ owner and one `preserve`, `change`, `add`, `move`, or `retire` disposition. Stop
 row permits materially different results.
 
 Synthesize the whole candidate from the ledger. Use an existing artifact as omission evidence, not
-as the new outline. Preserve supported decisions and safety boundaries; remove stale, duplicated,
-contradictory, transitional, or misplaced content. Represent each obligation once in its narrowest
-owner. Keep working evidence, provenance, validation records, and reviewer instructions outside a
-runtime artifact unless they change its execution.
+as the new outline. Preserve supported decisions and safety boundaries. Represent each obligation
+once in its narrowest owner. Keep working evidence, provenance, validation records, and reviewer
+instructions outside a runtime artifact unless they change its execution.
 
 A **Candidate Revision** is one complete current content state in the work area selected by the
 active project or host. It is not a copied revision tree or mandatory report. Read it without its
 predecessor or diff. Continue only when the lifecycle and semantic-type requirements pass and
 another Agent can use the artifact without inventing a condition, fact, step, owner, or exit.
+
+## Classify blocking findings
+
+Use these classes throughout Pruning, Review, and Closure:
+
+- `uniquely-forced` — current evidence permits one in-scope correction without new policy,
+  authority, behavior, scope, or side effects;
+- `decision-required` — multiple material corrections remain, or new intent, evidence, authority,
+  scope, or external action is required.
+
+## Run the Pruning Gate
+
+Before machine validation, read [`references/pruning-agent.md`](references/pruning-agent.md)
+completely and apply it with one fresh Pruning Agent that did not author the candidate.
+
+Stop on any `decision-required` finding. If every finding is `uniquely-forced`, apply all of them
+in one Pruning Pass without adding behavior, then give the revised candidate and findings back to
+the same Agent for one closure check. Closure `PASS` continues; closure `FAIL` stops without a
+second Pruning Pass. Reconcile the pruned candidate with every ledger row and require each baseline
+increase to map to a distinct supported obligation.
+
+The Pruning Agent writes no candidate file and cannot later serve as that candidate's Reviewer,
+Closure Reviewer, or Acceptance Runner. Stop and report when a fresh Pruning Agent is unavailable.
 
 ## Validate and freeze
 
@@ -87,9 +109,8 @@ interpreters do not satisfy Semantic Review.
 If a required machine check fails, stop before semantic gates. Report its exact command, final exit,
 relevant output, unrun gates, and unverified surfaces. Do not call a walkthrough machine PASS.
 
-Record successful commands, final exits, and untested surfaces in a bounded Review Packet. When a
-baseline exists, compare lines, words, and bytes; growth requires a distinct supported obligation,
-not a numeric allowance. Create no persistent validation report unless an active owner requires it.
+Record successful commands, final exits, and untested surfaces in a bounded Review Packet. Create
+no persistent validation report unless an active owner requires it.
 
 Freeze candidate writes before review. A content change creates a new Candidate Revision and
 invalidates every dependent machine, Review, and Acceptance result. Stop the current review rather
@@ -97,43 +118,27 @@ than automatically restarting it.
 
 ## Review and accept
 
-Give one fresh reviewer that did not author the candidate this bounded packet:
+Read [`references/semantic-review.md`](references/semantic-review.md) completely and apply it with
+one fresh reviewer that did not author the candidate. For an Ordinary Artifact, also read
+[`references/acceptance-runner.md`](references/acceptance-runner.md) completely before the reviewer
+starts Acceptance.
 
-- accepted outcome and semantic ledger;
-- the selected task and raw Behavior Control result when Readiness required one;
-- complete candidate, owned resources, and loading or distribution surfaces;
-- governing evidence and applicable references; and
-- exact machine-validation results and untested surfaces.
+The reviewer returns a Semantic Review `PASS` or `FAIL` first. Start Acceptance only after that
+gate passes. Apply the selected lifecycle and semantic-type portfolio: Ordinary Artifact
+Acceptance uses an isolated fresh Runner; Generation Contract Acceptance is a static reviewer
+walkthrough with no Runner or target generation. Return a separate Acceptance `PASS` or `FAIL`.
 
-Exclude the diff, author reasoning, suspected defects, intended fixes, and expected verdicts. Each
-candidate gets its own fresh reviewer; independent candidate reviews may run concurrently, but they
-do not share evidence or verdicts.
+Apply the shared finding classes to every blocking result.
 
-The reviewer performs two gates in order:
-
-1. **Semantic Review** reads the whole candidate and tries to falsify it with two to four of the
-   highest-risk supported counterexamples. It returns `PASS` or `FAIL`.
-2. **Acceptance** starts only after Semantic Review passes. Apply the selected lifecycle and
-   semantic-type portfolio: Ordinary Artifact Acceptance uses an isolated fresh Runner;
-   Generation Contract Acceptance is a static reviewer walkthrough with no Runner or target
-   generation. It returns a separate `PASS` or `FAIL`.
-
-Every blocking finding names the gate, evidence, concrete counterexample, and one classification:
-
-- `uniquely-forced` — current evidence permits one in-scope correction without new policy,
-  authority, behavior, scope, or side effects;
-- `decision-required` — multiple material corrections remain, or new intent, evidence, authority,
-  scope, or external action is required.
-
-Stop and report an unavailable fresh reviewer. A Generation Contract and a real target authored
-later are separate candidates, default to different fresh reviewers, and inherit neither evidence
-nor verdicts from one another.
+Each candidate gets its own fresh reviewer; independent candidate reviews may run concurrently,
+but they do not share evidence or verdicts. Stop and report an unavailable fresh reviewer.
 
 ## Correct once and hand off
 
 On any `decision-required` finding, stop before correction and ask for the missing decision. If all
-findings are `uniquely-forced`, apply them together in one Correction Pass, rerun every invalidated
-machine check, and freeze the new Candidate Revision.
+findings are `uniquely-forced`, apply them together in one Correction Pass, run the Pruning Gate on
+the corrected revision, rerun every invalidated machine check, and freeze the new Candidate
+Revision.
 
 Give the corrected revision, first findings, governing evidence, and exact revalidation to a
 different fresh Closure Reviewer. It repeats whole-candidate Semantic Review and affected
@@ -142,9 +147,9 @@ the run;
 `FAIL` stops it. Do not start another automatic correction. A user decision may begin a later
 explicit authoring run on the resulting state.
 
-Success requires machine validation, Semantic Review, and Acceptance to pass for the same Candidate
-Revision. Report the candidate's lifecycle, semantic type, owner, preserved and approved changes,
-affected surfaces, size comparison, exact commands and exits, gate and correction verdicts, and
-every unresolved or untested surface. Every stop reports the blocker, completed evidence, unrun
-gates, and next owner. Leave publication, installation, commit, push, and other external actions to
-their owners.
+Success requires the Pruning Gate, machine validation, Semantic Review, and Acceptance to pass for
+the same Candidate Revision. Report the candidate's lifecycle, semantic type, owner, preserved and
+approved changes, affected surfaces, size comparison, exact commands and exits, pruning, review,
+acceptance, and correction verdicts, and every unresolved or untested surface. Every stop reports
+the blocker, completed evidence, unrun gates, and next owner. Leave publication, installation,
+commit, push, and other external actions to their owners.

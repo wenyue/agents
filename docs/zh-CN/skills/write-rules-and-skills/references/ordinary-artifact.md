@@ -37,22 +37,11 @@ fresh Agent 执行计划用于候选 Acceptance 的同一任务。保留原始�
 
 ## 验收代表性使用
 
-在可用时，使用真实政策应用接缝或公开工作入口。所选的 `rule.md` 或 `skill.md` 提供类型专属案例。
-
-把选定案例交给一个隔离的 Acceptance Runner。每个案例都从其声明的冻结输入开始，不要让一个案例
-的结果成为另一个案例的输入。像 runtime 一样向 Runner 提供候选工件、代表性任务，以及任务必需的
-context 或工具。expected result、semantic ledger、diff、author reasoning、finding 和 prior run output
-只供 reviewer 使用。Runner 必须应用工件；学术式解释或 reviewer 的纸面走查不属于 Acceptance 证据。
+所选的 `rule.md` 或 `skill.md` 提供类型专属案例。应用父 Skill 选定的通用 Acceptance Runner 协议。
 
 - 对 Project-local 工件，检查其仓库声明、owner 边界、真实入口或执行点，以及相关本地案例。
 - 对 Shared 工件，使用一个有代表性且可追溯的上下文，加上证明政策或工作不依赖项目本地事实的
   直接证据。只有当可移植性声明会实质影响 Acceptance，且直接证据无法证明它时，才增加第二个上下文。
-- 通过公开入口运行自有确定性资源。将环境无法运行的受支持执行报告为未测试；受控走查可以说明
-  未测试的可执行表面，但不能替代普通工件的隔离应用。
-
-每个案例默认只运行一次。仅当结果不确定或不稳定时，最多使用新的隔离 Runner 重复一次；结果分歧
-即失败。当 Readiness 要求 Behavior Control 时，将其原始结果与匹配的候选运行比较，但不要把任何
-一方的结果暴露给另一方 Runner。
 
 只有当工件在其声明范围内保持同一含义、对每个选定案例产生一个受支持结果，且不需要臆造项目事实、
 动作或出口时，Acceptance 才通过。

@@ -25,6 +25,7 @@ class FinishWorktreeConsolidationTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
+        self.root = root
         self.base = root / "base"
         self.task = root / "task"
         self.marker = root / "pre-commit-ran"
@@ -64,16 +65,26 @@ class FinishWorktreeConsolidationTests(unittest.TestCase):
     def run_script(
         self, recovery_ref: str, target: str | None = None
     ) -> subprocess.CompletedProcess[str]:
+        return self.run_script_for(
+            self.task,
+            self.message,
+            recovery_ref,
+            target or self.target,
+        )
+
+    def run_script_for(
+        self, repository: Path, message: Path, recovery_ref: str, target: str
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 sys.executable,
                 str(SCRIPT),
                 "--repository",
-                str(self.task),
+                str(repository),
                 "--target",
-                target or self.target,
+                target,
                 "--message-file",
-                str(self.message),
+                str(message),
                 "--recovery-ref",
                 recovery_ref,
             ],
@@ -82,6 +93,53 @@ class FinishWorktreeConsolidationTests(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env={**os.environ, "GIT_CONFIG_NOSYSTEM": "1"},
+        )
+
+    def test_stages_one_task_commit_per_ticket_on_a_batch_branch(self):
+        batch = self.root / "batch"
+        ticket_two = self.root / "ticket-two"
+        git(self.base, "worktree", "add", "--quiet", "-b", "batch", str(batch), self.target)
+
+        first_result = self.run_script("refs/smartkit/recovery/batch/ticket-one")
+        self.assertEqual(first_result.returncode, 0, first_result.stderr)
+        first_commit = json.loads(first_result.stdout)["task_commit"]
+        git(batch, "merge", "--quiet", "--ff-only", "task")
+
+        git(
+            self.base,
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "ticket-two",
+            str(ticket_two),
+            first_commit,
+        )
+        (ticket_two / "second.txt").write_text("checkpoint one\n", encoding="utf-8")
+        git(ticket_two, "add", "second.txt")
+        git(ticket_two, "commit", "--quiet", "-m", "ticket two checkpoint one")
+        (ticket_two / "second.txt").write_text("checkpoint two\n", encoding="utf-8")
+        git(ticket_two, "commit", "--quiet", "-am", "ticket two checkpoint two")
+        second_message = self.root / "ticket-two-message.txt"
+        second_message.write_text("feat: deliver ticket two\n", encoding="utf-8")
+
+        second_result = self.run_script_for(
+            ticket_two,
+            second_message,
+            "refs/smartkit/recovery/batch/ticket-two",
+            first_commit,
+        )
+        self.assertEqual(second_result.returncode, 0, second_result.stderr)
+        second_commit = json.loads(second_result.stdout)["task_commit"]
+        git(batch, "merge", "--quiet", "--ff-only", "ticket-two")
+
+        self.assertEqual(git(self.base, "rev-parse", "main"), self.target)
+        self.assertEqual(git(batch, "rev-list", "--count", "main..batch"), "2")
+        self.assertEqual(git(batch, "show", "-s", "--format=%P", first_commit), self.target)
+        self.assertEqual(git(batch, "show", "-s", "--format=%P", second_commit), first_commit)
+        self.assertEqual(
+            git(batch, "log", "--reverse", "--format=%s", "main..batch").splitlines(),
+            ["feat: deliver task", "feat: deliver ticket two"],
         )
 
     def test_consolidates_checkpoints_through_normal_commit_hooks(self):

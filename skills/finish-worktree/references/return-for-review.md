@@ -1,7 +1,10 @@
 # Return for Review
 
 Materialize the Task Commit's net result in the base working tree without advancing its branch or
-changing its index.
+changing its index. When the task is **Already Delivered**, recheck that the base still has no task
+diff, leave its
+working tree and index unchanged, retain the task branch and worktree as review evidence, report the
+proof and preserved state, and stop.
 
 1. Record the base `HEAD`, index tree, staged changes, unstaged changes, and untracked paths. Back up
    every task path outside the repository and record original file types and absent paths in a

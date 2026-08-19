@@ -16,6 +16,28 @@ applicable target field and to stop when the evidence still permits materially d
 owners, resources, commands, or exits. Do not invent target workflow merely to make the contract
 appear complete.
 
+## Resolve invocation metadata
+
+Before the first candidate write, treat model invocation as the default and use accepted intent and
+evidence to decide whether user-only invocation is warranted. Keep the two Harness representations
+aligned:
+
+- For a new Skill, continue with model invocation without surfacing a choice unless evidence shows
+  that the Skill should not be discovered or invoked automatically. In that exception, proactively
+  recommend user-only invocation, explain the material trade-off, and stop until the user chooses.
+- For an existing Skill, preserve its supported invocation choice. Present the recommendation and
+  effects, then stop until the user chooses, when evidence warrants changing that choice or the
+  current representations conflict. Otherwise continue without surfacing the choice.
+- Encode model invocation by omitting `disable-model-invocation`; omission of
+  `policy.allow_implicit_invocation` remains its valid default. When autonomous routing or another
+  Skill reaching the job is part of its contract, recommend an explicit
+  `policy.allow_implicit_invocation: true` and treat omission as a difference. Encode user-only
+  invocation with `disable-model-invocation: true` and `policy.allow_implicit_invocation: false`.
+
+Maintain the Skill's `agents/openai.yaml` in the same Candidate Revision. Create it when absent,
+preserve supported interface metadata when updating it, and change invocation policy only through
+the resolved choice above.
+
 ## Write one complete job
 
 - Keep the main path visible. Put each branch beside its trigger and use ordered steps only when
@@ -44,10 +66,7 @@ Select only the highest-risk relevant cases:
 - the non-completion paths affected by the candidate, such as a missing precondition, stop,
   failure, recovery, handoff, or coincident condition.
 
-With `ordinary-artifact.md`, give the triggered job and task to an isolated Acceptance Runner. Use
-the real public entry when available, run owned scripts through that entry, and report supported
-platforms not run. When execution is unavailable, the Runner still applies the runtime instructions
-to verified evidence and marks executable behavior untested; it cannot claim machine PASS. With
-`generation-contract.md`, the fresh reviewer statically verifies that the guidance obtains the
-required evidence and chooses one action or stop for the same input classes. Do not start a Runner
-or create a target for contract Acceptance.
+With `ordinary-artifact.md`, apply the common Acceptance Runner protocol to the triggered job and
+task. With `generation-contract.md`, the fresh reviewer statically verifies that the guidance
+obtains the required evidence and chooses one action or stop for the same input classes. Do not
+start a Runner or create a target for contract Acceptance.

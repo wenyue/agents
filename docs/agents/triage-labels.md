@@ -1,16 +1,15 @@
-# Triage labels
+# Triage Labels
 
-Map the five canonical triage roles used by Matt Skills to the value stored in a local ticket's
-`Status:` line:
+The skills speak in terms of five canonical triage roles. This file maps those roles to the actual label strings used in this repo's issue tracker.
 
-| Canonical role | Local status | Meaning |
-| --- | --- | --- |
-| `needs-triage` | `needs-triage` | A maintainer needs to evaluate the ticket. |
-| `needs-info` | `needs-info` | The ticket is waiting for more information. |
-| `ready-for-agent` | `ready-for-agent` | The ticket is fully specified for an autonomous agent. |
-| `ready-for-human` | `ready-for-human` | The ticket requires human implementation. |
-| `wontfix` | `wontfix` | The ticket will not be actioned. |
+| Label in mattpocock/skills | Label in our tracker | Meaning                                  |
+| -------------------------- | -------------------- | ---------------------------------------- |
+| `needs-triage`             | `needs-triage`       | Maintainer needs to evaluate this issue  |
+| `needs-info`               | `needs-info`         | Waiting on reporter for more information |
+| `ready-for-agent`          | `ready-for-agent`    | Fully specified, ready for an AFK agent  |
+| `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
+| `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
-When a Skill says to apply or remove a triage label, update the ticket's single `Status:` value
-instead. Operational `claimed` and `resolved` statuses are reserved for wayfinding and ticket
-execution; they are not additional triage roles.
+When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
+
+Edit the right-hand column to match whatever vocabulary you actually use.

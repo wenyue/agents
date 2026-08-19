@@ -1,6 +1,8 @@
 # 创建 Pull Request
 
-发布已验证的 Task Commit 且不改写它，并保留其本地 worktree 供后续处理。
+发布已验证的 Task Commit 且不改写它，并保留其本地 worktree 供后续处理。当 task 为 **Already
+Delivered** 时，重新检查已解析 pull-request base 仍没有 task diff，保留 task branch 和 worktree，
+报告 proof 和跳过的 publication，然后停止，不 push 或创建空 pull request。
 
 1. 确定准确的 remote、base 分支、head 分支、pull-request 标题、正文和 draft 状态。仓库证据和已接受
    请求都无法确定的值必须询问用户。

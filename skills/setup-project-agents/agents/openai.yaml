@@ -1,0 +1,5 @@
+interface:
+  display_name: "Setup Project Agents"
+  short_description: "Configure project Rules, Skills, Agents, and MCP"
+policy:
+  allow_implicit_invocation: true

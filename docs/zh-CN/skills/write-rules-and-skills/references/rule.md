@@ -34,7 +34,7 @@ Semantic Review 根据候选工件和证据重建每个适用字段及条件到�
 - 一个受影响的 threshold、range、overlap、exception 或 owner boundary；以及
 - 当另一个 Rule 可以改变结果时，一个 precedence 或 conflict 组合。
 
-与 `ordinary-artifact.md` 一起使用时，把已加载 Rule 和任务交给真实政策接缝上的一个隔离
-Acceptance Runner。要求产生可观察的决定或动作；解释 Rule 内容不属于应用。与
-`generation-contract.md` 一起使用时，fresh reviewer 静态验证指导能获取所需证据，并为相同输入
-类别选择一个动作或 stop。不要为契约 Acceptance 启动 Runner 或创建目标。
+与 `ordinary-artifact.md` 一起使用时，在真实政策接缝应用通用 Acceptance Runner 协议，并要求产生
+可观察的决定或动作；解释 Rule 内容不属于应用。与 `generation-contract.md` 一起使用时，fresh
+reviewer 静态验证指导能获取所需证据，并为相同输入类别选择一个动作或 stop。不要为契约
+Acceptance 启动 Runner 或创建目标。

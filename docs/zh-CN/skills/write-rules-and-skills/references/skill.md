@@ -12,6 +12,23 @@ resources 和 handoff。每个适用字段都需要一个有依据的值；只�
 对于生成契约，要求指导识别用于选择每个适用目标字段的证据，并在证据仍允许实质不同的工作、owner、
 resource、command 或 exit 时停止。不要仅为了让契约看起来完整而虚构目标工作流。
 
+## 确定 invocation metadata
+
+在首次写入候选工件之前，把 model invocation 作为默认值，并根据已接受意图和证据判断是否有必要使用
+user-only invocation。保持两种 Harness 表示一致：
+
+- 对于新 Skill，使用 model invocation 继续，无需向用户显示选择；只有当证据表明该 Skill 不应被自动
+  发现或调用时才例外。在该例外中，主动建议 user-only invocation，说明实质取舍，并停止等待用户选择。
+- 对于现有 Skill，保留其有依据的 invocation 选择。当证据支持更改该选择，或当前表示相互冲突时，
+  给出建议及其影响，然后停止等待用户选择；否则，无需向用户显示选择即可继续。
+- 通过省略 `disable-model-invocation` 表示 model invocation；省略
+  `policy.allow_implicit_invocation` 仍是其有效默认值。当自动路由或另一个 Skill 触达该工作属于其契约
+  时，建议显式设置 `policy.allow_implicit_invocation: true`，并把省略视为差异。user-only invocation
+  使用 `disable-model-invocation: true` 和 `policy.allow_implicit_invocation: false` 表示。
+
+在同一个 Candidate Revision 中维护 Skill 的 `agents/openai.yaml`。缺失时创建；更新时保留有依据的
+interface metadata；只根据上述已确定的选择更改 invocation policy。
+
 ## 编写一项完整工作
 
 - 让主路径保持可见。把每个分支放在其 trigger 旁边，且仅当顺序会改变正确性、安全性或结果时使用
@@ -37,8 +54,6 @@ Semantic Review 根据候选工件和证据重建完整工作和分支到出口�
 - 候选工件影响的 non-completion 路径，例如 missing precondition、stop、failure、recovery、
   handoff 或 coincident condition。
 
-与 `ordinary-artifact.md` 一起使用时，把触发式工作和任务交给一个隔离的 Acceptance Runner。
-在可用时使用真实 public entry，并通过该入口运行自有脚本，同时报告未运行的受支持平台。无法执行
-时，Runner 仍根据已验证证据应用 runtime 指令，并将可执行行为标为未测试；它不能声称机器 PASS。
-与 `generation-contract.md` 一起使用时，fresh reviewer 静态验证指导能获取所需证据，并为相同输入
+与 `ordinary-artifact.md` 一起使用时，对触发式工作和任务应用通用 Acceptance Runner 协议。与
+`generation-contract.md` 一起使用时，fresh reviewer 静态验证指导能获取所需证据，并为相同输入
 类别选择一个动作或 stop。不要为契约 Acceptance 启动 Runner 或创建目标。
