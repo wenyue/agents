@@ -1,7 +1,7 @@
 {
   "name": "smartkit",
   "displayName": "WenYue SmartKit",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Install and maintain shared project-agent workflows across repositories.",
   "author": {
     "name": "wenyue"
