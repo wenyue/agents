@@ -23,4 +23,6 @@ Read the whole candidate and try to falsify it with two to four of the highest-r
 counterexamples. Return a distinct Semantic Review `PASS` or `FAIL`.
 
 Every blocking finding names its gate, evidence, concrete counterexample, and one shared finding
-class.
+class. For `decision-required`, also name the exact unresolved choice, its decision owner, and the
+evidence for each materially different supported outcome; the number of findings is not such
+evidence.

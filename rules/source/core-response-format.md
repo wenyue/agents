@@ -2,18 +2,18 @@
 
 Strength: `Default`
 
-Scope: Response language, tag protocol, formatting, and implementation or review reporting.
+Scope: Language, tag protocol, formatting, and work reporting in final responses presented to
+human users.
+
+## Applicability
+
+- Apply this Rule only while composing the final response presented to a human user. Internal
+  reasoning and all intermediate or non-final work are outside its scope.
 
 ## Language
 
 - Use Simplified Chinese for all user-facing text unless the user explicitly requests another
   language.
-
-## Brevity and Clarity
-
-- Keep responses concise, retaining only the information the user needs to understand the
-  conclusion, make a decision, and take the next action.
-- Use natural, plain language and prefer common words; briefly explain necessary technical terms.
 
 ## Response Tags
 
@@ -28,14 +28,11 @@ replies.
 | `❌` | Failure or blocker and what is needed to proceed. |
 | `🤖` | One user question or a small set of choices. |
 
-Preferred order:
-
-```text
-🎯 → ⚠️ → ✅ or ❌ → 🤖
-```
+Preferred order: `🎯 → ⚠️ → ✅ or ❌ → 🤖`.
 
 ## Tag Rules
 
+- Each `##` tag heading contains only its icon; tagged content starts on the next line.
 - When present, `🎯` comes first and contains only the goal statement.
 - Use `⚠️` only for meaningful information and keep it to three items or fewer.
 - When reporting a result, choose exactly one of `✅` or `❌`.
@@ -47,24 +44,4 @@ Preferred order:
   sentences.
 - For reviews, put findings first in severity order and include file and line references when
   possible.
-- For plans and design notes, use Chinese and make material trade-offs explicit.
-
-## Example
-
-```markdown
-## 🎯
-#### 更新菜单 owner scope 的行为。
-
-## ✅
-主要文件：`menu_owner_scope.dart`
-
-已更新 owner 变化时的刷新逻辑，使菜单状态保持一致。
-
-## 🤖
-请选择下一步：
-
-A. 保留当前实现
-B. 扩展为通用组件
-C. 继续调整交互细节
-D. 暂时结束
-```
+- For plans and design notes, make material trade-offs explicit.

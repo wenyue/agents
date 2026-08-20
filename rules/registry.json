@@ -3,6 +3,7 @@
     {"id": "smartkit/core-rule-config", "source": "source/core-rule-config.md", "strength": "Mandatory", "trigger": {"type": "always"}},
     {"id": "smartkit/harness-codex", "source": "source/harness-codex.md", "strength": "Default", "trigger": {"type": "harness", "harnesses": ["codex"]}},
     {"id": "smartkit/core-personality", "source": "source/core-personality.md", "strength": "Default", "trigger": {"type": "always"}},
+    {"id": "smartkit/core-communication", "source": "source/core-communication.md", "strength": "Mandatory", "trigger": {"type": "always"}},
     {"id": "smartkit/core-response-format", "source": "source/core-response-format.md", "strength": "Default", "trigger": {"type": "always"}},
     {"id": "smartkit/core-reasoning-workflow", "source": "source/core-reasoning-workflow.md", "strength": "Mandatory", "trigger": {"type": "always"}},
     {"id": "smartkit/core-skill-governance", "source": "source/core-skill-governance.md", "strength": "Mandatory", "trigger": {"type": "always"}},

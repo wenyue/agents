@@ -62,12 +62,16 @@ created later is a separate candidate: it defaults to a different fresh reviewer
 evidence nor verdicts, enters the Ordinary Artifact route, and independently passes the normal
 Acceptance Standard.
 
-Stop immediately when the first-round findings include `decision-required`; otherwise, one
-Correction Pass fixes all `uniquely-forced` findings and returns the corrected revision through the
-Pruning Gate and invalidated machine checks. A different fresh Closure Reviewer gets one closure
-attempt: confirm that the findings are closed, recheck changed obligations and exits, falsify the
-complete artifact, and rerun affected Acceptance cases. Stop after another failure; a user decision
-does not automatically reset the correction or review budget for the same run.
+Classify every finding independently. Finding count does not create a decision: one Correction Pass
+fixes any number of `uniquely-forced` findings. A `decision-required` finding exists only when the
+current evidence leaves materially different supported outcomes or correction needs new intent,
+evidence, authority, scope, or external action; it must identify the exact unresolved choice, its
+owner, and the evidence for each supported outcome. Stop immediately when first-round findings
+include a valid `decision-required`; otherwise, return the corrected revision through the Pruning
+Gate and invalidated machine checks. A different fresh Closure Reviewer gets one closure attempt:
+confirm that the findings are closed, recheck changed obligations and exits, falsify the complete
+artifact, and rerun affected Acceptance cases. Stop after another failure; a user decision does not
+automatically reset the correction or review budget for the same run.
 
 A Qualification Campaign applies the same standard to multiple representative Canary Candidates;
 it does not define another quality tier. Candidates are corrected and frozen independently in the

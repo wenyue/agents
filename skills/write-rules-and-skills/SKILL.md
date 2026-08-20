@@ -78,10 +78,16 @@ another Agent can use the artifact without inventing a condition, fact, step, ow
 
 Use these classes throughout Pruning, Review, and Closure:
 
-- `uniquely-forced` — current evidence permits one in-scope correction without new policy,
+- `uniquely-forced` — current evidence determines one in-scope correction without new policy,
   authority, behavior, scope, or side effects;
-- `decision-required` — multiple material corrections remain, or new intent, evidence, authority,
-  scope, or external action is required.
+- `decision-required` — current evidence leaves two or more materially different supported
+  outcomes, or the correction requires new intent, evidence, authority, scope, or external action.
+
+Classify each finding independently. The number of findings does not change their class; apply any
+number of `uniquely-forced` corrections together in the authorized pass. Every
+`decision-required` finding names the exact unresolved choice, its decision owner, and the evidence
+for each materially different supported outcome. Without those elements, classify the finding as
+`uniquely-forced` or non-blocking rather than asking for confirmation.
 
 ## Run the Pruning Gate
 
@@ -135,10 +141,10 @@ but they do not share evidence or verdicts. Stop and report an unavailable fresh
 
 ## Correct once and hand off
 
-On any `decision-required` finding, stop before correction and ask for the missing decision. If all
-findings are `uniquely-forced`, apply them together in one Correction Pass, run the Pruning Gate on
-the corrected revision, rerun every invalidated machine check, and freeze the new Candidate
-Revision.
+On any valid `decision-required` finding, stop before correction and ask only for its exact missing
+decision. Do not ask for approval or confirmation for `uniquely-forced` findings. If all findings
+are `uniquely-forced`, apply them together in one Correction Pass, run the Pruning Gate on the
+corrected revision, rerun every invalidated machine check, and freeze the new Candidate Revision.
 
 Give the corrected revision, first findings, governing evidence, and exact revalidation to a
 different fresh Closure Reviewer. It repeats whole-candidate Semantic Review and affected

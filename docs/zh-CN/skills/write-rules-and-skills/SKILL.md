@@ -72,8 +72,14 @@ description: 在创建、重写或实质更新 SmartKit Rule、Agent Skill 或 R
 
 在 Pruning、Review 和 Closure 中统一使用以下分类：
 
-- `uniquely-forced`——当前证据只允许一种范围内修正，且不引入新政策、权限、行为、范围或副作用；
-- `decision-required`——仍存在多种实质修正，或需要新的意图、证据、权限、范围或外部动作。
+- `uniquely-forced`——当前证据确定了一种范围内修正，且不引入新政策、权限、行为、范围或副作用；
+- `decision-required`——当前证据仍允许两种或更多种有依据且实质不同的结果，或修正需要新的意图、
+  证据、权限、范围或外部动作。
+
+逐条 finding 独立分类。finding 的数量不改变其分类；在获授权的 pass 中一起应用任意数量的
+`uniquely-forced` 修正。每个 `decision-required` finding 都要指出确切的未决选择、decision owner，
+以及每种有依据且实质不同的结果所对应的证据。缺少这些要素时，应将 finding 分类为
+`uniquely-forced` 或非阻塞项，而不是请求确认。
 
 ## 执行 Pruning Gate
 
@@ -123,9 +129,10 @@ fresh reviewer 不可用时停止并报告。
 
 ## 修正一次并交接
 
-出现任何 `decision-required` finding 时，在修正前停止并询问缺失决定。如果所有 finding 都是
-`uniquely-forced`，在一次 Correction Pass 中一起修正，让修正后的 revision 通过 Pruning Gate，
-重跑所有失效的机器检查，并冻结新的 Candidate Revision。
+出现任何有效的 `decision-required` finding 时，在修正前停止，并且只询问其确切的缺失决定。不要为
+`uniquely-forced` finding 请求批准或确认。如果所有 finding 都是 `uniquely-forced`，在一次
+Correction Pass 中一起修正，让修正后的 revision 通过 Pruning Gate，重跑所有失效的机器检查，并
+冻结新的 Candidate Revision。
 
 把修正后的 revision、首轮 finding、治理证据和精确复验结果交给另一个 fresh Closure Reviewer。
 它重新执行完整候选的 Semantic Review 和受影响的 Acceptance，并为受影响的普通工件 portfolio

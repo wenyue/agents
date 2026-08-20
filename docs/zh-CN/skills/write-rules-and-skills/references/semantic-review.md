@@ -21,4 +21,6 @@ counterexample 和 Acceptance portfolio。
 完整阅读候选工件，并用两到四个风险最高且有证据支持的反例尝试证伪它。返回单独的 Semantic
 Review `PASS` 或 `FAIL`。
 
-每个阻塞 finding 都要指出其关卡、证据、具体反例，以及一种共享 finding 分类。
+每个阻塞 finding 都要指出其关卡、证据、具体反例，以及一种共享 finding 分类。对于
+`decision-required`，还要指出确切的未决选择、decision owner，以及每种有依据且实质不同的结果所
+对应的证据；finding 的数量不构成这种证据。
