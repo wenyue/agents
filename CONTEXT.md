@@ -129,10 +129,10 @@ The all-or-none boundary that permits repository adoption only after every requi
 has passed its own gates.
 _Avoid_: Campaign restart, per-canary writeback
 
-**Correction Pass**:
-The single opportunity to apply every uniquely forced correction reported by a candidate's Review
-before a fresh Closure Reviewer evaluates the corrected Candidate Revision.
-_Avoid_: Fix loop, one-finding patch
+**Correction Loop**:
+The authoring cycle that applies all current uniquely forced findings, reruns invalidated gates, and
+continues while each revision makes progress toward a passing Candidate Revision.
+_Avoid_: User-confirmed retry, fixed correction budget, one-finding patch
 
 **Fresh Reviewer**:
 An Agent that did not author the Candidate Revision it evaluates. A generation contract and a real
@@ -158,11 +158,6 @@ One bounded task in which a Fresh Reviewer performs Semantic Review first, then 
 candidate's Acceptance Portfolio from isolated Acceptance Runner results or the Generation
 Contract's static walkthrough, and returns a separate verdict for each gate.
 _Avoid_: Review Board, combined verdict
-
-**Closure Review**:
-The single fresh review after a Correction Pass that verifies every finding, affected obligation,
-and affected Acceptance case before the run either passes or stops.
-_Avoid_: Third authoring round, fix loop
 
 **Regression Corpus**:
 The maintained set of minimal, previously demonstrated authoring defects replayed in later
@@ -210,6 +205,25 @@ _Avoid_: Checkpoint Commit, squash commit
 The optional final Task Commit that consolidates fixes produced by the whole-batch review without
 rewriting the preceding per-ticket Task Commits.
 _Avoid_: Ticket Task Commit, amended ticket commit, review checkpoint
+
+**Staged Ticket**:
+A Ticket whose Task Commit has been appended to its Batch Worktree but whose batch has not yet been
+delivered to the final target. It remains claimed and is not completed.
+_Avoid_: Delivered Ticket, completed Ticket, merged Ticket
+
+**Batch Delivery**:
+The verified fast-forward of a reviewed Ticket Batch's ordered Task Commit range and optional Batch
+Review Commit to its unchanged final target.
+_Avoid_: Ticket staging, tracker completion, batch merge
+
+**Ticket Completion**:
+The tracker transition performed by the Ticket Batch controller after Batch Delivery is proven.
+_Avoid_: Ticket staging, Task Commit creation, Git cleanup
+
+**Finalization Contract**:
+The closed, mode-discriminated interface by which a caller supplies Git identities, evidence,
+history, target, recovery, cleanup, and authorization policy to `finish-worktree`.
+_Avoid_: Tracker contract, generic parameter bag, Ticket Batch orchestration
 
 **Already Delivered**:
 A terminal state in which the selected target is proven to contain the complete accepted task

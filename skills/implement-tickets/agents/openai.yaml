@@ -1,6 +1,6 @@
 interface:
   display_name: "Implement Tickets"
-  short_description: "Implement agent-ready tickets in isolated worktrees"
+  short_description: "Run a worker-owned Ticket Batch pipeline"
   default_prompt: "Use $implement-tickets to implement the remaining agent-ready tickets sequentially."
 policy:
   allow_implicit_invocation: true

@@ -5,9 +5,9 @@ description: 当会改变仓库状态的工作因并行执行、宿主或工作�
 
 # 创建 Worktree
 
-创建或复用一个具名关联 Git worktree，使其在不改变基准 checkout 的情况下为其 owning workflow
-准备就绪。本 Skill 负责 worktree 的选择、创建、验证、Task 或 Batch Worktree 资格认定和准备交接；
-不负责业务实现、完成后的改动集成或清理。
+创建或复用一个具名关联 Git worktree，使其在不改变基准 checkout 的情况下为 owning workflow
+准备就绪。本 Skill 负责 worktree 的选择、创建、验证、Task 或 Batch Worktree 资格认定，以及机械
+所有权交接；不负责业务实施、完成后的改动集成、tracker 状态或清理。
 
 ## 前提条件
 
@@ -15,10 +15,10 @@ description: 当会改变仓库状态的工作因并行执行、宿主或工作�
    staged、unstaged 和 untracked 状态。确定唯一的预期基准分支和提交；基准处于 detached 状态或存在
    歧义时停止。
 2. 准确选择一个 role：用于一个 accepted task 的 Task Worktree，或用于一个 frozen Ticket Batch
-   的 Batch Worktree。选择一个小写、连字符分隔的 slug 和具名分支。遵循已验证的仓库分支约定；
-   否则使用 `worktree/<slug>`。所选当前宿主已创建 worktree 的复用优先于不存在性检查；需要新建时，
-   分支或预期路径已经存在则停止，不得隐式附加或覆盖。
-3. 在任何变更前，记录基准分支、基准提交、现有 worktree、现有本地分支和基准 checkout 状态。
+   的 Batch Worktree。记录调用方提供的 scope owner、预期路径或小写连字符 slug、具名分支、精确
+   base commit，以及后续 integration 和 cleanup owners。遵循已验证的仓库分支约定；否则使用
+   `worktree/<slug>`。
+3. 在任何变更前，记录基准分支、基准提交、现有 worktrees、现有本地分支和基准 checkout 状态。
 
 ## 选择 Worktree
 
@@ -34,8 +34,9 @@ description: 当会改变仓库状态的工作因并行执行、宿主或工作�
 
 ## 创建并验证
 
-1. 创建前立即确认已记录的基准分支和 `HEAD` 尚未移动，并且所选路径和分支仍不存在。base 已移动时，
-   不创建任何内容并停止，向 owning workflow 报告 recorded 和 current commits 以及保留的 snapshot。
+1. 创建前立即确认已记录的基准分支和 `HEAD` 尚未移动、所选 base commit 和 tree 仍然匹配，并且
+   所选路径和分支仍不存在。base 已移动时，不创建任何内容并停止，向 owning workflow 报告 recorded
+   和 current commits 以及保留的 snapshot。
 2. 使用 Git fallback 时，通过
    `git -C <base-root> worktree add -b <task-branch> <worktree-path> <base-commit>` 从已记录的基准提交
    创建具名分支和关联 worktree。
@@ -54,16 +55,21 @@ description: 当会改变仓库状态的工作因并行执行、宿主或工作�
    该基线。仓库未声明 baseline verification 时，不进行 qualification 并停止，除非 owning workflow
    或用户为这个 worktree 明确接受 unavailable baseline；不得用 completed-change verification
    替代或虚构命令。
-3. 只有所选 worktree 使用一个具名分支、基线干净或已被明确接受，且每个本地路径都只属于所选 role
-   的 accepted scope 时，才认定所选 role。Task Worktree 属于一个 accepted task。Batch Worktree
-   属于一个 frozen Ticket Batch，将其 base 记录为 immutable delivery target，并且只能包含该 batch
-   的 ordered Task Commits 和 batch-review checkpoints。存在所有权不明确本地状态的复用 worktree
-   仍是 worktree，不获得任一 qualification，也不授权自主创建 Checkpoint Commit。
+3. 只有所选 worktree 使用一个具名分支、其 `HEAD` 和 tree 等于 accepted base、基线干净或已被明确
+   接受，且每个本地路径都只属于所选 role 的 accepted scope 时，才认定所选 role。Task Worktree
+   属于一个 accepted task。Batch Worktree 属于一个 frozen Ticket Batch，将其 base 记录为 immutable
+   delivery target，并且只能包含该 batch 的 ordered Task Commits 和 batch-review checkpoints。
+   存在所有权不明确本地状态的复用 worktree 仍是 worktree，不获得任一 qualification，也不授权自主
+   创建 Checkpoint Commit。
 4. 只有环境和基线满足目标仓库契约后，才报告 worktree 已就绪。失败的 worktree 应保留用于诊断，不得
    自动丢弃证据。
 
 ## 结果
 
-报告基准 checkout 和提交、所选 role 和 branch、worktree 路径、`.gitignore` 是否改变、创建者、
-环境准备、基线结果、保留的基准状态、Task Worktree 或 Batch Worktree 资格是否通过及其原因，以及
-负责后续集成或清理的所有者。
+返回一个 preparation handoff，其中包含 `status`；所选 `role`、`worktree`、`branch`、精确 `head`
+和 `tree`；base checkout、branch、精确 commit 和 tree，以及保留的本地状态；`scope_owner`、
+`creation_owner`、`integration_owner` 和 `cleanup_owner`；预期 path 或 slug、`.gitignore` 结果和
+允许的 local-state scope；环境准备和 baseline commands、results 及 accepted failures；qualification
+结果和原因；以及在未就绪时保留的 state、failed phase 和 next owner。调用方在实施或 finalization 前
+重新检查该 handoff。handoff 不推断 Ticket dependencies 或 tracker semantics，也不授予超出其记录值
+的权限。

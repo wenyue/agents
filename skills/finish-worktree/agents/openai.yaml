@@ -1,4 +1,4 @@
 interface:
   display_name: "Finish Worktree"
-  short_description: "Choose and safely complete a linked worktree"
-  default_prompt: "Use $finish-worktree to choose and safely complete this linked Git worktree."
+  short_description: "Finalize a worktree through a closed mode"
+  default_prompt: "Use $finish-worktree to validate and execute this worktree's finalization contract."

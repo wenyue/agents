@@ -1,6 +1,6 @@
 # Pruning Agent
 
-本 reference 负责 Pruning Agent 的 packet、任务、verdict 和 closure check。父 Skill 负责该关卡的
+本 reference 负责 Pruning Agent 的 packet、任务、verdict 和 recheck。父 Skill 负责该关卡的
 运行时机、角色隔离、finding 分类处理、修正及后续出口。
 
 ## 提供有界 packet
@@ -24,12 +24,11 @@ owner，或者可由 trigger、input、step 或相邻上下文唯一推出。
 出口时，才将其视为可删除。声称某项行为是默认行为时，必须有宿主治理证据或适用的 Behavior
 Control 支持。
 
-## 返回并关闭
+## 返回并复查
 
 返回 `PASS` 或 `FAIL`。`PASS` 表示不存在有依据且保持语义的进一步缩减；它不要求工件尺寸必须
 变小。每个 `FAIL` finding 都要指出证据、候选位置、建议缩减、不变的行为、保留的义务，以及一种
 共享 finding 分类。
 
-经过一次获授权的 Pruning Pass 后，使用修订后的候选工件和 finding 执行一次 closure check。
-Closure `PASS` 确认不存在有依据的进一步缩减。Closure `FAIL` 指出剩余缩减并停止，不提出下一轮
-pass。除非活动 owner 要求，否则不要创建持久 pruning 报告。
+每次获授权的修正后，使用修订后的候选工件和先前 finding 再次检查。`FAIL` 指出所有剩余缩减，
+以及已应用的 finding 是否原样再次出现。除非活动 owner 要求，否则不要创建持久 pruning 报告。

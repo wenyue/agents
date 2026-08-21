@@ -70,14 +70,14 @@ description: 在创建、重写或实质更新 SmartKit Rule、Agent Skill 或 R
 
 ## 对阻塞 finding 分类
 
-在 Pruning、Review 和 Closure 中统一使用以下分类：
+在 Pruning、Review 和修正中统一使用以下分类：
 
 - `uniquely-forced`——当前证据确定了一种范围内修正，且不引入新政策、权限、行为、范围或副作用；
 - `decision-required`——当前证据仍允许两种或更多种有依据且实质不同的结果，或修正需要新的意图、
   证据、权限、范围或外部动作。
 
-逐条 finding 独立分类。finding 的数量不改变其分类；在获授权的 pass 中一起应用任意数量的
-`uniquely-forced` 修正。每个 `decision-required` finding 都要指出确切的未决选择、decision owner，
+逐条 finding 独立分类。finding 的数量不改变其分类；一起应用当前全部 `uniquely-forced` 修正。
+每个 `decision-required` finding 都要指出确切的未决选择、decision owner，
 以及每种有依据且实质不同的结果所对应的证据。缺少这些要素时，应将 finding 分类为
 `uniquely-forced` 或非阻塞项，而不是请求确认。
 
@@ -86,14 +86,11 @@ description: 在创建、重写或实质更新 SmartKit Rule、Agent Skill 或 R
 在机器验证前，完整读取 [`references/pruning-agent.md`](references/pruning-agent.md)，并让一个未参与
 候选编写的 fresh Pruning Agent 应用它。
 
-出现任何 `decision-required` finding 时停止。如果所有 finding 都是 `uniquely-forced`，在不添加
-行为的前提下通过一次 Pruning Pass 应用全部 finding，然后把修订后的候选和 finding 交回同一个
-Agent 做一次 closure check。Closure `PASS` 时继续；Closure `FAIL` 时停止，不执行第二次 Pruning
-Pass。将修剪后的候选与账本每一行重新对齐，并要求相对于基线的每项增长都映射到一项独立且有依据的
-义务。
+在不添加行为的前提下应用 **修正直至稳定**，并在修正期间保持使用同一个 Pruning Agent。将每个
+revision 与账本重新对齐，并要求相对于基线的每项增长都映射到一项独立且有依据的义务。
 
-Pruning Agent 不写入候选文件，也不能在之后担任该候选的 Reviewer、Closure Reviewer 或 Acceptance
-Runner。fresh Pruning Agent 不可用时停止并报告。
+Pruning Agent 不写入候选文件，也不能在之后担任该候选的 Reviewer 或 Acceptance Runner。fresh
+Pruning Agent 不可用时停止并报告。
 
 ## 验证并冻结
 
@@ -108,8 +105,7 @@ Runner。fresh Pruning Agent 不可用时停止并报告。
 在有界 Review Packet 中记录成功命令、最终退出状态和未测试表面。除非活动 owner 要求，不要创建
 持久验证报告。
 
-review 前冻结候选写入。内容变化会创建新的 Candidate Revision，并使所有依赖它的机器验证、
-Review 和 Acceptance 结果失效。停止当前 review，而不是自动重启。
+review 前冻结候选写入。
 
 ## 审查并验收
 
@@ -127,17 +123,16 @@ Acceptance 由 reviewer 静态走查，不使用 Runner，也不生成目标。�
 每个候选工件都使用自己的 fresh reviewer；独立候选的 review 可以并行进行，但不得共享证据或结论。
 fresh reviewer 不可用时停止并报告。
 
-## 修正一次并交接
+## 修正直至稳定
 
-出现任何有效的 `decision-required` finding 时，在修正前停止，并且只询问其确切的缺失决定。不要为
-`uniquely-forced` finding 请求批准或确认。如果所有 finding 都是 `uniquely-forced`，在一次
-Correction Pass 中一起修正，让修正后的 revision 通过 Pruning Gate，重跑所有失效的机器检查，并
-冻结新的 Candidate Revision。
+出现任何有效的 `decision-required` finding 时，在修正前停止，并且只询问其确切的缺失决定。当所有
+finding 都是 `uniquely-forced` 时，无需请求确认，直接一起应用当前全部修正。内容变化会创建新的
+Candidate Revision，并使所有依赖它的机器验证、Review 和 Acceptance 结果失效；按正常顺序重跑这些
+关卡。修正后的 revision 接受完整候选 Semantic Review 和受影响的 Acceptance，并为每个受影响的
+普通工件 case 使用一个新的隔离 Runner。
 
-把修正后的 revision、首轮 finding、治理证据和精确复验结果交给另一个 fresh Closure Reviewer。
-它重新执行完整候选的 Semantic Review 和受影响的 Acceptance，并为受影响的普通工件 portfolio
-使用一个新的隔离 Runner。`PASS` 结束本轮；`FAIL` 则停止。不要自动开始下一轮修正。用户决定可以
-基于结果状态启动之后一次明确的 authoring run。
+持续修正，直至所有关卡通过。当同一个 finding 在修正后原样再次出现，或建议的修正不会改变候选
+内容时，以无进展停止。报告该 blocker，不要请求用户授权再次进行相同尝试。
 
 成功要求 Pruning Gate、机器验证、Semantic Review 和 Acceptance 对同一个 Candidate Revision
 全部通过。报告候选工件的生命周期、语义类型、owner、保留内容与批准变更、受影响表面、大小比较、

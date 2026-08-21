@@ -17,6 +17,11 @@ candidate run after both complete; expose neither result to the other Runner.
 
 ## Apply the artifact
 
+Before execution, create a unique Runner-owned temporary case directory in the project workspace
+outside candidate-owned files. Keep all Acceptance-created artifacts there and give child
+processes and tools its absolute path. Report any required tool unable to honor the directory as
+untested instead of writing elsewhere. After the reviewer captures the case result, delete the
+case directory; if safe cleanup fails, report its retained path.
 Use the real public job entry or policy-application seam when available. Run owned deterministic
 resources through their public entries. The Runner must apply the candidate; an academic
 explanation or reviewer walkthrough is not Acceptance evidence.

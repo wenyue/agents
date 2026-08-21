@@ -5,10 +5,10 @@ description: Use when state-changing repository work requires an isolated Task o
 
 # Create Worktree
 
-Create or reuse one named linked Git worktree and leave it ready for its owning workflow without changing
-the base checkout. This Skill owns worktree selection, creation, validation, Task or Batch Worktree
-qualification, and preparation handoff; it does not own business implementation, completed-change
-integration, or cleanup.
+Create or reuse one named linked Git worktree and leave it ready for its owning workflow without
+changing the base checkout. This Skill owns worktree selection, creation, validation, Task or Batch
+Worktree qualification, and the mechanical ownership handoff. It does not own business
+implementation, completed-change integration, tracker state, or cleanup.
 
 ## Preconditions
 
@@ -16,10 +16,10 @@ integration, or cleanup.
    and the base checkout's staged, unstaged, and untracked state. Identify one intended base branch
    and commit; stop when the base is detached or ambiguous.
 2. Select exactly one role: a Task Worktree for one accepted task, or a Batch Worktree for one
-   frozen Ticket Batch. Choose a lowercase hyphenated slug and a named branch. Follow a verified
-   repository branch convention; otherwise use `worktree/<slug>`. A current host-created worktree
-   selected for reuse takes precedence over the absence check; when creating instead, stop if the
-   branch or intended path already exists rather than attaching or overwriting it implicitly.
+   frozen Ticket Batch. Record the caller-supplied scope owner, intended path or lowercase
+   hyphenated slug, named branch, exact base commit, and later integration and cleanup owners.
+   Follow a verified
+   repository branch convention; otherwise use `worktree/<slug>`.
 3. Record the base branch, base commit, existing worktrees, existing local branches, and base
    checkout status before any mutation.
 
@@ -42,7 +42,8 @@ integration, or cleanup.
 ## Create and Validate
 
 1. Immediately before creation, confirm the recorded base branch and `HEAD` have not moved and the
-   selected path and branch remain absent. If the base moved, stop without creating anything and
+   selected base commit and tree still match, and the path and branch remain absent. If the base
+   moved, stop without creating anything and
    report the recorded and current commits plus the preserved snapshot to the owning workflow.
 2. For a Git fallback, create the named branch and linked worktree from the recorded base commit
    with `git -C <base-root> worktree add -b <task-branch> <worktree-path> <base-commit>`.
@@ -65,8 +66,9 @@ integration, or cleanup.
    that baseline explicitly. When the repository declares no baseline verification, stop without
    qualification unless the owning workflow or user explicitly accepts the unavailable baseline for
    this worktree; do not substitute completed-change verification or invent a command.
-3. Qualify the selected role only when the worktree has one named branch, its baseline is clean or
-   explicitly accepted, and every local path belongs exclusively to that role's accepted scope. A
+3. Qualify the selected role only when the worktree has one named branch, its `HEAD` and tree equal
+   the accepted base, its baseline is clean or explicitly accepted, and every local path belongs
+   exclusively to that role's accepted scope. A
    Task Worktree belongs to one accepted task. A Batch Worktree belongs to one frozen Ticket Batch,
    records its base as the immutable delivery target, and may contain only that batch's ordered Task
    Commits and batch-review checkpoints. A reused worktree with ambiguously owned local state remains
@@ -76,7 +78,11 @@ integration, or cleanup.
 
 ## Result
 
-Report the base checkout and commit, selected role and branch, worktree path, whether `.gitignore` changed,
-creation owner, environment setup, baseline result, preserved base state, whether Task Worktree
-or Batch Worktree qualification passed and why, and the owner responsible for later integration or
-cleanup.
+Return one preparation handoff containing `status`; selected `role`, `worktree`, `branch`, exact
+`head`, and exact `tree`; base checkout, branch, exact commit and tree, and preserved local state;
+`scope_owner`, `creation_owner`, `integration_owner`, and `cleanup_owner`; intended path or slug,
+`.gitignore` result, and allowed local-state scope; environment setup and baseline commands,
+results, and accepted failures; qualification result and reason; and, when not ready, retained
+state, failed phase, and next owner. The caller rechecks the handoff before implementation or
+finalization. The handoff infers no Ticket dependencies or tracker semantics and grants no authority
+beyond its recorded values.

@@ -25,18 +25,18 @@ Scope: Workspace selection, local Git state, commit authority, and remote action
   checkout state. Let it own linked-worktree selection, readiness, and Task Worktree qualification.
 - In a qualified Task Worktree, the implementation workflow may create task-only Checkpoint Commits
   through the repository's normal commit hooks without separate authorization. In a qualified Batch
-  Worktree, its controller may append the frozen tickets' Task Commits and create batch-review
-  Checkpoint Commits through the same hooks.
+  Worktree, each ticket worker may append exactly its ticket's Task Commit, and the controller may
+  create batch-review Checkpoint Commits through the same hooks.
 - When an implementation workflow is ready to consolidate or deliver, apply `finish-worktree`.
   Let the implementation workflow own formal review and let `finish-worktree` verify that its
   evidence matches the exact fixed point, reviewed tree, and acceptance sources, records successful
   verification for that same reviewed tree, and contains no blocking finding before delivery.
   For one task, let `finish-worktree` own target synchronization, consolidation into one Task
   Commit, outcome selection, exact authorization, execution, verification, recovery, and lifecycle
-  cleanup. For an accepted Ticket Batch, let it stage each per-ticket Task Commit on the Batch
-  Worktree, then deliver the already-reviewed ordered range, recover, and clean up after every
-  ticket is staged. Target synchronization that changes reviewed content returns to the
-  implementation workflow for review instead of being delivered.
+  cleanup. For an accepted Ticket Batch, each worker owns its Ticket Task Worktree lifecycle; the
+  controller owns Batch Worktree creation, whole-batch review and delivery, and every tracker
+  transition. Target synchronization that changes reviewed
+  content returns to the implementation workflow for review instead of being delivered.
 
 ## Remote Actions
 

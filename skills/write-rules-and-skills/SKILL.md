@@ -76,15 +76,15 @@ another Agent can use the artifact without inventing a condition, fact, step, ow
 
 ## Classify blocking findings
 
-Use these classes throughout Pruning, Review, and Closure:
+Use these classes throughout Pruning, Review, and correction:
 
 - `uniquely-forced` — current evidence determines one in-scope correction without new policy,
   authority, behavior, scope, or side effects;
 - `decision-required` — current evidence leaves two or more materially different supported
   outcomes, or the correction requires new intent, evidence, authority, scope, or external action.
 
-Classify each finding independently. The number of findings does not change their class; apply any
-number of `uniquely-forced` corrections together in the authorized pass. Every
+Classify each finding independently. The number of findings does not change their class; apply all
+current `uniquely-forced` corrections together. Every
 `decision-required` finding names the exact unresolved choice, its decision owner, and the evidence
 for each materially different supported outcome. Without those elements, classify the finding as
 `uniquely-forced` or non-blocking rather than asking for confirmation.
@@ -94,14 +94,12 @@ for each materially different supported outcome. Without those elements, classif
 Before machine validation, read [`references/pruning-agent.md`](references/pruning-agent.md)
 completely and apply it with one fresh Pruning Agent that did not author the candidate.
 
-Stop on any `decision-required` finding. If every finding is `uniquely-forced`, apply all of them
-in one Pruning Pass without adding behavior, then give the revised candidate and findings back to
-the same Agent for one closure check. Closure `PASS` continues; closure `FAIL` stops without a
-second Pruning Pass. Reconcile the pruned candidate with every ledger row and require each baseline
-increase to map to a distinct supported obligation.
+Apply **Correct until stable** without adding behavior and keep the same Pruning Agent through
+correction. Reconcile every revision with the ledger and require each baseline increase to map to a
+distinct supported obligation.
 
-The Pruning Agent writes no candidate file and cannot later serve as that candidate's Reviewer,
-Closure Reviewer, or Acceptance Runner. Stop and report when a fresh Pruning Agent is unavailable.
+The Pruning Agent writes no candidate file and cannot later serve as that candidate's Reviewer or
+Acceptance Runner. Stop and report when a fresh Pruning Agent is unavailable.
 
 ## Validate and freeze
 
@@ -118,9 +116,7 @@ relevant output, unrun gates, and unverified surfaces. Do not call a walkthrough
 Record successful commands, final exits, and untested surfaces in a bounded Review Packet. Create
 no persistent validation report unless an active owner requires it.
 
-Freeze candidate writes before review. A content change creates a new Candidate Revision and
-invalidates every dependent machine, Review, and Acceptance result. Stop the current review rather
-than automatically restarting it.
+Freeze candidate writes before review.
 
 ## Review and accept
 
@@ -139,19 +135,18 @@ Apply the shared finding classes to every blocking result.
 Each candidate gets its own fresh reviewer; independent candidate reviews may run concurrently,
 but they do not share evidence or verdicts. Stop and report an unavailable fresh reviewer.
 
-## Correct once and hand off
+## Correct until stable
 
-On any valid `decision-required` finding, stop before correction and ask only for its exact missing
-decision. Do not ask for approval or confirmation for `uniquely-forced` findings. If all findings
-are `uniquely-forced`, apply them together in one Correction Pass, run the Pruning Gate on the
-corrected revision, rerun every invalidated machine check, and freeze the new Candidate Revision.
+Stop before correction on any valid `decision-required` finding and ask only for its exact missing
+decision. When every finding is `uniquely-forced`, apply all current corrections together without asking for
+confirmation. A content change creates a new Candidate Revision and invalidates every dependent
+machine, Review, and Acceptance result; rerun those gates in their normal order. A corrected
+revision receives whole-candidate Semantic Review and affected Acceptance, using a new isolated
+Runner for each affected Ordinary Artifact case.
 
-Give the corrected revision, first findings, governing evidence, and exact revalidation to a
-different fresh Closure Reviewer. It repeats whole-candidate Semantic Review and affected
-Acceptance, using a new isolated Runner for the affected Ordinary Artifact portfolio. `PASS` closes
-the run;
-`FAIL` stops it. Do not start another automatic correction. A user decision may begin a later
-explicit authoring run on the resulting state.
+Continue until all gates pass. Stop for no progress when the same finding recurs unchanged after
+its correction or a proposed correction would not change the candidate. Report that blocker
+without asking the user to authorize another identical attempt.
 
 Success requires the Pruning Gate, machine validation, Semantic Review, and Acceptance to pass for
 the same Candidate Revision. Report the candidate's lifecycle, semantic type, owner, preserved and

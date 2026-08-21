@@ -50,11 +50,10 @@ challenges instructions that only restate an evidenced Agent or host default, re
 loaded broader owner, or follow uniquely from the candidate's trigger, inputs, steps, or adjacent
 context. Deletion must leave representative actions, choices, authority, safety boundaries, and
 exits unchanged; a default requires governing host evidence or an applicable Behavior Control.
-The Agent writes no candidate file and cannot later review or run Acceptance for that candidate. A
-candidate with only uniquely forced findings gets one author-owned Pruning Pass and one closure
-check by the same Agent; a decision-required finding or failed closure stops the run. Passing does
-not require a numeric size reduction, but every increase from an available baseline must map to a
-distinct supported obligation.
+The Agent writes no candidate file and cannot later review or run Acceptance for that candidate.
+Corrections return to the same Pruning Agent until pruning passes. Passing does not require a
+numeric size reduction, but every increase from an available baseline must map to a distinct
+supported obligation.
 
 A generation contract is qualified by statically walking its complete guidance against supported
 high-risk inputs and starts neither an Acceptance Runner nor target generation. A real target
@@ -62,16 +61,15 @@ created later is a separate candidate: it defaults to a different fresh reviewer
 evidence nor verdicts, enters the Ordinary Artifact route, and independently passes the normal
 Acceptance Standard.
 
-Classify every finding independently. Finding count does not create a decision: one Correction Pass
-fixes any number of `uniquely-forced` findings. A `decision-required` finding exists only when the
+Classify every finding independently. Finding count does not create a decision: one correction step
+fixes all current `uniquely-forced` findings. A `decision-required` finding exists only when the
 current evidence leaves materially different supported outcomes or correction needs new intent,
 evidence, authority, scope, or external action; it must identify the exact unresolved choice, its
-owner, and the evidence for each supported outcome. Stop immediately when first-round findings
-include a valid `decision-required`; otherwise, return the corrected revision through the Pruning
-Gate and invalidated machine checks. A different fresh Closure Reviewer gets one closure attempt:
-confirm that the findings are closed, recheck changed obligations and exits, falsify the complete
-artifact, and rerun affected Acceptance cases. Stop after another failure; a user decision does not
-automatically reset the correction or review budget for the same run.
+owner, and the evidence for each supported outcome. Stop on a valid `decision-required`; otherwise,
+return each corrected revision through the Pruning Gate and invalidated machine checks, then give it
+to an eligible fresh reviewer to confirm prior findings, falsify the complete artifact, and rerun
+affected Acceptance cases. Continue while corrections change the candidate and findings do not
+recur; repeated findings or an unchanged correction stop as no progress.
 
 A Qualification Campaign applies the same standard to multiple representative Canary Candidates;
 it does not define another quality tier. Candidates are corrected and frozen independently in the
@@ -104,11 +102,11 @@ configuration, files, or commands affect its behavior.
 ## Consequences
 
 Ordinary authoring and workflow qualification share the same quality language and termination
-conditions. One bounded Pruning Gate separates editorial reduction from semantic falsification;
-one bounded Candidate Review avoids duplicate reviewer context loading; an isolated Acceptance
+conditions. The Pruning Gate separates editorial reduction from semantic falsification; one
+Candidate Review per revision avoids duplicate reviewer context loading; an isolated Acceptance
 Runner demonstrates use without receiving the answer. Risk-matched cases, conditional Behavior
-Control, one Pruning Pass, one Correction Pass, and one Closure Review bound the added cost and
-prevent a serial fix loop. The project task contract owns a Qualification Campaign's specific
+Control, and a progress-checked Correction Loop permit automatic convergence without repeating a
+failed operation. The project task contract owns a Qualification Campaign's specific
 canaries, scheduling, budget, Defect Cards, and write scope; they do not enter the cross-project
 `write-rules-and-skills` runtime Skill. Project Rules and tests own the location, integrity, and
 runtime isolation of committed evaluation inputs.
