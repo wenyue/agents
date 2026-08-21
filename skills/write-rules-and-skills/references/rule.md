@@ -4,10 +4,11 @@ A Rule owns one persistent policy. For an Ordinary Artifact, this reference appl
 candidate itself. For a Generation Contract, it defines the semantics the guidance must establish
 for the future target.
 
-## Establish the policy
+## Establish the Policy Frame
 
-Resolve the Rule's class, owner, policy, strength, scope, applicability, precedence, exceptions,
-boundaries, and outcomes from accepted intent, the active Rule schema, and governing evidence.
+Resolve the Rule's class, owner and strength, scope and applicability, observable
+predicate-to-outcome mappings, exceptions, precedence, and ownership boundaries from accepted
+intent, the active Rule schema, and governing evidence. Together these form its Policy Frame.
 Every applicable field needs one supported value; omit a field only when evidence proves that it
 cannot change the policy.
 
@@ -25,6 +26,8 @@ Do not invent target policy merely to make the contract appear complete.
   label.
 - Keep ordered execution procedure in a Skill. Use order in Rule-generation guidance only when it
   changes the authored result.
+- Leave discoverable environment facts in their active owner. Keep rationale and decision history
+  in their documentation owner unless they change how the policy applies.
 - Use headings for stable policy regions or real applicability branches, lists for peer
   requirements, and tables only for exact mappings or repeated-field comparisons.
 

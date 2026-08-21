@@ -3,11 +3,25 @@
 Skill 负责一项完整的触发式工作。对于普通工件，本 reference 应用于候选工件本身。对于生成契约，
 它定义指导必须为未来目标确定的语义。
 
-## 确定工作
+## 确立工作与 Skill Shape
 
-根据已接受意图、当前 Skill mechanics 和治理证据，确定 actor、trigger、inputs、preconditions、
-start、actions、outcome、owner、boundaries、completion、stop、failure、recovery、validation、
-resources 和 handoff。每个适用字段都需要一个有依据的值；只有当证据证明字段不会改变执行时才省略它。
+根据已接受意图、当前 Skill mechanics 和治理证据，确定 objective、actor、trigger、evidence、
+inputs、preconditions、outcome、owner、boundaries、completion、stop、failure、validation 和
+handoff。只有证据表明 actions、ordering、recovery、resources 和 commands 会改变执行时才确定
+它们。每个适用字段都需要一个有依据的值；只有当证据证明字段不会改变工作时才省略它。
+
+选择一种 Skill Shape：
+
+- **Judgment-led** 是默认值。根据 objective、evidence、principles、invariants、decision
+  boundaries 和 prioritized exits 构建 Judgment Frame，并把方法留给 Agent 判断。
+- **Procedure-led** 仅在流程会改变正确性、安全性、外部协议合规性、协调、恢复或已接受结果时，
+  使用 Job Graph 和 Execution Paths。
+- **Hybrid** 从 Judgment Frame 开始，只添加有界 Procedural Islands。每个 island 在其
+  prioritized exit 后把控制权交还 Agent 判断。
+
+作者偏好的大纲、希望显得完整，或未经验证的历史顺序，都不能证明规定流程合理。当一个建议步骤只
+为改变 Agent 默认行为而存在，且没有观察到的 failure 证明其必要性时，使用生命周期 reference 的
+Behavior Control。
 
 对于生成契约，要求指导识别用于选择每个适用目标字段的证据，并在证据仍允许实质不同的工作、owner、
 resource、command 或 exit 时停止。不要仅为了让契约看起来完整而虚构目标工作流。
@@ -29,12 +43,19 @@ user-only invocation。保持两种 Harness 表示一致：
 在同一个 Candidate Revision 中维护 Skill 的 `agents/openai.yaml`。缺失时创建；更新时保留有依据的
 interface metadata；只根据上述已确定的选择更改 invocation policy。
 
-## 编写一项完整工作
+## 投影一项完整工作
 
-- 让主路径保持可见。把每个分支放在其 trigger 旁边，且仅当顺序会改变正确性、安全性或结果时使用
-  有序步骤。
-- 为每条路径指定一个有优先级的 completion、stop 或 failure 出口。说明条件重合时由哪个出口
-  决定；completion 不能绕过必需的 validation、cleanup、preservation 或 handoff。
+- 让主文件具备 Entry Sufficiency：识别 Skill Shape、objective 或 entry、适用的 Judgment Frame
+  或 Execution Path，以及每个有条件需要的 resource，而不加载无关细节。
+- 对 Judgment-led 工作，陈述 evidence、principles、invariants、decision boundaries 和
+  prioritized exits，不规定没有依据的方法。
+- 对 Procedure-led 工作，让每条真实 Execution Path 可见且 Path-sufficient。把每个分支放在其
+  trigger 旁边，且仅当顺序会改变正确性、安全性或结果时使用有序步骤。
+- 对 Hybrid 工作，让 Judgment Frame 保持主要地位，只在触达 trigger 时披露对应 Procedural
+  Island。
+- 为每个 Judgment Frame 和 Execution Path 指定一个有优先级的 completion、stop 或 failure
+  出口。说明条件重合时由哪个出口决定；completion 不能绕过必需的 validation、cleanup、
+  preservation 或 handoff。
 - 只为已验证且允许恢复的 failure 声明 recovery。保留有用的 partial state，并把缺失的决定、
   权限或范围交给其 owner。
 - 仅对重复、脆弱且确定性的工作使用自有脚本。定义其 dependencies、inputs、outputs、failures、
@@ -44,9 +65,9 @@ interface metadata；只根据上述已确定的选择更改 invocation policy�
 
 ## 审查并验收 Skill 语义
 
-Semantic Review 根据候选工件和证据重建完整工作和分支到出口的映射。以下情况应判定失败：字段隐含，
-虚构 action、command、dependency、owner、recovery 或 result，或者路径没有出口、存在多个无优先级
-出口、出口不可达或过早完成。
+Semantic Review 根据候选工件和证据重建完整工作、所选 Skill Shape、Judgment Frame 和适用的
+Execution Paths。以下情况应判定失败：字段隐含、规定没有依据的流程、虚构 action、command、
+dependency、owner、recovery 或 result、缺少 prioritized exit、出口不可达或过早完成。
 
 只选择风险最高的相关案例：
 

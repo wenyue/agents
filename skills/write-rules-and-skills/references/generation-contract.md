@@ -4,25 +4,32 @@ A Generation Contract is a standalone instruction artifact that guides another A
 a complete future Rule or Skill. This reference owns the contract itself; the future target type
 selects `rule.md` or `skill.md`.
 
-## Establish the instruction contract
+## Establish the Generation Frame
 
 Resolve every applicable part from active owner and project evidence:
 
 - the authoring actor, invocation or trigger, accepted request, and required evidence;
 - the future target's semantic type, owner, packaging or schema, write location, and permitted
   supporting changes;
-- the ordered authoring actions, preservation boundary, target validation, and handoff; and
+- the future target's required obligations and selected Policy Frame or Skill Shape;
+- the preservation boundary, target validation, and handoff; and
 - completion, material-ambiguity stops, execution failures, recovery, and coincident-exit priority.
 
-Apply the contract's active packaging mechanics without copying host or project facts into this
-cross-project reference. The selected semantic-type reference defines what the future target must
-contain. The contract must tell its Agent how to establish each applicable target field from
-evidence and where to stop when evidence does not select one result.
+Together these form the Generation Frame. Apply active packaging mechanics without copying host or
+project facts into this cross-project reference. The selected semantic-type reference defines what
+the future target must contain. The contract must tell its Agent how to establish each applicable
+target obligation from evidence and where to stop when evidence does not select one result.
+
+Leave authoring method and order to Agent judgment by default. Prescribe an authoring action or
+sequence only when evidence shows that it changes target correctness, permitted writes, validation,
+recovery, or handoff.
 
 ## Author usable guidance
 
 - Keep inputs, evidence sources, decisions, actions, exits, validation, and handoff discoverable at
   the point where another Agent needs them.
+- State target obligations and selection evidence rather than copying a generated target outline or
+  requiring an unsupported authoring recipe.
 - Use observable predicates. Labels such as `valid`, `complete`, or `supported` do not replace the
   facts that make them true.
 - Preserve existing target semantics unless current evidence or explicit approval supports a

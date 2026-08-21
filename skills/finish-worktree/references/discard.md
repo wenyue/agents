@@ -13,6 +13,8 @@ Discard only the exact local task worktree and branch named by an explicit user 
    commits.
 4. Verify the base checkout and all its local state remain unchanged and the exact local worktree
    and branch are gone.
+5. Delete only workflow-owned recovery refs through expected-old-value checks. Retain and report
+   any ref whose expected value or ownership does not match.
 
 Keep every remote branch. Remote deletion is a different destructive action and requires its own
 exact request and authorization.

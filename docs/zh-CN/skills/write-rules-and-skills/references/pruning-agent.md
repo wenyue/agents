@@ -8,6 +8,7 @@
 向 Agent 提供：
 
 - 已接受结果和语义账本；
+- Owner Gate 结论和所选 Policy Frame、Skill Shape 或 Generation Frame；
 - 完整候选工件、自有资源以及加载或分发表面；
 - 治理证据和适用 reference；以及
 - 存在前一版本时的基线行数、词数和字节数。
@@ -19,6 +20,16 @@
 查找陈旧或重复的含义、无必要缓存的环境事实、位置错误的分支专属材料，以及可以删除或压缩的措辞
 或结构。质疑以下显式指令：只是重述已有证据支持的 Agent 或宿主默认行为、重复可靠加载的上层
 owner，或者可由 trigger、input、step 或相邻上下文唯一推出。
+
+还要质疑：
+
+- 与受支持的 Owner Gate 结论冲突、却放在 Rule、Skill、Generation Contract 或运行时资源中的
+  义务；
+- 没有证据表明流程会影响正确性、安全性、外部协议合规性、协调、恢复或已接受结果，却规定的
+  Skill 动作或顺序；
+- 让一个 Procedural Island 把无关判断也变成工作流的 Hybrid Skill；
+- 复制未来目标大纲或规定无依据编写方法的 Generation Contract；以及
+- 急切加载条件性细节，或无法通过显式指针到达一个完整所选 frame 或 path 的主文件。
 
 仅当删除一项指令不会改变任何代表性动作、选择、权限、安全边界以及 completion、stop 或 failure
 出口时，才将其视为可删除。声称某项行为是默认行为时，必须有宿主治理证据或适用的 Behavior

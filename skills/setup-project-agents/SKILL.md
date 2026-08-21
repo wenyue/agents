@@ -5,14 +5,14 @@ description: Use when initializing or reconciling a repository's Rules, Skills, 
 
 # Setup Project Agents
 
-Reconcile one repository's Rules, Skills, Agents, and MCP through the script-backed setup workflow.
-Treat the four capability families as peers: each has its own canonical project input and native
-delivery form; none is an appendix to another.
+This Hybrid Skill reconciles one repository's Rules, Skills, Agents, and MCP. The Agent decides the
+accepted capability intent; the public workflow owns deterministic discovery, rendering,
+validation, transaction, and cleanup.
 
-## Capability Inputs
+## Judgment Frame
 
-Establish the requested project intent before `start`. Change a canonical input only when the user
-requests that change.
+Treat the four capability families as peers. Before `start`, inspect their canonical inputs and
+change one only when the user requests that change.
 
 | Capability | Canonical project input | Setup responsibility |
 | --- | --- | --- |
@@ -21,24 +21,21 @@ requests that change.
 | Agents | Project-owned sources under `.agents/agents/` and `.agents/config.json` `agents` declarations | Preserve Agent sources, render the declared host adapters, and install catalog-declared Codex Plugin Agent defaults. |
 | MCP | `.agents/config.json` `mcp` declarations | Render the declared host-native MCP entries without storing secret values. |
 
-Use the schema declared by `.agents/config.json`; its contract ships with the plugin and has no
-independent JSON version. A configured Agent source must be the matching `.agents/agents/<id>.md`
-file. MCP entries declare exactly one of `url` or `command`; ordered
-`when`/`set` overrides may select host harnesses and operating systems. Optional MCP readiness may
-select the host harnesses and operating systems where checks apply and may replace inferred checks
-with an explicit safe check list.
+Use the shipped `.agents/config.json` schema. A configured Agent source is its matching
+`.agents/agents/<id>.md`; each MCP entry declares exactly one of `url` or `command`. Ordered
+`when`/`set` overrides may select Harnesses and Platforms, and optional MCP readiness may scope or
+replace inferred static checks.
 
 Project-owned canonical inputs remain editable project content. Files and structured fields
 produced by setup are setup-owned. Plugin Rules, Skills, MCP, and native Cursor and Copilot Plugin
-Agents are installed with SmartKit and are outside this project workflow. Codex plugin packages do
-not load Plugin Agent adapters, so setup installs catalog-declared Codex adapters as managed default
-assets. These adapters remain Plugin Agents and never enter `.agents/config.json`.
+Agents stay outside this project workflow. Setup installs only catalog-declared Codex Plugin Agent
+defaults as managed assets; they never become Project Agent declarations.
 
 Matt repository context is a separate project-owned prerequisite. This workflow neither generates
 nor owns `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`,
 `docs/agents/domain.md`, or the `## Agent skills` block that points to them.
 
-## Workflow
+## Transactional Workflow
 
 1. From the target repository root, verify that Matt repository setup is complete: the three
    `docs/agents/` context files exist and either `AGENTS.md` or `CLAUDE.md` contains the matching
@@ -47,9 +44,7 @@ nor owns `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`,
    questions or choose an issue tracker on its behalf. Resume by invoking `setup-project-agents`
    again only after Matt setup reports completion.
 
-2. Inspect all four capability inputs. Apply any user-requested
-   canonical-input changes before starting. This step is complete when Rules, Skills, Agents, and
-   MCP each represent the accepted project intent.
+2. Establish that Rules, Skills, Agents, and MCP each represent the accepted project intent.
 
 3. Identify the loaded Skill directory as `SETUP_PROJECT_AGENTS_ROOT`, then start the public
    workflow:
@@ -60,9 +55,9 @@ nor owns `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`,
    ```
 
    On Windows, invoke `setup_project_agents.ps1` with the same arguments. Stop on a nonzero result.
-   Record the returned `session` as `SESSION` and `generated` as `GENERATED`, plus the `request` and
-   `source_root` paths. This step is complete when one private session exists and the target
-   repository remains unchanged by start.
+   Record the returned `session` as `SESSION`, `generated` as `GENERATED`, and the `request` and
+   `source_root` paths. Continue only when one private session exists and the target remains
+   unchanged.
 
 4. Read the request and confirm it captured the accepted Rules, Skills, Agents, and MCP intent. If
    any captured choice is wrong, cancel the session, correct the canonical project input, and start
@@ -85,19 +80,19 @@ nor owns `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`,
 
    Matt context is never a generation request.
 
-   Use the current repository as evidence and preserve complete project-owned content unless the
-   user requests reconfiguration. This step is complete when the generated directory contains
-   exactly the requested targets and no undeclared path.
+   Use current repository evidence and preserve complete project-owned content unless the user
+   requests reconfiguration. Continue only when `GENERATED` contains exactly the requested targets
+   and no undeclared path.
 
-6. Pass the Review Gate, then finish the same session:
+6. Pass the Review Gate, then finish the same session exactly once:
 
    ```sh
    sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" finish \
      --session "$SESSION"
    ```
 
-   On Windows, invoke `setup_project_agents.ps1`. Invoke `finish` once. Completion requires a zero
-   exit and JSON containing `phase: finish` and `check: clean`.
+   On Windows, invoke `setup_project_agents.ps1`. Completion requires a zero exit and JSON containing
+   `phase: finish` and `check: clean`.
 
 7. If work must stop after `start` and before `finish`, cancel the session:
 
@@ -117,13 +112,13 @@ nor owns `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`,
 - [ ] The request is unchanged and every requested target exists under the generated root.
 - [ ] Generated project content contains no credential or secret.
 
-## Stop Conditions
+## Stop and Recovery
 
 Stop and report the exact error when `start`, `finish`, or `cancel` fails. After a `finish` failure,
 discard that session and restart after resolving the cause. Stop before `finish` when a capability
 declaration, ownership conflict, or generated output remains unresolved.
-Use only the public `start`, `finish`, and `cancel` commands; the workflow owns selection,
-rendering, deletion, validation, transaction, checking, and session cleanup.
+Use only `start`, `finish`, and `cancel`; their implementation owns selection, rendering, deletion,
+validation, transaction, checking, and session cleanup.
 
 ## Result
 

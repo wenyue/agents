@@ -7,8 +7,36 @@ description: Use when creating, rewriting, or materially updating a SmartKit Rul
 
 Author the smallest complete artifact from accepted intent and verified evidence. Apply
 `writing-for-agents` first for information hierarchy, purposeful Markdown, and Skill invocation
-mechanics. This Skill owns the shared workflow; selected references own lifecycle and semantic-type
-requirements.
+mechanics. This Hybrid Skill owns the shared gates; selected references own ownership, lifecycle,
+and semantic-type decisions.
+
+## Establish the obligations
+
+Before the first candidate write, establish from accepted intent and current evidence:
+
+- the requested outcome, preserved semantics, approved changes, non-goals, and safety boundaries;
+- the requested and current artifact owners, permitted writes, broader and narrower owners, and
+  affected loading, resource, generation, and distribution surfaces; and
+- the current behavior, applicable project Rules and host mechanics, validation seams, and every
+  environmental fact that can change a policy, action, target, or exit.
+
+Record one temporary semantic-ledger row for each independently changeable obligation:
+
+| Obligation | Evidence | Requested or current owner | Disposition |
+| --- | --- | --- | --- |
+
+Split rows only when a predicate, exception, owner, action, recovery, or exit can change
+independently. Give every row one `preserve`, `change`, `add`, `move`, or `retire` disposition.
+Keep the ledger, authoring models, provenance, and review evidence out of runtime artifacts.
+
+## Pass the Owner Gate
+
+Read [`references/owner-gate.md`](references/owner-gate.md) completely and apply it to the ledger.
+Stop for its exact ownership decision when the supported verdict conflicts with the requested or
+current owner.
+
+For an explicitly read-only Ownership Review, return the gate's verdict and stop. Otherwise continue
+only when every candidate has one supported owner.
 
 ## Route the candidate
 
@@ -28,19 +56,11 @@ file extension or packaging, selects the semantic-type reference.
 | Rule Generation Contract | [`references/generation-contract.md`](references/generation-contract.md) and [`references/rule.md`](references/rule.md) |
 | Skill Generation Contract | [`references/generation-contract.md`](references/generation-contract.md) and [`references/skill.md`](references/skill.md) |
 
-When one request mixes durable policy with an executable job, create separately owned Rule and
-Skill candidates. Routing is complete when every candidate has one lifecycle, one semantic type,
-one owner, and both references loaded.
+When the Owner Gate returns `split`, create the separately owned Rule and Skill candidates selected
+by the user. Routing is complete when every candidate has one lifecycle, one semantic type, one
+owner, and both references loaded.
 
 ## Reach readiness
-
-Before the first candidate write, establish from accepted intent and current evidence:
-
-- the requested outcome, preserved semantics, approved changes, non-goals, and safety boundaries;
-- the artifact owner, permitted writes, broader and narrower owners, and affected loading,
-  resource, generation, and distribution surfaces; and
-- the current behavior, applicable project Rules and host mechanics, validation seams, and any
-  environmental fact that can change a policy, action, target, or exit.
 
 Before writing, apply any Behavior Control required by the selected lifecycle reference and retain
 its selected task and raw result for review.
@@ -52,22 +72,19 @@ caching them.
 
 Readiness passes when every selected reference can be applied without a material unknown.
 
-## Build one Candidate Revision
+## Model and project one Candidate Revision
 
-Before writing, record one row for each independently changeable obligation:
+Use the semantic-type and lifecycle references to form the candidate's temporary model before
+writing:
 
-| Obligation | Evidence | Owner | Disposition | Candidate location |
-| --- | --- | --- | --- | --- |
+- a Rule uses a Policy Frame;
+- a Skill uses its supported Judgment-led, Procedure-led, or Hybrid shape; and
+- a Generation Contract uses a Generation Frame plus the future target's selected semantic model.
 
-Split rows only when a predicate, exception, owner, action, recovery, or exit can change
-independently. Do not split wording choices that preserve the same behavior. Give every row one
-owner and one `preserve`, `change`, `add`, `move`, or `retire` disposition. Stop when an unresolved
-row permits materially different results.
-
-Synthesize the whole candidate from the ledger. Use an existing artifact as omission evidence, not
-as the new outline. Preserve supported decisions and safety boundaries. Represent each obligation
-once in its narrowest owner. Keep working evidence, provenance, validation records, and reviewer
-instructions outside a runtime artifact unless they change its execution.
+Project every obligation into its narrowest reliable runtime owner and loading tier. Leave
+environment-owned facts discoverable, disclose conditional material only from its trigger, use a
+script only for repeated fragile deterministic mechanics, and keep each meaning in one owner. Use
+an existing artifact as omission evidence, not as the new outline.
 
 A **Candidate Revision** is one complete current content state in the work area selected by the
 active project or host. It is not a copied revision tree or mandatory report. Read it without its
@@ -113,8 +130,9 @@ interpreters do not satisfy Semantic Review.
 If a required machine check fails, stop before semantic gates. Report its exact command, final exit,
 relevant output, unrun gates, and unverified surfaces. Do not call a walkthrough machine PASS.
 
-Record successful commands, final exits, and untested surfaces in a bounded Review Packet. Create
-no persistent validation report unless an active owner requires it.
+Record successful commands, final exits, untested surfaces, the Owner Gate verdict, and the selected
+Policy Frame, Skill Shape, or Generation Frame in a bounded Review Packet. Create no persistent
+validation report unless an active owner requires it.
 
 Freeze candidate writes before review.
 

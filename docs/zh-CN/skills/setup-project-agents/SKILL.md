@@ -5,12 +5,12 @@ description: 当需要跨 Codex、Cursor 和 Copilot 初始化或对齐仓库的
 
 # 设置项目 Agents
 
-通过脚本驱动的 setup 工作流对齐一个仓库的 Rules、Skills、Agents 和 MCP。将四类能力视为平级：
-每类都有自己的 canonical project input 和原生交付形式；任何一类都不是另一类的附属说明。
+本 Hybrid Skill 对齐一个仓库的 Rules、Skills、Agents 和 MCP。Agent 决定已接受的能力意图；公开
+工作流负责确定性的发现、渲染、验证、事务和清理。
 
-## 能力输入
+## Judgment Frame
 
-在 `start` 前建立请求的项目意图。只有用户要求变更时，才修改 canonical input。
+将四类能力视为平级。在 `start` 前检查其 canonical inputs，并且只有用户要求变更时才修改。
 
 | 能力 | Canonical project input | Setup 职责 |
 | --- | --- | --- |
@@ -19,30 +19,26 @@ description: 当需要跨 Codex、Cursor 和 Copilot 初始化或对齐仓库的
 | Agents | `.agents/agents/` 下的项目自有 source，以及 `.agents/config.json` 的 `agents` 声明 | 保留 Agent source，生成声明的宿主 adapter，并安装 catalog 声明的 Codex Plugin Agent 默认项。 |
 | MCP | `.agents/config.json` 的 `mcp` 声明 | 生成声明的宿主原生 MCP 条目，不存储 secret 值。 |
 
-使用 `.agents/config.json` 声明的 schema；该契约随插件一同发布，没有独立 JSON 版本。配置的 Agent
-source 必须是与 ID 匹配的 `.agents/agents/<id>.md`。MCP 条目只能声明 `url` 或 `command` 之一；
-按顺序执行的 `when`/`set` override 可选择 Harness 和操作系统。可选的 MCP readiness 可以选择执行
-检查的 Harness 和操作系统，
-也可以用明确的安全检查列表替换推断出的检查。
+使用随插件发布的 `.agents/config.json` schema。配置的 Agent source 是与 ID 匹配的
+`.agents/agents/<id>.md`；每个 MCP 条目只声明 `url` 或 `command` 之一。按顺序执行的 `when`/`set`
+override 可选择 Harness 和 Platform；可选的 MCP readiness 可限定或替换推断出的静态检查。
 
 项目自有 canonical input 始终是可编辑的项目内容。Setup 生成的文件和结构化字段由 setup 拥有。
-Plugin Rules、Skills、MCP，以及原生 Cursor 和 Copilot Plugin Agents 随 SmartKit 安装，不属于此
-项目工作流。Codex 插件包不会加载 Plugin Agent adapters，因此 setup 会将 catalog 声明的 Codex
-adapters 安装为受管默认资产。这些 adapters 仍是 Plugin Agents，绝不会进入 `.agents/config.json`。
+Plugin Rules、Skills、MCP，以及原生 Cursor 和 Copilot Plugin Agents 不属于此项目工作流。Setup
+只把 catalog 声明的 Codex Plugin Agent 默认项安装为受管资产；它们绝不会成为 Project Agent 声明。
 
 Matt repository context 是独立的项目自有前置条件。本工作流既不生成也不拥有
 `docs/agents/issue-tracker.md`、`docs/agents/triage-labels.md`、`docs/agents/domain.md`，或指向
 这些文件的 `## Agent skills` 区块。
 
-## 工作流
+## 事务工作流
 
 1. 从目标仓库根目录验证 Matt repository setup 已完成：三个 `docs/agents/` context 文件均存在，且
    `AGENTS.md` 或 `CLAUDE.md` 包含匹配的 `## Agent skills` 区块。任何部分缺失时，在 `start` 前停止，
    并告诉用户在该仓库中显式调用 `setup-matt-pocock-skills`。不要代替该 Skill 重复提问或选择 issue
    tracker。只有 Matt setup 报告完成后，才再次调用 `setup-project-agents` 继续。
 
-2. 检查四类能力输入。在开始前应用用户要求的 canonical-input 变更。本步骤完成的
-   标志是 Rules、Skills、Agents 和 MCP 都表达已接受的项目意图。
+2. 确定 Rules、Skills、Agents 和 MCP 各自表达已接受的项目意图。
 
 3. 将已加载 Skill 的目录识别为 `SETUP_PROJECT_AGENTS_ROOT`，然后启动公开工作流：
 
@@ -53,7 +49,7 @@ Matt repository context 是独立的项目自有前置条件。本工作流既�
 
    在 Windows 上使用相同参数调用 `setup_project_agents.ps1`。返回非零时停止。将返回的 `session`
    记录为 `SESSION`，将 `generated` 记录为 `GENERATED`，并记录 `request` 与 `source_root` 路径。
-   本步骤完成的标志是只存在一个私有 session，且 start 尚未修改目标仓库。
+   只有一个私有 session 存在且 target 保持不变时才继续。
 
 4. 读取 request，确认它已捕获接受的 Rules、Skills、Agents 和 MCP 意图。任何选择不正确时，取消
    session，修正 canonical project input，再重新 start。Start 后保持 request 不变。
@@ -74,18 +70,18 @@ Matt repository context 是独立的项目自有前置条件。本工作流既�
 
    Matt context 永远不会成为 generation request。
 
-   使用当前仓库作为证据；除非用户要求重新配置，否则保留完整的项目自有内容。本步骤完成的标志是
-   generated 目录恰好包含全部请求 target，且没有未声明路径。
+   使用当前仓库证据；除非用户要求重新配置，否则保留完整的项目自有内容。只有 `GENERATED` 恰好
+   包含全部请求 target 且没有未声明路径时才继续。
 
-6. Review Gate 通过后，完成同一个 session：
+6. Review Gate 通过后，恰好完成同一个 session 一次：
 
    ```sh
    sh "$SETUP_PROJECT_AGENTS_ROOT/scripts/setup_project_agents.sh" finish \
      --session "$SESSION"
    ```
 
-   在 Windows 上调用 `setup_project_agents.ps1`。只调用一次 `finish`。完成条件是退出码为零，且 JSON
-   包含 `phase: finish` 和 `check: clean`。
+   在 Windows 上调用 `setup_project_agents.ps1`。完成条件是退出码为零，且 JSON 包含
+   `phase: finish` 和 `check: clean`。
 
 7. 如果工作必须在 `start` 后、`finish` 前停止，取消 session：
 
@@ -105,12 +101,12 @@ Matt repository context 是独立的项目自有前置条件。本工作流既�
 - [ ] Request 未被修改，每个请求 target 都存在于 generated root 下。
 - [ ] 生成的项目内容不包含 credential 或 secret。
 
-## 停止条件
+## 停止与恢复
 
 `start`、`finish` 或 `cancel` 失败时停止并原样报告错误。`finish` 失败后丢弃该 session，解决原因后
 重新开始。能力声明、所有权冲突或生成输出仍未解决时，在 `finish` 前停止。
-只使用公开的 `start`、`finish` 和 `cancel` 命令；selection、rendering、deletion、validation、
-transaction、checking 和 session cleanup 由工作流负责。
+只使用 `start`、`finish` 和 `cancel`；其实现负责 selection、rendering、deletion、validation、
+transaction、checking 和 session cleanup。
 
 ## 结果
 

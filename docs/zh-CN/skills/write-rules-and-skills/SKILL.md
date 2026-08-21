@@ -6,8 +6,35 @@ description: 在创建、重写或实质更新 SmartKit Rule、Agent Skill 或 R
 # 编写 Rule 和 Skill
 
 根据已接受意图和已验证证据，编写最小而完整的工件。先应用 `writing-for-agents`，处理信息层级、
-有目的的 Markdown 和 Skill 调用机制。本 Skill 负责共享工作流；所选 reference 负责生命周期和
-语义类型要求。
+有目的的 Markdown 和 Skill 调用机制。本 Hybrid Skill 负责共享关卡；所选 reference 负责所有权、
+生命周期和语义类型决定。
+
+## 确立义务
+
+首次写入候选工件前，根据已接受意图和当前证据确定：
+
+- 请求的结果、必须保留的语义、已批准的变更、非目标和安全边界；
+- 请求的和当前的工件 owner、允许的写入、上层与下层 owner，以及受影响的加载、资源、生成和
+  分发表面；以及
+- 当前行为、适用的项目 Rule 与宿主机制、验证接缝，以及任何可能改变政策、动作、目标或出口的
+  环境事实。
+
+为每项可独立变化的义务记录一行临时语义账本：
+
+| 义务 | 证据 | 请求的或当前的 owner | 处置 |
+| --- | --- | --- | --- |
+
+仅当谓词、例外、owner、动作、恢复或出口可以独立变化时才拆行。每一行只能有一个 `preserve`、
+`change`、`add`、`move` 或 `retire` 处置。不要把账本、编写模型、来源和 review 证据写入运行时
+工件。
+
+## 通过 Owner Gate
+
+完整读取 [`references/owner-gate.md`](references/owner-gate.md)，并将其应用于账本。当受支持的结论
+与请求的或当前的 owner 冲突时，为其确切的所有权决定停止。
+
+对于明确的只读 Ownership Review，返回关卡结论并停止。否则，只有每个候选都获得一个有依据的
+owner 后才能继续。
 
 ## 路由候选工件
 
@@ -27,18 +54,11 @@ description: 在创建、重写或实质更新 SmartKit Rule、Agent Skill 或 R
 | Rule 生成契约 | [`references/generation-contract.md`](references/generation-contract.md) 和 [`references/rule.md`](references/rule.md) |
 | Skill 生成契约 | [`references/generation-contract.md`](references/generation-contract.md) 和 [`references/skill.md`](references/skill.md) |
 
-当一个请求同时包含持久政策和可执行工作时，创建分别拥有 owner 的 Rule 与 Skill 候选工件。
-当每个候选工件都有一个生命周期、一个语义类型、一个 owner，且两个 reference 均已加载时，
-路由才算完成。
+当 Owner Gate 返回 `split` 时，创建用户所选、分别拥有 owner 的 Rule 与 Skill 候选工件。当每个
+候选工件都有一个生命周期、一个语义类型、一个 owner，且两个 reference 均已加载时，路由才算
+完成。
 
 ## 达到写入就绪状态
-
-首次写入候选工件前，根据已接受意图和当前证据确定：
-
-- 请求的结果、必须保留的语义、已批准的变更、非目标和安全边界；
-- 工件 owner、允许的写入、上层与下层 owner，以及受影响的加载、资源、生成和分发表面；以及
-- 当前行为、适用的项目 Rule 与宿主机制、验证接缝，以及任何可能改变政策、动作、目标或出口的
-  环境事实。
 
 写入前，应用所选生命周期 reference 要求的任何 Behavior Control，并保留其选定任务和原始结果，
 供 review 使用。
@@ -49,20 +69,17 @@ description: 在创建、重写或实质更新 SmartKit Rule、Agent Skill 或 R
 
 当所有选定 reference 都能在不存在实质未知项的情况下应用时，写入准备才算通过。
 
-## 构建一个 Candidate Revision
+## 建模并投影一个 Candidate Revision
 
-写入前，为每项可独立变化的义务记录一行：
+写入前，使用语义类型和生命周期 reference 形成候选的临时模型：
 
-| 义务 | 证据 | Owner | 处置 | 候选位置 |
-| --- | --- | --- | --- | --- |
+- Rule 使用 Policy Frame；
+- Skill 使用有依据的 Judgment-led、Procedure-led 或 Hybrid 形态；以及
+- 生成契约使用 Generation Frame 加未来目标所选的语义模型。
 
-仅当谓词、例外、owner、动作、恢复或出口可以独立变化时才拆行。不要拆分保持相同行为的措辞选择。
-每一行只能有一个 owner，以及一个 `preserve`、`change`、`add`、`move` 或 `retire` 处置。
-当一项未解决义务仍允许实质不同的结果时停止。
-
-根据账本综合生成完整候选工件。将现有工件用作遗漏检查的证据，而不是新结构的大纲。保留受支持的
-决定和安全边界。每项义务只在最窄的 owner 中出现一次。除非会改变运行，否则不要把工作证据、
-来源、验证记录和 reviewer 指令放进运行工件。
+把每项义务投影到最窄且可靠的运行时 owner 和加载层级。让 environment-owned 事实保持可发现，
+只从其触发条件披露条件性材料，只对重复、脆弱且确定性的机制使用脚本，并让每项含义只有一个
+owner。将现有工件用作遗漏证据，而不是新结构的大纲。
 
 **Candidate Revision** 是活动项目或宿主所选工作区内的一份完整当前内容状态。它不是复制出来的
 修订目录，也不是强制报告。脱离前一版本和 diff 阅读它。只有在生命周期和语义类型要求都通过，
@@ -102,8 +119,8 @@ Pruning Agent 不可用时停止并报告。
 如果必需的机器检查失败，在语义关卡前停止。报告精确命令、最终退出状态、相关输出、未运行关卡和
 未验证表面。不要把走查称为机器 PASS。
 
-在有界 Review Packet 中记录成功命令、最终退出状态和未测试表面。除非活动 owner 要求，不要创建
-持久验证报告。
+在有界 Review Packet 中记录成功命令、最终退出状态、未测试表面、Owner Gate 结论，以及所选的
+Policy Frame、Skill Shape 或 Generation Frame。除非活动 owner 要求，不要创建持久验证报告。
 
 review 前冻结候选写入。
 

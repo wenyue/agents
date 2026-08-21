@@ -3,23 +3,28 @@
 生成契约（Generation Contract）是一个独立的指导工件，用来指导另一个 Agent 编写完整的未来
 Rule 或 Skill。本 reference 负责契约本身；未来目标的类型选择 `rule.md` 或 `skill.md`。
 
-## 确定指导契约
+## 确立 Generation Frame
 
 根据活动 owner 和项目证据解决每个适用部分：
 
 - 编写 actor、调用或触发条件、已接受请求和所需证据；
 - 未来目标的语义类型、owner、包装或 schema、写入位置和允许的辅助变更；
-- 有序编写动作、保留边界、目标验证和 handoff；以及
+- 未来目标的必需义务和所选 Policy Frame 或 Skill Shape；
+- 保留边界、目标验证和 handoff；以及
 - completion、实质歧义 stop、执行 failure、recovery 和重合出口优先级。
 
-应用契约当前有效的包装机制，不要把宿主或项目事实复制到这个跨项目 reference 中。所选语义类型
-reference 定义未来目标必须包含什么。契约必须告诉 Agent 如何从证据确定每个适用目标字段，以及
-当证据未能选出唯一结果时在哪里停止。
+这些部分共同构成 Generation Frame。应用当前有效的包装机制，不要把宿主或项目事实复制到这个
+跨项目 reference 中。所选语义类型 reference 定义未来目标必须包含什么。契约必须告诉 Agent
+如何从证据确定每项适用的目标义务，以及当证据未能选出唯一结果时在哪里停止。
+
+默认把编写方法和顺序留给 Agent 判断。只有证据表明某项编写动作或顺序会改变目标正确性、允许的
+写入、验证、恢复或 handoff 时，才规定它。
 
 ## 编写可用指导
 
 - 把 inputs、evidence sources、decisions、actions、exits、validation 和 handoff 放在另一个 Agent
   需要它们的位置，使其易于发现。
+- 陈述目标义务和选择证据，不要复制生成目标的大纲，也不要要求没有依据的编写方法。
 - 使用可观察谓词。`valid`、`complete` 或 `supported` 等标签不能替代使其成立的事实。
 - 保留现有目标语义，除非当前证据或明确批准支持变更。不要把目标自有的运行政策或流程放进契约。
 - 当 intent、owner、packaging、schema、write location、authority 或 preserved behavior 仍允许

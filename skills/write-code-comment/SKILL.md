@@ -5,13 +5,14 @@ description: Use when adding, editing, or reviewing code comments or documentati
 
 # Write Code Comment
 
-Unless a project convention requires a comment, write one only when it carries information that the
-code, name, signature, type, or immediate control flow does not already express.
+This Judgment-led Skill writes a comment only when project convention requires it or it preserves
+information that the code, name, signature, type, and immediate control flow do not already express.
 
-## Read Project Conventions
+## Judgment Frame
 
-Before writing, read the applicable repository and language rules, nearby comments, formatter or
-linter configuration, and generated-file ownership. Let the target project decide:
+Judge the comment from the request, relevant code, applicable repository and language rules, nearby
+maintained comments, formatter or linter configuration, and generated-file ownership. Let the
+target project decide:
 
 - comment language and terminology;
 - line, block, and documentation-comment syntax;
@@ -19,31 +20,11 @@ linter configuration, and generated-file ownership. Let the target project decid
 - whether a declaration should use a doc comment, docstring, annotation, or no comment;
 - required markers such as `TODO`, suppression directives, or API documentation tags.
 
-Project conventions override the non-obviousness heuristic and the defaults below. If a target
-appears generated and its ownership or permitted edit surface cannot be established, stop before
-modifying it and report the generator or owner evidence needed to continue.
+Project conventions override the defaults below. Stop before modifying a generated target whose
+source owner or permitted edit surface cannot be established.
 
-## Decision Workflow
-
-1. Determine whether the request authorizes edits or asks only for review. For review-only work,
-   inspect comments and relevant code, report actionable missing, misleading, redundant, or stale
-   comments, run only read-only checks, and make no file or structural change. Then report the
-   review result.
-2. For an authorized edit, identify what a future reader would misunderstand, violate, or have to
-   rediscover without the comment.
-3. If the answer is nothing and no project convention requires a comment, leave the code
-   uncommented. When the real problem is naming or structure, report that issue rather than changing
-   it unless the user separately authorized that work.
-4. Choose the comment role: API contract, invariant, lifecycle, edge case, failure behavior,
-   rationale, external requirement, or local intent.
-5. Write the smallest statement that supplies the missing information.
-6. Apply the target language's syntax and the project's tone and formatting rules.
-7. Read the code and comment together. Remove any phrase that merely narrates the next line.
-8. Run every declared relevant formatter, documentation check, analyzer, or linter. If no relevant
-   check is declared, report the result as untested. If a required check is unavailable or fails,
-   report the unavailable or failed check and do not claim successful completion.
-
-## High-Value Content
+Identify what a future reader would otherwise misunderstand, violate, or have to rediscover. Useful
+comment roles include:
 
 - behavior that callers cannot infer from the signature;
 - invariants and ordering constraints;
@@ -52,7 +33,15 @@ modifying it and report the generator or owner evidence needed to continue.
 - rationale for a non-obvious choice or for rejecting an obvious alternative;
 - external protocol, compatibility, security, or product requirements.
 
-## Defaults When the Project Is Silent
+If naming or structure is the real problem, report it without changing it unless that work is also
+authorized.
+
+## Write with restraint
+
+For an authorized edit, supply the missing information in the smallest statement, using the target
+language's syntax and project tone without narrating the next line.
+
+When the project is silent:
 
 - Match the language and terminology of nearby maintained documentation.
 - Use the language-native documentation form for public declarations and a normal line or block
@@ -62,6 +51,10 @@ modifying it and report the generator or owner evidence needed to continue.
   their required native form.
 - Refer to parameters, exceptions, and symbols with the documentation syntax supported by the
   target language.
+
+Preserve valid markers, suppression directives, documentation tags, URLs, code fragments, and
+generated comments in their required form. Change one only when the target project's rule or the
+request requires it.
 
 ## Examples
 
@@ -79,15 +72,15 @@ modifying it and report the generator or owner evidence needed to continue.
 # Return the cached value.
 ```
 
-## Preserve Special Forms
+## Validate and report
 
-Preserve valid markers, suppression directives, documentation tags, URLs, code fragments, and
-generated comments in their required form. Change one only when the target project's rule or the
-user's request requires it.
+For review-only work, make no file or structural change and run only read-only checks. Report
+actionable missing, misleading, redundant, or stale comments by location, or report that no
+actionable issue was found.
 
-## Result
+For edits, run every declared relevant formatter, documentation check, analyzer, or linter and
+report where comments were added, changed, or deliberately omitted and what information they
+preserve. If no relevant check is declared, label the result untested. If a required check is
+unavailable or fails, report it and do not claim successful completion.
 
-For review-only work, report findings and omissions by location, or report that no actionable issue
-was found, together with every read-only check run or unavailable. For edits, report where comments
-were added, changed, or deliberately omitted and what information they preserve. In both branches,
-name each check and its result; distinguish validated, untested, and failed outcomes explicitly.
+In both branches, name every check and distinguish validated, untested, and failed outcomes.

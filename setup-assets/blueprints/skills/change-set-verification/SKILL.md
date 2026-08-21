@@ -30,33 +30,24 @@ workflows, generated-source policy, and repository-owned verification selectors.
 
 Require evidence for every command, ownership mapping, and supported scope.
 
-## Authoring Workflow
+## Generation Frame
 
-1. Define the generated skill's trigger, completed-checkpoint precondition, selected-change-set
-   model, completion conditions, result states, stop conditions, and excluded implementation work.
-2. Map each supported change class to the minimum sufficient repository-owned checks. Define
-   broadening conditions from dependencies, shared contracts, generated interfaces, tool mutation,
-   ownership gaps, and risk.
-3. Order normalization, non-mutating static checks, directly owned tests, broader checks, and result
-   classification so each distinct surface runs only when its evidence is still needed.
-4. Choose between repository commands and the effective native or MCP tool surface. Prefer a
-   callable analyzer or test tool when it preserves the required scope and evidence; retain the
-   repository command when the tool would broaden a formatter or fixer mutation, discard a needed
-   selector, or weaken diagnostics.
-5. Group independent calls into one orchestration request when the Harness supports it. Configure
-   an evidence-backed owning-tool timeout for a legitimate long-running operation, and keep a
-   synchronous tool call under its owning wait mechanism.
-6. Prefer repository-owned selectors. Add a skill-owned script only when repeated deterministic
-   selection cannot be expressed reliably through existing tools; follow the target skill's own
-   project-local script runtime policy.
-7. Keep the core decisions in `SKILL.md`. Add `references/verification-matrix.md` only when multiple
-   packages, languages, or risk mappings would otherwise obscure the executable workflow.
-8. Read the complete generated directory without relying on the previous target skill or its diff,
-   then revise it until every instruction, command, scope decision, and result has one clear meaning.
+The generated artifact is a Hybrid Skill. Its Judgment Frame selects the coherent change set,
+minimum sufficient checks, broadening conditions, and effective tools from current repository
+evidence. Its bounded verification procedure owns only the order that affects mutation safety and
+the trustworthiness of later evidence.
 
-## Generated Skill Contract
+Keep these decisions in `SKILL.md`. Add `references/verification-matrix.md` only when multiple
+packages, languages, or risk mappings would otherwise obscure the usable mapping. Add a script only
+when repeated deterministic selection cannot be expressed reliably through repository-owned tools;
+follow the target skill's project-local script runtime policy.
 
-### Trigger and Scope
+Choose the generated skill's organization from the target evidence. Do not copy this contract's
+headings or evidence order as its outline.
+
+## Target Obligations
+
+### Judgment Frame
 
 - Run only at a completed implementation checkpoint before handoff; active editing, debugging, and
   incomplete fix cycles continue until the next completed checkpoint.
@@ -70,48 +61,46 @@ Require evidence for every command, ownership mapping, and supported scope.
 - Treat missing test ownership as a gap to resolve or a reason to broaden.
 - Restrict mutation to selected project-owned source files; change generated output through its
   owner and leave third-party or out-of-scope files unchanged.
+- Choose repository commands or effective native or MCP tools according to selected-scope fidelity,
+  diagnostic quality, mutation boundaries, and configured timeout. Keep repository formatter and
+  fixer commands when a callable tool would broaden mutation or discard a required selector.
+- Group independent checks when the Harness supports it. Keep mutation-sensitive checks and checks
+  that consume generated output sequential.
 
-### Normalization and Repair
+### Verification Procedure
 
 1. When the project supports it, format the selected project-owned source scope.
 2. Run an approved automatic fixer only for a known fixable analyzer or lint diagnostic, a
    framework or API migration, or user-requested mechanical cleanup. Run it at most once on its
    minimum supported selected scope. Accept mechanical repairs within that selected scope, but do
    not broaden solely to discover or repair older issues.
-3. Add every formatter- or fixer-modified file to the selected change set. Stop if a tool changes
-   generated, third-party, unrelated, or otherwise non-owned files.
+3. Add every formatter- or fixer-modified file to the selected change set.
 4. Reformat fixer-modified source when required, then run the minimum supported non-mutating static
    checks.
 5. Return remaining semantic diagnostics to the implementation owner with exact locations and
    messages; semantic fixes remain with that owner.
 6. If the implementation owner changes files, treat the result as a new completed checkpoint and
    restart the workflow from current repository state.
+7. Run directly owned tests after static checks pass, including components added by formatter,
+   fixer, or implementation-owner changes.
+8. Run broader tests, builds, runtime checks, or integration surfaces only when evidence-defined
+   risk or ownership requires them. Run each unique surface once per completed checkpoint unless a
+   mutation requires a documented repeat.
 
-### Tool Selection and Orchestration
+### Results
 
-- Prefer effective native or MCP analyzer and test tools over shell equivalents when they honor the
-  same selected scope, return equivalent diagnostics, and have an adequate configured timeout.
-- Keep narrow repository formatter and fixer commands when the corresponding tool can mutate only
-  a broader root. Preserve the selected change set when choosing between tools.
-- Submit independent checks together when their results do not depend on one another. Keep
-  normalization, mutation-sensitive checks, and checks that consume generated output sequential.
-- Treat a synchronous native or MCP call as one operation. Wait for its result through that call;
-  keep background processes and repeated short status polls outside this workflow.
-
-### Verification and Results
-
-- Run directly owned tests after static checks pass. Include tests for components added to scope by
-  formatter, fixer, or implementation-owner changes.
-- Run broader tests, builds, runtime checks, or integration surfaces only when the evidence-defined
-  risk or ownership boundary requires them.
-- Run each unique verification surface once per completed checkpoint unless a mutation requires a
-  documented repeat.
 - Classify every selected surface as `passed`, `failed`, `inconclusive`, or `not applicable`.
   Report the command, scope, selection reason, result, and remaining gap.
 - Report every modified file, formatter and fixer invocation, repeated check, remaining diagnostic,
   and verification gap.
 - Return one overall result: `passed`, `semantic_fix_required`, `failed`, or `inconclusive`.
-- Report `passed` only when every required surface passed.
+- Return `passed` only when every required surface passed; `semantic_fix_required` only when
+  trustworthy completed checks leave a semantic diagnostic and no safety or evidence-trust stop
+  applies; `failed` for a trustworthy required-check failure or confirmed forbidden mutation; and
+  `inconclusive` when prerequisites, ownership, repository state, or required evidence cannot be
+  established reliably.
+- A mutation-safety or evidence-trust stop governs over diagnostic routing when conditions
+  coincide.
 - When an out-of-scope failure may predate the change, compare only that failing surface with a
   trustworthy baseline, using no broader baseline work than classification requires.
 
@@ -119,11 +108,9 @@ Require evidence for every command, ownership mapping, and supported scope.
 
 - Stop when prerequisites are missing, selected ownership cannot be resolved safely, an automatic
   tool changes forbidden scope, repository state cannot be accounted for, or a required result is
-  not trustworthy. Preserve the evidence and report the affected surface as `inconclusive` or
-  `failed` as appropriate.
-- A generated skill with executable scripts must include `## Failure Recovery`: report the exact
-  failed command and error, analyze the cause, and propose a complete candidate script change before
-  modifying or retrying it.
+  not trustworthy. Preserve the evidence and apply the observable result conditions above.
+- For executable-script failures, report the exact failed command and error, analyze the cause, and
+  propose a complete candidate script change before modifying or retrying it.
 - Exclude business implementation, semantic repair, worktree creation or integration, dependency
   installation, agent synchronization, and destructive cleanup unless the target repository
   explicitly makes one of them part of a selected verification surface.
