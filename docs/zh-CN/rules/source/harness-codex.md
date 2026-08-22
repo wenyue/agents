@@ -2,12 +2,13 @@
 
 强度：`Default`
 
-适用范围：Codex 原生 Subagent 工具、事件订阅和有界等待。
+适用范围：Codex 专用的 Subagent 工具、`functions.exec` 编排机制，以及存在运行中 Agent 时的
+有界等待机制。
 
 ## 权限边界
 
-- 将本 Rule 视为只描述 Codex 执行机制的映射。由当前 Skill 或任务决定为什么委派 Agent 以及必须产出
-  什么结果；本 Rule 不改变用户授权、Rule 优先级或完成标准。
+- 由当前 Skill 或任务决定为什么委派 Agent 以及必须产出什么结果；本 Rule 不改变用户授权、Rule
+  优先级或完成标准。
 
 ## Subagent 工具映射
 
@@ -17,6 +18,12 @@
   `followup_task`。
 - 仅在确实应停止当前工作时使用 `interrupt_agent`。仅为有意的状态检查使用 `list_agents`，不得形成
   轮询循环。
+
+## JavaScript 编排
+
+- 在 `functions.exec` 中，对已选定为并发执行的独立调用进行映射：部分结果仍有用时使用
+  `Promise.allSettled`，必须获得所有结果时使用 `Promise.all`。当前工具 schema 或适用的
+  Skill 禁止并发执行时，保持调用串行。
 
 ## 等待 Agent
 

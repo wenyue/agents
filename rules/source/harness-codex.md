@@ -2,13 +2,13 @@
 
 Strength: `Default`
 
-Scope: Codex-native Subagent tools, event subscriptions, and bounded waiting.
+Scope: Codex-specific mechanics for Subagent tools, `functions.exec` orchestration, and bounded
+waits with live Agents.
 
 ## Authority
 
-- Treat this Rule as a mechanics-only mapping for Codex. The active Skill or task owns why an Agent
-  is delegated and what result it must produce; this Rule does not change user authorization, Rule
-  precedence, or completion criteria.
+- The active Skill or task owns why an Agent is delegated and what result it must produce; this Rule
+  does not change user authorization, Rule precedence, or completion criteria.
 
 ## Subagent Tool Mapping
 
@@ -18,6 +18,13 @@ Scope: Codex-native Subagent tools, event subscriptions, and bounded waiting.
   Subagent must perform a new bounded task.
 - Use `interrupt_agent` only when its current work should stop. Use `list_agents` for an intentional
   status inspection, not as a polling loop.
+
+## JavaScript Orchestration
+
+- Within `functions.exec`, map independent calls already selected for concurrent execution to
+  `Promise.allSettled` when partial results remain useful and to `Promise.all` when every result is
+  required. Keep calls sequential when the current tool schema or an applicable Skill prohibits
+  parallel execution.
 
 ## Waiting on Agents
 
