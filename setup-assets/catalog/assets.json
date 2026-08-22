@@ -1,7 +1,7 @@
 {
   "plugin": {
     "id": "smartkit",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "repository": "https://github.com/wenyue/agents.git",
     "ref": "master"
   },
@@ -30,14 +30,14 @@
       }
     },
     {
-      "id": "blueprint-project-rules",
+      "id": "blueprint-project-contracts",
       "kind": "blueprint",
-      "source": "setup-assets/blueprints/rules/01-project-rules.md",
-      "target": ".agents/rules/01-project-rules.md",
+      "source": "setup-assets/blueprints/rules/01-project-contracts.md",
+      "target": ".agents/rules/01-project-contracts.md",
       "metadata": {
         "section": "project",
-        "read_when": "Project APIs, generated files, lint, or domain conventions",
-        "strength": "Default",
+        "read_when": "APIs, capability ownership, installation, documentation, evaluation, contract evolution, distribution, hard dependencies, or exposure",
+        "strength": "Mandatory",
         "cursor": {
           "alwaysApply": true
         },

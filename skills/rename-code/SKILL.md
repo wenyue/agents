@@ -1,95 +1,99 @@
 ---
 name: rename-code
-description: Use when renaming symbols, files, private or public APIs, fixing naming typos, or enforcing naming consistency across declarations and their real references.
+description: Use when renaming a symbol or path, including a public API, and updating every real reference.
 ---
 
 # Rename Code
 
-Rename one identified symbol or path completely within its approved compatibility boundary. Use
-semantic reference evidence for symbols and exact path evidence for files or directories. Preserve
-external names unless the user approves changing them.
+Rename one identified symbol or path completely within its approved compatibility boundary. Prove
+symbol identity with semantic evidence and path identity with exact repository evidence.
 
 ## Establish the Rename
 
-1. Identify the target as either one symbol identity or one exact repository path, then record its
-   current name, intended new name, kind, and approved scope.
-2. Read the target project's naming, generated-file, API, and verification rules.
-3. For a symbol, establish its declaration and determine whether it is private, public, serialized,
-   generated, persisted, reflected, or consumed outside the repository. For a path, establish its
-   exact current path, destination, filesystem case behavior, and every path-based reference.
-4. Before writing, identify every generated surface and prove its source owner and regeneration
-   command. Confirm that the destination does not already identify unrelated content and that a
-   case-only path rename has a supported move strategy.
-5. Ask only when target identity, intended scope, destination ownership, or a public compatibility
-   decision remains ambiguous.
+1. Read the target project's naming, API, generated-file, and verification instructions. Record the
+   old-to-new mapping, target kind, requested scope, and any compatibility choice already made.
+2. Prove a symbol's declaration and scope or a path's exact current and destination locations.
+   Separate unrelated same-name identities and confirm that the destination does not collide with
+   unrelated content.
+3. Select one execution path:
+   - **Fast Symbol Path:** use only when the target is private or repository-internal, evidence shows
+     no external consumer, a project-aware semantic rename operation supports its language and
+     scope, and the name has no dynamic, generated, serialized, persisted, protocol, configuration,
+     or cross-language identity.
+   - **Full Rename Path:** use for every path and for any symbol that does not meet every Fast Symbol
+     condition. This includes public APIs, external contracts, generated names, dynamic string
+     lookups, and symbols without supported semantic rename tooling.
+4. For the Full Rename Path, complete the target's discovery:
+   - **Symbol:** use a project-aware reference tool when available. Otherwise combine whole-word
+     search with call-site, type, import, inheritance, dispatch, configuration, reflection, and
+     registration evidence.
+   - **Path:** inspect the repository tree, version-control index, imports, manifests, build files,
+     tests, scripts, documentation links, and case-sensitive references. A content search with no
+     matches is not complete path evidence.
+5. For the Full Rename Path, classify declarations or paths, references, tests, filenames,
+   comments, user-visible text, dynamic string lookups, external contracts, and generated outputs.
+   Include a textual match only when identity, type, call-site, configuration, or path evidence
+   ties it to the target.
+6. Resolve Full Rename compatibility before writing:
+   - rename a private or repository-internal identity completely only when evidence shows no
+     external consumer;
+   - for a public API or external contract, state the impact and obtain the missing compatibility
+     decision from its owner;
+   - preserve serialization keys, protocol fields, persisted names, database columns, and config
+     keys unless the approved scope includes them; and
+   - create a deprecated alias only when the approved compatibility choice requires it and the
+     project supports that migration path.
+7. For every generated surface, identify its canonical source owner and supported regeneration
+   command. For a path, establish the repository-supported move mechanism and, for a case-only
+   rename, a safe intermediate path.
 
-## Find the Rename Surface
+The Fast Symbol Path reduces discovery and reporting work but still requires rediscovery and every
+project-required check. Stop before writing when target identity, scope, or path selection is
+unresolved; a public compatibility decision is missing; a destination would collide or cannot be
+moved safely; or a required generated source owner or regeneration command cannot be established.
+Hand the exact missing decision or evidence to its contract, path, generator, or project owner.
 
-Prefer a project-aware symbol or reference tool that understands imports, inheritance, dispatch,
-and language semantics. If none is available, combine whole-word repository search with call-site,
-type, and configuration inspection.
+## Apply the Rename
 
-For a symbol, classify every match before editing:
+1. For the Fast Symbol Path, use the supported semantic rename operation to update the declaration
+   and its references.
+2. For the Full Rename Path, apply the approved mapping:
+   - **Symbol:** update the declaration and every confirmed semantic reference.
+   - **Path:** move the exact source through the supported mechanism and update every confirmed path
+     reference. Use the established unique intermediate path for a case-only move and never
+     overwrite a destination.
+3. Rename tests, filenames, comments, documentation, and mirrored text only where evidence ties
+   them to the same target.
+4. For the Full Rename Path, change generated names through their canonical source owner, then run
+   the established generator.
 
-- declarations, imports, references, overrides, tests, and filenames that identify the symbol;
-- comments and user-visible text that refer to the same concept;
-- string-based reflection, registration, routes, or dynamic lookup;
-- generated outputs and the sources that own them;
-- serialization keys, protocol fields, database columns, config keys, and other external contracts;
-- unrelated same-name symbols in different scopes.
+## Rediscover and Verify
 
-Require declaration, type, call-site, configuration, or other semantic evidence before treating a
-textual match as part of the rename.
-
-For a path, inspect the repository tree, version-control index, imports, manifests, build files,
-tests, scripts, documentation links, and case-sensitive references. Treat a content search with no
-matches as insufficient proof that the path rename is complete.
-
-## Compatibility Boundary
-
-- Rename private and repository-internal symbols completely when evidence shows no external
-  consumer.
-- For public APIs or external contracts, state the impact and obtain the compatibility decision
-  before editing when the request does not already provide one.
-- Add a deprecated alias only when compatibility is required and the project supports a migration
-  path.
-- Leave serialization, protocol, persistence, and config names unchanged unless they are explicitly
-  inside the approved rename scope.
-- Change generated names through their source owner and regenerate the output.
-
-## Workflow
-
-1. Record the approved old-to-new mapping and compatibility policy.
-2. For a symbol, update its declaration and every confirmed semantic reference. For a path, move
-   the exact source to the approved destination through the repository's supported mechanism and
-   update every confirmed path reference. Use a unique intermediate path when a direct case-only
-   move is not supported; never overwrite the destination.
-3. Rename tests, comments, documentation, or mirrored text only when they identify the same target.
-4. Regenerate each owned output from its established source.
-5. Re-run semantic reference discovery for a symbol or exact path discovery for a path. Classify
-   every remaining old-name occurrence as an intentional external contract, an unrelated identity,
-   or a missed rename.
-6. Run every verification check required by the target repository for the affected surfaces,
-   including applicable formatting, static analysis, generated-output checks, and affected tests.
-7. If rediscovery or verification exposes an in-scope missed rename, make one correction pass,
-   then rerun the affected discovery and every affected check.
+1. Repeat the selected path's semantic discovery for a symbol or exact tree, index, and reference
+   discovery for a path.
+2. Classify every remaining old-name occurrence as an intentional external contract, an unrelated
+   identity, or an in-scope missed rename.
+3. Run every project-required check for the affected surfaces, including applicable formatting,
+   static analysis, generated-output checks, and affected tests.
+4. When rediscovery or verification finds an in-scope miss, correct it only when current evidence
+   uniquely ties it to the approved rename, then repeat affected discovery and checks. Fail for no
+   progress when the same finding recurs unchanged or the proposed correction would not change the
+   candidate. Also fail and hand off when evidence cannot classify a required finding or a
+   correction requires broader scope, a different compatibility decision, or another owner's
+   action.
 
 ## Resolve the Run
 
 - **Complete** only when the target has the approved name, every confirmed reference resolves, all
   old-name remnants are classified, generated outputs are current, and every required check passes.
-- **Stop before writing** when identity or scope cannot be proven; a destination collision or
-  case-only move has no safe strategy; an unapproved public or external contract would change; or a
-  required generated source or command cannot be established.
-- **Fail after writing** when a required check still fails after the correction pass, recovery
-  would expand scope or change a contract, or the rename can no longer be distinguished from an
-  unrelated change. Preserve useful partial state and report the exact failed check and next owner.
+- **Fail after writing** when required verification remains red, the rename cannot be separated
+  from unrelated changes, no-progress is reached, or completion requires unapproved scope or
+  contract changes. Preserve useful partial state.
+- After writing, failure governs over a coincident pre-write stop condition.
 
-After writing, failure governs over a coincident stop condition. Report the stop fact without
-inventing a contract, command, or broader rename scope.
-
-## Result
-
-Report the renamed symbol or path, compatibility outcome, affected surfaces, intentional old-name
-remnants, generated outputs, correction performed, exact checks and exits, and every unresolved or
-untested surface.
+Report the selected path, renamed symbol or path, compatibility outcome, affected surfaces, semantic
+tool or generator used, corrections, exact checks and exits, and unresolved or untested surfaces.
+Itemize every intentional or unresolved old-name occurrence that still identifies the target with
+its exact location and classification. Summarize unrelated same-name identities; a clean Fast
+Symbol rediscovery needs only a clean result. Name the next owner for every failed or handed-off
+condition.

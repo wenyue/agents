@@ -97,7 +97,7 @@ class PluginManifestTest(unittest.TestCase):
             },
             {
                 '00-project-tools.md',
-                '01-project-rules.md',
+                '01-project-contracts.md',
                 '02-project-structure.md',
             },
         )

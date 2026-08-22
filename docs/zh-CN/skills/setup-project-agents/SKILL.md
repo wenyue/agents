@@ -63,7 +63,7 @@ Matt repository context 是独立的项目自有前置条件。本工作流既�
    Request 恰好包含五个 generated target：
 
    - `.agents/rules/00-project-tools.md`
-   - `.agents/rules/01-project-rules.md`
+   - `.agents/rules/01-project-contracts.md`
    - `.agents/rules/02-project-structure.md`
    - `.agents/skills/change-set-verification/SKILL.md`
    - `.agents/skills/worktree-environment-setup/SKILL.md`

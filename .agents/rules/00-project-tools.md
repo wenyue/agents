@@ -2,95 +2,51 @@
 
 Strength: `Mandatory`
 
-Scope: Repository runtime, authorized mutation tools, required verification, setup control plane,
-and public adapter synchronization.
+Scope: Safe repository command execution, synchronization, authorized mutation, complete-change
+verification, and existing Skill handoffs.
 
-Use only the runtime, mutation, and verification surfaces declared here. `AGENTS.md` owns this
-Rule's applicability; the SmartKit Rule configuration owns precedence.
+Run repository commands from the repository root. Before directly invoking a repository-owned
+Python entry point, resolve a Python 3.10+ launcher from the active environment; `<python>` below
+denotes that verified launcher. A wrapper that resolves its own launcher owns that prerequisite.
 
-## Runtime
+## Source Changes Requiring Synchronization
 
-- Run repository-owned scripts from the repository root with Python 3.10 or newer.
-- The Python scripts use the standard library and a vendored `tomli` fallback for Python 3.10; the
-  repository declares no dependency installation or environment preparation step.
-- Treat package managers, formatters, automatic fixers, analyzers, linters, build and packaging
-  commands, runtime services, ports, credentials, and health checks as unavailable until repository
-  evidence declares them.
+| Source change | Synchronize | Read-only drift check | Required synchronized state; review every generated diff |
+| --- | --- | --- | --- |
+| `VERSION` | `<python> scripts/sync_plugin_version.py` | `<python> scripts/sync_plugin_version.py --check` | Every generated version field matches `VERSION`. |
+| `mcp/registry.json` | `<python> scripts/sync_mcp_adapters.py` | `<python> scripts/sync_mcp_adapters.py --check` | Every host adapter matches the MCP registry. |
+| `agents/registry.json` or `agents/source/` | `<python> scripts/sync_agent_adapters.py` | `<python> scripts/sync_agent_adapters.py --check` | Every host adapter matches the Agent registry and source. |
+| `rules/registry.json` | `<python> scripts/sync_cursor_rule_adapters.py --update` | `<python> scripts/sync_cursor_rule_adapters.py --check` | Every Cursor Rule adapter matches the Rule registry. |
 
-## Managed Plugin Version
+Run a mutating synchronizer only when its canonical-source change belongs to the authorized change
+set or the user explicitly authorizes reconciling derived outputs to the current canonical source;
+otherwise run its read-only drift check and report any difference.
 
-- Treat root `VERSION` as the only manually maintained plugin version. After changing it, run
-  `python scripts/sync_plugin_version.py` and review the generated manifest, marketplace, and catalog
-  diffs as part of the same change set.
-- Use `python scripts/sync_plugin_version.py --check` for read-only drift detection; CI must reject
-  version fields that do not match `VERSION`.
+## Maintainer-authorized Mutation
 
-## External Plugin Skills
+During external-Skill maintenance, run `<python> scripts/update_external_skills.py --check`. Use
+`--update`, optionally scoped by `--source owner/repository`, only with explicit user authorization.
+Apply `Project Contracts`' external-Skill ownership boundary; require the updater to report
+convergence and review every resulting Skill, lock, and license diff.
 
-- Use `python scripts/update_external_skills.py --check` for read-only registry, upstream, lock,
-  license, and installed-file drift detection.
-- Run `python scripts/update_external_skills.py --update`, with optional
-  `--source owner/repository`, only when repository evidence establishes maintainer authority.
-  Without that evidence, treat the update as unauthorized. Review all Skill, lock, and license
-  changes afterward.
-- The updater is transactional, uses ambient GitHub credentials, and changes only registry-declared
-  external Skill roots, `vendor/external-skills.lock.json`, and license snapshots.
+## Complete-change Verification
 
-## Plugin MCP Adapters
+Before claiming verification complete, account for the declared comparison point, staged and
+unstaged changes, untracked paths, tool-generated effects, and every affected loading, generation,
+ownership, delivery, or runtime surface. Name every uncovered path or surface, run every required
+non-fixing baseline check and any additional non-fixing check required by an affected owner or live
+configuration, and withhold the claim until every affected path and surface is covered and every
+required check passes.
 
-- Treat `mcp/registry.json` as the only manually maintained Plugin MCP declaration. After changing
-  it, run `python scripts/sync_mcp_adapters.py` and review all three host adapters.
-- Use `python scripts/sync_mcp_adapters.py --check` for read-only adapter drift detection. Plugin
-  MCP adapters are configuration artifacts; the synchronizer must not download or vendor an MCP
-  server implementation.
+Baseline verification includes the `VERSION`, Agent-adapter, and MCP-adapter read-only drift checks
+above, plus:
 
-## Plugin Agent Adapters
+| Purpose | Command |
+| --- | --- |
+| Repository-wide contract tests | `<python> -m unittest discover -s tests -p 'test_*.py'` |
+| Diff whitespace and conflict-marker integrity | `git diff <comparison-point> --check` |
 
-- Treat `agents/registry.json` and `agents/source/` as the manually maintained Plugin Agent
-  declaration and shared instructions. After changing either, run
-  `python scripts/sync_agent_adapters.py` and review all three host adapters.
-- Use `python scripts/sync_agent_adapters.py --check` for read-only adapter drift detection. Host
-  adapters inherit the host's selected model and retain only host-native metadata.
+## Existing Skill Handoff
 
-## Required Verification
-
-Use these repository-supported checks:
-
-| Purpose | Command | Behavior |
-| --- | --- | --- |
-| Public catalog, synchronization, ownership, mirror, wrapper, and timing contracts | `python -m unittest discover -s tests -p 'test_*.py'` | Repository-wide, non-fixing test suite with no declared narrower selector |
-| Plugin Agent adapter drift | `python scripts/sync_agent_adapters.py --check` | Read-only comparison of the canonical registry and shared instructions with all host adapters |
-| Plugin MCP adapter drift | `python scripts/sync_mcp_adapters.py --check` | Read-only comparison of the canonical registry with all host adapters |
-| Diff whitespace and conflict-marker integrity | `git diff --check` | Non-mutating check of the current working-tree diff |
-
-Run the repository test suite, both adapter drift checks, and the diff-integrity check for every
-completed change set; together they form the required verification.
-
-## Project Setup Tooling
-
-- `skills/setup-project-agents/scripts/workflow.py`, reached through
-  `setup_project_agents.sh` or `setup_project_agents.ps1`, is the public
-  `start`/`finish`/`cancel` control plane. The pinned
-  `setup_project_agents.py` prepare/apply/check phases are internal workflow operations.
-- Start creates and owns the private session, reads `setup-assets/catalog/assets.json`, attempts to
-  fetch canonical `master`, and uses the validated installed plugin source only when that source is
-  unavailable. It then captures Rules, Skills, Agents, and MCP intent, snapshots external Skills,
-  and creates the request. Finish preserves project Rules, Skills, and Agent sources, renders
-  declared Agent and MCP adapters, reconciles setup-managed content, checks convergence,
-  summarizes, and cleans up. Cancel safely cleans up an unfinished workflow-owned session.
-- The unified ownership manifest records setup-managed Rule and Skill files, Agent adapters, MCP
-  fields, and configuration with deterministic digests. Setup updates or deletes only entries
-  authorized by the previous manifest; a modified owned asset or conflicting first-adoption target
-  stops before writes.
-- `check` reports desired-state drift without writes. The setup control plane is not a formatter,
-  fixer, or replacement for this repository's test command.
-- Keep this repository's local `.agents/` directory limited to its `plugins/` marketplace
-  configuration and `rules/` development instructions.
-
-## Boundaries
-
-- Completed change verification belongs to `change-set-verification`.
-- Treat project-local worktree environment setup as unavailable until new repository evidence
-  establishes a real setup procedure.
-- Keep public-source ownership and mirror policy in `Project Rules`.
-- Keep directory responsibilities and dependency direction in `Project Structure`.
+Hand off initialization or reconciliation of a target repository's `.agents` Rules, Skills, Agents,
+MCP declarations, and setup-managed host projections to `setup-project-agents`.

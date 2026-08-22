@@ -2,66 +2,67 @@
 
 Strength: `Mandatory`
 
-Scope: Generation contract for the target repository's executable tooling, runtime services,
-verification surfaces, integrations, and tool-to-skill handoffs.
+Scope: Generation contract for the target repository's safe command execution, synchronization,
+mutation, complete-change verification, and existing Skill handoffs.
 
-## Generation Contract
+## Generation Frame
 
-Produce a complete target-owned `Project Tools` rule from current repository evidence. Include only
-facts and constraints an agent must know before acting because the correct choice is non-obvious,
-easy to misuse, expensive to rediscover, or costly to repair. Leave ordinary discoverable detail
-with its owning configuration, script, or command help. Organize the result around decisions rather
-than a tool inventory.
+Produce one target-owned `.agents/rules/00-project-tools.md` as a project-local Ordinary Mandatory
+Rule. Its persistent policy answers only how an agent executes repository tooling safely, which
+observed source changes require synchronization, what authority permits mutation, how a complete
+change set is verified, and when an existing Skill owns the job.
 
-## Evidence
+Derive the Rule's applicability, predicate-to-outcome mappings, exceptions, precedence, and
+ownership boundaries from current target evidence. Preserve supported existing semantics and write
+only the target Rule unless the accepted request explicitly authorizes another target change. Stop
+before writing when mutation authority, the comparison point, preserved behavior, or absent,
+conflicting, or machine-local evidence still permits materially different repository-wide outcomes.
 
-- Inspect package and workspace manifests, lock files, toolchain pins, repository scripts, task
-  runners, CI workflows, and tool configuration.
-- Confirm consequential commands from their owning script, configuration, or current help output.
-  Establish the working directory, prerequisites, supported scope, mutation behavior, outputs, and
-  material cost.
-- Inspect runtime entry points, service configuration, environment templates, credential
-  boundaries, ports, startup dependencies, and health or readiness checks.
-- Inspect generator configuration and repository-owned verification or setup selectors without
-  copying policy owned by generated files or project skills.
-- Inspect project-owned MCP and native Harness configuration. Reconcile names and intent across
-  supported Harnesses while preserving each Harness's native schema.
-- Treat absent, conflicting, or machine-local evidence as unresolved until authoritative
-  repository evidence establishes a repository-wide fact.
+## Evidence-to-Policy Mappings
 
-## Content
+- Inspect repository entry guidance, workspace and package manifests, runtime and toolchain pins,
+  repository scripts, task-runner configuration, CI workflows, and command help. State a required
+  working directory or runtime prerequisite only when that evidence shows it changes whether a
+  supported invocation succeeds, and point to its live owner instead of caching a discoverable
+  value or inventory.
+- Trace every consequential generated or synchronized surface from its canonical source through
+  the repository-owned synchronizer to its outputs and read-only drift check. For each confirmed
+  source-change predicate, state the required synchronization outcome, its check-only alternative
+  when one exists, and the generated diffs that must be reviewed. Reference the owning command
+  surface; include an exact invocation only when agents cannot reliably derive it there.
+- Inspect scripts and current help to distinguish read-only from mutating behavior and establish
+  selectors, safer modes, affected paths, and failures.
+  Co-locate each consequential mutation with the explicit project or user authority that permits
+  it, the read-only, scoped, or dry-run outcome required without that authority, and the resulting
+  changes to inspect. Tool presence, write access, or a broad task description does not grant
+  authority.
+- Establish the actual change set from its declared comparison point together with version-control
+  status and diff, untracked paths, generated effects, and implicated loading, generation,
+  ownership, delivery, or runtime surfaces. Map every path and affected surface to applicable
+  non-fixing checks from project guidance, verification selectors, CI, test and build configuration,
+  and synchronizer checks. Name every uncovered path or surface and withhold a complete-verification
+  claim while one remains uncovered or a required check has not passed.
+- Inspect discoverable project Skills and their invocation pointers. Name an existing Skill and its
+  observable trigger only when its accepted trigger and bounded outcome own the job. Keep persistent
+  invocation constraints and the handoff condition in the Rule; leave procedure, ordering,
+  recovery, and result handling in the Skill.
 
-- Record a runtime, package-manager, workspace, toolchain, or working-directory constraint only when
-  it materially changes command selection or failure behavior. Point to the owning pin or manifest
-  instead of copying a value that agents can safely read there.
-- Record a small verified set of canonical commands for repository-owned outcomes that agents must
-  invoke directly, such as setup, development, verification, build, packaging, or publication.
-  State the required working directory and any non-obvious prerequisites or selectors.
-- For other commands, name the owning surface and the decision it owns. Include an exact invocation
-  only when its mutations, outputs, or material cost are not safely discoverable there.
-- Distinguish non-mutating checks from formatters, fixers, generators, installers, publishers, and
-  other state-changing tools when confusing them would create meaningful risk or broad changes.
-  Record verified scope selectors and dry-run modes for consequential state-changing tools.
-- Describe a runtime service, integration, MCP server, or native agent surface only when an agent
-  must connect to, preserve, or validate it and the required behavior is not obvious from live
-  configuration.
-- Record each consequential generator's owner and either its exact invocation or a reliable
-  discovery path, together with its inputs and outputs. Require that surface instead of improvised
-  arguments or a broader update workflow.
-- Make repository-owned setup and verification selectors directly invocable by
-  `worktree-environment-setup` or `change-set-verification`. Leave workflow timing, ordering,
-  broadening, and result policy to those skills.
-- State that a tool or capability is absent only when doing so prevents a consequential invented
-  command or workflow.
+Choose the target Rule's organization from its supported predicates and outcomes rather than from
+this contract's headings. Omit tool inventories, environment snapshots, command catalogs,
+step-by-step procedures, and behavior already owned by live configuration, command help, scripts,
+or Skills.
 
-## Boundaries
+## Ownership Boundaries
 
-- Keep environment-preparation procedure in `worktree-environment-setup` and completed-change
-  verification procedure in `change-set-verification`; this rule supplies verified capabilities
-  and invocation constraints to both.
-- Keep API contracts, domain behavior, generated-file edit policy, and lint interpretation in
-  `Project Rules`. Keep module placement and dependency direction in `Project Structure`.
-- Leave Harness wrapper generation and distribution metadata to their owning configuration or
-  synchronization manifest.
-- Select commands per task need, reference policy owned elsewhere, protect credentials, and include
-  only commands, selectors, costs, services, and integrations established by evidence.
+- Keep hard API, generated-source, capability ownership, delivery, installation, dependency, and
+  contract-evolution policy in `Project Contracts`. Reference that owner when it determines which
+  execution or synchronization outcome applies.
+- Keep advisory directory placement, responsibility maps, and architectural seam judgment in
+  `Project Structure`; this Rule may name their enforcement command without restating their policy.
+- Keep deterministic mechanics in their repository-owned scripts.
+
+## Validation and Handoff
+
+Validate every included mapping and exact command against authoritative target evidence, then hand
+the generated Rule to the current Ordinary Artifact route. Hand off its evidence and unresolved
+omissions; an uncovered path or surface prevents a complete-verification claim.

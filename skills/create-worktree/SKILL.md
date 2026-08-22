@@ -5,76 +5,83 @@ description: Use when state-changing repository work requires an isolated Task o
 
 # Create Worktree
 
-Create or reuse one named linked Git worktree and leave it ready for its owning workflow without
-changing the base checkout. This Skill owns worktree selection, creation, validation, Task or Batch
-Worktree qualification, and the mechanical ownership handoff. It does not own business
-implementation, completed-change integration, tracker state, or cleanup.
+This Procedure-led Skill creates or reuses one named linked Git worktree and prepares it for its
+owning workflow while preserving the base branch, index, and pre-existing local state. It owns
+worktree selection, creation, validation, Task or Batch Worktree qualification, and the mechanical
+ownership handoff. Business implementation, completed-change integration, tracker state, and
+cleanup remain with their owners.
 
-## Preconditions
+## Establish the Preparation Contract
 
-1. Inspect `git worktree list --porcelain`, the current branch and `HEAD`, the Git common directory,
-   and the base checkout's staged, unstaged, and untracked state. Identify one intended base branch
-   and commit; stop when the base is detached or ambiguous.
-2. Select exactly one role: a Task Worktree for one accepted task, or a Batch Worktree for one
-   frozen Ticket Batch. Record the caller-supplied scope owner, intended path or lowercase
-   hyphenated slug, named branch, exact base commit, and later integration and cleanup owners.
-   Follow a verified
-   repository branch convention; otherwise use `worktree/<slug>`.
-3. Record the base branch, base commit, existing worktrees, existing local branches, and base
-   checkout status before any mutation.
+1. Select exactly one role: a Task Worktree for one accepted task, or a Batch Worktree for one
+   frozen Ticket Batch. Record the caller-supplied `scope_owner`, intended path or lowercase
+   hyphenated slug, named branch, exact base commit, later `integration_owner` and `cleanup_owner`,
+   whether the host has already created the intended worktree, and, when it has, the caller-supplied
+   `creation_owner`.
+2. Resolve one base checkout and named base branch against the caller-supplied exact base commit.
+   Inspect the current branch and `HEAD`, the Git common directory, and
+   `git worktree list --porcelain`; stop when the intended base is detached or ambiguous, or when
+   resolution differs from the supplied commit. Never substitute the current branch tip for it.
+3. Before mutation, snapshot the base checkout's branch, `HEAD`, commit tree, index tree, staged,
+   unstaged, and untracked state, plus all registered worktrees and local branches. This snapshot is
+   the preservation boundary and the accepted base for qualification.
 
-## Select the Worktree
+## Select and Validate the Worktree
 
-- Reuse the current worktree when the host already created a linked, named worktree for this task or
-  batch. Verify its branch and base before continuing.
-- Otherwise select `<base-root>/.worktrees/<slug>` and use the host's native worktree creation
-  capability when available; record which lifecycle owner created it.
-- Ensure the root `.gitignore` contains the repository-relative entry `.worktrees/`. When it is
-  absent, append exactly that entry while preserving existing content and record the edit as an
-  intentional project-owned change. Stop instead when `.gitignore` is generated, read-only, or has
-  ambiguous ownership.
-- Before creating under `.worktrees`, require `git check-ignore` to prove the selected path is
-  ignored. A global exclude or `.git/info/exclude` does not replace the repository `.gitignore`
-  entry.
-- Obtain any permission required to create the selected directory. Treat permission as authorization
-  for that exact path and worktree, not for unrelated Git or filesystem changes.
+1. Reuse the current worktree only when the host created that linked worktree for the exact task or
+   batch. Require its named branch, `HEAD`, commit tree, and local-state ownership to match the
+   preparation contract; otherwise stop without qualification.
+2. For a new worktree, select `<base-root>/.worktrees/<slug>` and follow a verified repository
+   branch convention, falling back to `worktree/<slug>`. Validate the branch name and require both
+   the path and branch to be absent from the filesystem, registered worktrees, and local branches.
+3. For every selected path under `<base-root>/.worktrees/`, whether reused or new, require the root
+   `.gitignore` to contain an effective repository-relative `.worktrees/` entry. If the entry is
+   absent or ineffective, append `.worktrees/` as the smallest effective repair only when
+   `.gitignore` is project-owned and the edit can preserve and distinguish all existing content and
+   local state; record it as an intentional project-owned change. Stop when the file is generated,
+   read-only, ambiguously owned, or the edit would overlap indistinguishable local work.
+4. Use `git check-ignore -v` to prove every selected repository-relative `.worktrees/` path is
+   ignored by the root `.gitignore` after any repair; a global exclude or `.git/info/exclude` is
+   insufficient. For a new worktree, obtain any permission required for the exact selected
+   directory and worktree. That permission authorizes no unrelated Git or filesystem change.
 
-## Create and Validate
+## Create and Verify
 
-1. Immediately before creation, confirm the recorded base branch and `HEAD` have not moved and the
-   selected base commit and tree still match, and the path and branch remain absent. If the base
-   moved, stop without creating anything and
-   report the recorded and current commits plus the preserved snapshot to the owning workflow.
-2. For a Git fallback, create the named branch and linked worktree from the recorded base commit
-   with `git -C <base-root> worktree add -b <task-branch> <worktree-path> <base-commit>`.
-3. Verify through `git worktree list --porcelain` that the resulting path, branch, and `HEAD` match
-   the selected values. Confirm the base checkout's `HEAD`, index tree, and pre-existing local state
-   still match the recorded snapshot; allow only the recorded `.worktrees/` `.gitignore` addition.
-4. If creation fails, inspect both Git worktree metadata and the selected path before retrying.
-   Remove only incomplete artifacts proven to have been created by this attempt and containing no
-   user work; otherwise retain them and report the exact recovery required. After safe removal,
-   return to pre-creation validation and retry at most once. A second failure stops with all
-   remaining evidence retained.
+1. Immediately before creation, recheck the base branch, `HEAD`, commit tree, path, and branch
+   against the recorded contract. If any value moved or appeared, stop before creation and report
+   the recorded and current values with the preserved snapshot.
+2. When the host's native worktree creation capability is available, use it and record its concrete
+   lifecycle owner as `creation_owner`. Only when that capability is unavailable, use the Git
+   fallback and record the concrete Agent executing
+   `git -C <base-root> worktree add -b <task-branch> <worktree-path> <base-commit>` as
+   `creation_owner`.
+3. Verify with `git worktree list --porcelain` that the path, branch, and `HEAD` equal the selected
+   values. Recheck that the base checkout's `HEAD`, commit tree, index tree, and pre-existing local
+   state match the snapshot; allow only the recorded `.worktrees/` `.gitignore` addition.
+4. On creation failure, inspect both Git worktree metadata and the selected path. Remove only an
+   incomplete artifact proven to have been created by this attempt and to contain no user work.
+   When that proof fails, retain the evidence and stop with the exact recovery owner and action.
+   After safe removal, repeat the pre-creation checks and retry once. A second failure retains all
+   remaining evidence and stops.
 
-## Prepare for Implementation
+## Prepare and Qualify
 
 1. Continue inside the selected worktree. When the target repository provides
-   `worktree-environment-setup`, apply it to prepare dependencies, generated inputs, and required
-   services.
-2. Run the repository's declared baseline verification after environment preparation. Treat a
-   failing baseline as pre-existing evidence and stop before implementation unless the user accepts
-   that baseline explicitly. When the repository declares no baseline verification, stop without
-   qualification unless the owning workflow or user explicitly accepts the unavailable baseline for
-   this worktree; do not substitute completed-change verification or invent a command.
-3. Qualify the selected role only when the worktree has one named branch, its `HEAD` and tree equal
-   the accepted base, its baseline is clean or explicitly accepted, and every local path belongs
-   exclusively to that role's accepted scope. A
-   Task Worktree belongs to one accepted task. A Batch Worktree belongs to one frozen Ticket Batch,
-   records its base as the immutable delivery target, and may contain only that batch's ordered Task
-   Commits and batch-review checkpoints. A reused worktree with ambiguously owned local state remains
-   a worktree but receives neither qualification and authorizes no autonomous Checkpoint Commit.
-4. Report the ready worktree only after its environment and baseline satisfy the target repository's
-   contracts. Retain a failed worktree for diagnosis rather than discarding evidence automatically.
+   `worktree-environment-setup`, apply it before baseline verification.
+2. Run the repository-declared baseline verification after environment preparation. A failing
+   baseline is pre-existing evidence: stop before implementation unless the user explicitly accepts
+   it for this worktree. When no baseline is declared, stop without qualification unless the owning
+   workflow or user explicitly accepts the unavailable baseline. Do not substitute completed-change
+   verification or invent a command.
+3. Qualify the selected role only when the worktree has one named branch; its `HEAD` and commit tree
+   equal the accepted base; its baseline passes or is explicitly accepted; and every local path
+   belongs exclusively to the accepted scope. A Task Worktree belongs to one accepted task. A Batch
+   Worktree belongs to one frozen Ticket Batch, records its base as the immutable delivery target,
+   and may contain only that batch's ordered Task Commits and batch-review checkpoints.
+4. A reused worktree with ambiguously owned local state remains an ordinary worktree: it receives no
+   Task or Batch qualification and authorizes no autonomous Checkpoint Commit. Report readiness only
+   after environment, baseline, and qualification all satisfy the target repository's contracts.
+   Retain every failed worktree for diagnosis rather than discarding evidence automatically.
 
 ## Result
 

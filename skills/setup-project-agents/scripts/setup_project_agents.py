@@ -33,7 +33,7 @@ _REQUEST_NAME = 'request.json'
 _GENERATED_NAME = 'generated'
 _BLUEPRINT_TARGETS = (
     PurePosixPath('.agents/rules/00-project-tools.md'),
-    PurePosixPath('.agents/rules/01-project-rules.md'),
+    PurePosixPath('.agents/rules/01-project-contracts.md'),
     PurePosixPath('.agents/rules/02-project-structure.md'),
     PurePosixPath('.agents/skills/change-set-verification/SKILL.md'),
     PurePosixPath('.agents/skills/worktree-environment-setup/SKILL.md'),

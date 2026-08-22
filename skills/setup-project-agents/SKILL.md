@@ -73,7 +73,7 @@ nor owns `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`,
    The request contains exactly five generated targets:
 
    - `.agents/rules/00-project-tools.md`
-   - `.agents/rules/01-project-rules.md`
+   - `.agents/rules/01-project-contracts.md`
    - `.agents/rules/02-project-structure.md`
    - `.agents/skills/change-set-verification/SKILL.md`
    - `.agents/skills/worktree-environment-setup/SKILL.md`

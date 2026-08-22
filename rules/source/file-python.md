@@ -2,66 +2,61 @@
 
 Strength: `Default`
 
-Scope: Python API shape, typing, data modeling, imports, errors, asynchronous resources, tests, and
-tool ownership.
+Scope: Cross-project Python API, typing, data-boundary, failure, and resource contracts beyond
+repository-owned formatting, linting, and type-checking policy.
 
-## Style And Types
+## API And Type Contracts
 
-- Write explicit, maintainable Python whose data shapes and control flow are easy to review.
-- Keep behavior with the owner of its state or invariant; prefer direct code over reflection,
-  monkey patching, clever metaprogramming, or broad utilities for one call site.
-- Use annotations to clarify contracts without turning a type-only change into a hidden behavior
-  refactor.
-- Annotate public and reusable boundaries and make return types explicit, including `-> None` for
-  side-effect-only functions.
-- Keep annotation syntax compatible with the repository's declared Python range and nearby style.
-- Express optional values consistently with nearby code and avoid implicit `None` sentinels when a
-  named state makes the contract clearer.
-- Use concrete collection types at boundaries and read-only abstractions such as `Mapping`,
-  `Sequence`, and `Iterable` when mutation is not part of the contract.
-- Keep `Any` at genuine dynamic boundaries and narrow it before passing values into domain logic.
-- Prefer `Protocol`, dataclasses, enums, literals, and typed domain models when they make supported
-  states and data shapes explicit.
+- Keep annotation-only changes behavior-preserving. When typing exposes an ambiguous runtime case,
+  resolve it from code, tests, or project policy instead of selecting new behavior.
+- Annotate parameters and return values at public or reusable boundaries, including `-> None` for
+  side-effect-only functions. Use syntax supported by the repository's declared Python range.
+- Use reflection, monkey patching, and metaprogramming only when a runtime boundary is inherently
+  dynamic, and isolate them at that boundary.
+- Use `*args` and `**kwargs` only for genuinely open or forwarding contracts; otherwise name the
+  parameters. Make parameters keyword-only when a signature has several independently optional
+  values.
+- Use `Protocol` for structural APIs, dataclasses or typed domain types for data shapes, and
+  `Literal`, enums, or named types for finite states. Do not encode meaningful state combinations
+  as boolean flags or an implicit `None` sentinel.
+- Import typing helpers only when needed and use the generic syntax supported by the project.
 
-## Functions And Data
+## Local Values And Functions
 
 - Declare variables near first use, annotate ambiguous or empty initial values, and keep nullable
   values on the narrowest practical path.
-- Use one precise variable name per role instead of reusing a name for values of different types.
-- Keep signatures explicit; reserve `*args` and `**kwargs` for framework or documented forwarding
-  boundaries.
-- Prefer keyword-only parameters for several optional values, and replace meaningful boolean flag
-  combinations with an options type, enum, or separate operation.
+- Give each value name one role and one type rather than reusing it for different values.
 - Keep functions focused and the main path shallow with early returns for invalid, absent, or no-op
   inputs.
-- Return one stable shape from each function; use a named result, dataclass, enum, or exception when
-  outcomes have distinct meanings.
-- Validate external mappings, serialized data, and untyped provider values at the boundary before
-  constructing typed domain values.
 
-## Imports And Errors
+## Data Boundaries
 
-- Follow the repository's import boundaries and group standard-library, third-party, and
-  first-party imports according to local style.
-- Import typing helpers only when needed and use the generic syntax supported by the project.
+- Make collection mutation explicit in boundary types: accept read-only abstractions such as
+  `Mapping`, `Sequence`, and `Iterable` when mutation is not part of the contract, and require a
+  mutable type when callers must permit mutation.
+- Keep `Any` at genuinely dynamic or untyped boundaries, then validate or narrow it before passing
+  values into typed domain logic.
+- Validate external mappings, serialized data, and untyped provider values before constructing
+  typed domain values.
+- Return one stable shape from each function. Use a named result, enum, or exception when outcomes
+  have distinct meanings.
+
+## Failures And Resources
+
 - Raise precise domain or integration exceptions for expected failures and preserve useful cause
   context when translating errors across a boundary.
-- Catch broad exceptions only at a boundary that can intentionally and safely contain the failure.
+- Catch broad exceptions only at a boundary that owns the failure policy; re-raise or translate any
+  failure it cannot safely contain.
 - Use assertions for internal invariants rather than user input or recoverable runtime failures.
+- Annotate coroutine functions with the value produced after awaiting; annotate async generator
+  functions with an async iterator or generator type.
+- Capture stable dependencies before asynchronous or callback boundaries; read changing state when
+  its current value is required.
+- Give every acquired resource one cleanup owner and make ownership transfer explicit. On every
+  path that retains ownership, guarantee cleanup with a context manager, `try/finally`, or an owner
+  lifecycle method.
 
-## Async And Resources
+## Typing Changes
 
-- Annotate async functions with the value produced after awaiting rather than a coroutine wrapper.
-- Make resource ownership and cleanup explicit with context managers, `try/finally`, or owner
-  lifecycle methods.
-- Resolve stable dependencies before asynchronous or callback boundaries; read changing state at
-  the point where its current value is required.
-
-## Tests And Tooling
-
-- Keep reusable test helpers and fixtures explicit about their input and result shapes.
-- When new annotations expose an ambiguous branch, add focused tests before changing behavior.
-- Let the repository formatter, linter, and type checker own layout, import formatting, suppression
-  syntax, and configured thresholds.
-- Introduce or replace Python tooling only when the task explicitly includes that project-level
-  change.
+- Before a supported behavior change in a branch made ambiguous by new typing, add and run a
+  focused test that establishes its current behavior.

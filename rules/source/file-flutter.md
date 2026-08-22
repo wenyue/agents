@@ -6,9 +6,6 @@ Scope: Dart and Flutter ownership, state, lifecycle, UI, routing, models, and an
 
 ## Public Surface And Ownership
 
-- Keep public APIs narrow and product-driven; meet test and caller needs without exposing helpers or
-  moving owner-local behavior solely for convenience.
-- Keep domain invariants with the value or service that owns them.
 - Keep owner-local behavior as instance members by default.
 - Keep top-level functions for framework entry points, file-level declarations, shared algorithms,
   or logic with no clear owner.
@@ -22,7 +19,7 @@ Scope: Dart and Flutter ownership, state, lifecycle, UI, routing, models, and an
 
 - Use Riverpod for shared, feature-level, and cross-widget state; keep simple local concerns in the
   widget that owns them.
-- Use generated providers when generation is already part of the application.
+- When provider generation is already part of the application, use generated providers.
 - Watch reactive state during build, read it from event handlers, and listen only for side effects.
 - Use `select` with `ref.watch` or `ref.listen` when only one part of a state object matters.
 - Use `keepAlive: true` for services and repositories whose lifetime must not depend on one screen.
@@ -30,8 +27,8 @@ Scope: Dart and Flutter ownership, state, lifecycle, UI, routing, models, and an
 ## Provider Lifecycle
 
 - Treat provider `build()` as reactive; it may run again whenever dependencies change.
-- Register every `onDispose` callback immediately after creating its disposable resource.
-- Register disposal before any `await`.
+- Immediately after creating each disposable resource, and before any `await`, register its
+  `onDispose` callback.
 - Use `onDispose` only to release captured resources; keep state assignment, provider reads, and
   `Ref` access outside the callback.
 
@@ -51,7 +48,8 @@ Scope: Dart and Flutter ownership, state, lifecycle, UI, routing, models, and an
 
 ## Routing
 
-- Use the application's established router and generated route abstractions for pages.
+- Use the application's established router for pages; when it already uses generated routes, use
+  its generated route abstractions.
 - Use `Navigator.of(context).pop(result)` for dialogs, sheets, and overlays owned by Navigator.
 
 ## Data Models
@@ -62,7 +60,5 @@ Scope: Dart and Flutter ownership, state, lifecycle, UI, routing, models, and an
 
 ## Analysis
 
-- Follow the target repository's formatter, analyzer, and lint configuration for mechanical style,
-  naming, imports, types, comments, and deprecations.
 - Write code, identifiers, and comments in English.
 - Use injectable or testable time sources when current time affects behavior.
